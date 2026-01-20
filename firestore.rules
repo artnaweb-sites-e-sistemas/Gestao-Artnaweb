@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Regras para a coleção de projetos
+    match /projects/{projectId} {
+      // Permite leitura para todos os usuários autenticados
+      // Se não usar autenticação, permite leitura pública
+      allow read: if true; // Mude para 'if request.auth != null' se usar autenticação
+      
+      // Permite escrita apenas para usuários autenticados
+      // Se não usar autenticação, permite escrita pública (apenas para desenvolvimento)
+      allow create, update, delete: if true; // Mude para 'if request.auth != null' se usar autenticação
+    }
+    
+    // Regras para a coleção de categorias
+    match /categories/{categoryId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      // Em produção, use: allow create, update, delete: if request.auth != null;
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de atividades
+    match /activities/{activityId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de membros da equipe
+    match /teamMembers/{memberId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de etapas
+    match /stages/{stageId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de tarefas de etapa
+    match /stageTasks/{taskId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de tarefas de projeto por etapa
+    match /projectStageTasks/{projectTaskId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Regras para a coleção de arquivos de projeto
+    match /projectFiles/{fileId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
+    // Bloqueia acesso a todas as outras coleções
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

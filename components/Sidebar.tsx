@@ -6,9 +6,10 @@ interface SidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   isOpen: boolean;
+  onCreateProject?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, onCreateProject }) => {
   const menuItems: { id: ViewState; label: string; icon: string }[] = [
     { id: 'Dashboard', label: 'Painel', icon: 'dashboard' },
     { id: 'Tasks', label: 'Tarefas', icon: 'check_box' },
@@ -83,7 +84,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen }
       </nav>
 
       <div className="p-4 mt-auto">
-        <button className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+        <button 
+          onClick={onCreateProject}
+          className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+        >
           <span className="material-symbols-outlined text-lg">add</span>
           <span>Novo Projeto</span>
         </button>

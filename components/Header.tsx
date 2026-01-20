@@ -1,11 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
+  const [showNotifications, setShowNotifications] = useState(false);
   return (
     <header className="h-16 flex items-center justify-between px-8 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
       <div className="flex items-center gap-4 flex-1">
@@ -24,10 +25,47 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           />
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        <button className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors">
+      <div className="flex items-center gap-4 relative">
+        <button 
+          onClick={() => setShowNotifications(!showNotifications)}
+          className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors relative"
+        >
           <span className="material-symbols-outlined">notifications</span>
+          <span className="absolute top-1 right-1 size-2 bg-primary rounded-full"></span>
         </button>
+        {showNotifications && (
+          <div className="absolute top-14 right-0 w-80 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg z-50">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+              <h3 className="font-bold text-sm">Notificações</h3>
+              <button 
+                onClick={() => setShowNotifications(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                <p className="text-sm font-semibold mb-1">Nova tarefa atribuída</p>
+                <p className="text-xs text-slate-500">Você foi atribuído à tarefa "Wireframing - Home & Serviços"</p>
+                <p className="text-[10px] text-slate-400 mt-1">há 2 horas</p>
+              </div>
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                <p className="text-sm font-semibold mb-1">Comentário novo</p>
+                <p className="text-xs text-slate-500">João Silva comentou no projeto "TechStart Inc."</p>
+                <p className="text-[10px] text-slate-400 mt-1">há 5 horas</p>
+              </div>
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                <p className="text-sm font-semibold mb-1">Projeto atualizado</p>
+                <p className="text-xs text-slate-500">O status do projeto "Solar Solutions" foi alterado</p>
+                <p className="text-[10px] text-slate-400 mt-1">ontem</p>
+              </div>
+            </div>
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 text-center">
+              <button className="text-xs font-semibold text-primary hover:underline">Ver todas as notificações</button>
+            </div>
+          </div>
+        )}
         <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 mx-2"></div>
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">

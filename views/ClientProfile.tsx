@@ -1,7 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 
-export const ClientProfile: React.FC = () => {
+interface ClientProfileProps {
+  onNavigate?: (view: string) => void;
+}
+
+export const ClientProfile: React.FC<ClientProfileProps> = ({ onNavigate }) => {
+  const [activeTab, setActiveTab] = useState<'access' | 'documents' | 'onboarding'>('access');
   return (
     <div className="flex h-full">
       <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
@@ -29,10 +34,10 @@ export const ClientProfile: React.FC = () => {
           </div>
           <nav className="flex flex-col gap-1">
             <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
-            <NavBtn icon="person" label="Perfil do Cliente" active />
-            <NavBtn icon="payments" label="Faturamento e Notas" />
-            <NavBtn icon="rocket_launch" label="Roteiro do Projeto" />
-            <NavBtn icon="history" label="Log de Atividades" />
+            <NavBtn icon="person" label="Perfil do Cliente" active onClick={() => onNavigate?.('Clients')} />
+            <NavBtn icon="payments" label="Faturamento e Notas" onClick={() => onNavigate?.('ClientBilling')} />
+            <NavBtn icon="rocket_launch" label="Roteiro do Projeto" onClick={() => onNavigate?.('ClientRoadmap')} />
+            <NavBtn icon="history" label="Log de Atividades" onClick={() => onNavigate?.('ClientActivityLog')} />
           </nav>
         </div>
         <button className="flex w-full cursor-pointer items-center justify-center rounded-lg h-11 px-4 bg-primary text-white text-sm font-bold shadow-lg shadow-primary/20 hover:bg-blue-700 transition-all mt-8">
@@ -59,21 +64,54 @@ export const ClientProfile: React.FC = () => {
 
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 pt-2 flex gap-10">
-              <TabLink label="Dados de Acesso" icon="key" active />
-              <TabLink label="Documentos" icon="folder" />
-              <TabLink label="Onboarding" icon="checklist" badge="75%" />
+              <TabLink label="Dados de Acesso" icon="key" active={activeTab === 'access'} onClick={() => setActiveTab('access')} />
+              <TabLink label="Documentos" icon="folder" active={activeTab === 'documents'} onClick={() => setActiveTab('documents')} />
+              <TabLink label="Onboarding" icon="checklist" badge="75%" active={activeTab === 'onboarding'} onClick={() => setActiveTab('onboarding')} />
             </div>
             <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold">Credenciais de Hospedagem e CMS</h3>
-                <div className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com 3 membros
+              {activeTab === 'access' && (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold">Credenciais de Hospedagem e CMS</h3>
+                    <div className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com 3 membros
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <CredentialCard title="WP Engine Hosting" sub="Servidor de Produção" icon="dns" url="wpengine.acme.com" user="admin_acme_corp" />
+                    <CredentialCard title="Shopify Storefront" sub="Acesso Admin API" icon="data_object" url="acme-official.myshopify.com" user="shppa_3289..." />
+                  </div>
+                </>
+              )}
+              {activeTab === 'documents' && (
+                <div>
+                  <h3 className="text-lg font-bold mb-4">Documentos do Cliente</h3>
+                  <div className="space-y-3">
+                    <DocItem icon="picture_as_pdf" name="Contrato_MSA_AcmeCorp.pdf" meta="há 2 dias • 1.2 MB" color="text-red-500" />
+                    <DocItem icon="description" name="Briefing_Criativo_v2.docx" meta="ontem • 456 KB" color="text-blue-500" />
+                    <DocItem icon="image" name="Guia_de_Estilo_Marca.fig" meta="há 4 horas • 12 MB" color="text-primary" />
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <CredentialCard title="WP Engine Hosting" sub="Servidor de Produção" icon="dns" url="wpengine.acme.com" user="admin_acme_corp" />
-                <CredentialCard title="Shopify Storefront" sub="Acesso Admin API" icon="data_object" url="acme-official.myshopify.com" user="shppa_3289..." />
-              </div>
+              )}
+              {activeTab === 'onboarding' && (
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold">Progresso de Onboarding</h3>
+                    <button className="text-primary text-xs font-bold hover:underline">Ver Checklist</button>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div className="bg-primary h-full rounded-full" style={{ width: '75%' }}></div>
+                    </div>
+                    <div className="space-y-3">
+                      <Step icon="check_circle" label="Contrato Assinado" active />
+                      <Step icon="check_circle" label="Workshop de Briefing" active />
+                      <Step icon="radio_button_checked" label="Entrega de Ativos (Em Andamento)" current />
+                      <Step icon="radio_button_unchecked" label="Reunião de Kickoff" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -94,15 +132,21 @@ const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value 
   </div>
 );
 
-const NavBtn: React.FC<{ icon: string; label: string; active?: boolean }> = ({ icon, label, active }) => (
-  <button className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100'}`}>
+const NavBtn: React.FC<{ icon: string; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100'}`}
+  >
     <span className="material-symbols-outlined text-[20px]">{icon}</span>
     {label}
   </button>
 );
 
-const TabLink: React.FC<{ label: string; icon: string; active?: boolean; badge?: string }> = ({ label, icon, active, badge }) => (
-  <button className={`flex items-center gap-2 border-b-[3px] pb-3 pt-4 font-bold text-sm transition-colors ${active ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'}`}>
+const TabLink: React.FC<{ label: string; icon: string; active?: boolean; badge?: string; onClick?: () => void }> = ({ label, icon, active, badge, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center gap-2 border-b-[3px] pb-3 pt-4 font-bold text-sm transition-colors ${active ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'}`}
+  >
     <span className="material-symbols-outlined text-[18px]">{icon}</span>
     {label}
     {badge && <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded">{badge}</span>}

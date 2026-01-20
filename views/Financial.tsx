@@ -3,6 +3,10 @@ import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { Transaction } from '../types';
 
+interface FinancialProps {
+  onCreateInvoice?: () => void;
+}
+
 const data = [
   { name: 'JAN', value: 30000 },
   { name: 'FEV', value: 45000 },
@@ -27,7 +31,7 @@ const recentTransactions: Transaction[] = [
   { id: '4', client: 'Apex Ventures', project: 'Auditoria e Estratégia de SEO', type: 'Estratégia', date: '05 Out, 2023', value: 2100, status: 'Overdue', initials: 'AV', color: 'bg-orange-100 text-orange-600' },
 ];
 
-export const Financial: React.FC = () => {
+export const Financial: React.FC<FinancialProps> = ({ onCreateInvoice }) => {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex flex-wrap justify-between items-end gap-4 mb-8">
@@ -39,7 +43,10 @@ export const Financial: React.FC = () => {
           <button className="flex items-center gap-2 px-4 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors">
             <span className="material-symbols-outlined text-lg">download</span> Exportar
           </button>
-          <button className="flex items-center gap-2 px-6 h-10 rounded-lg bg-primary text-white text-sm font-bold hover:shadow-lg hover:shadow-primary/30 transition-all">
+          <button 
+            onClick={onCreateInvoice}
+            className="flex items-center gap-2 px-6 h-10 rounded-lg bg-primary text-white text-sm font-bold hover:shadow-lg hover:shadow-primary/30 transition-all"
+          >
             <span className="material-symbols-outlined text-lg">add</span> Criar Fatura
           </button>
         </div>

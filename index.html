@@ -56,6 +56,20 @@
         .dark .gantt-grid {
             background-image: linear-gradient(to right, #1e293b 1px, transparent 1px);
         }
+        /* Toast Animation */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-\[slideIn_0\.3s_ease-out\] {
+            animation: slideIn 0.3s ease-out;
+        }
     </style>
 <script type="importmap">
 {
