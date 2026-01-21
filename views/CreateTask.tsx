@@ -48,7 +48,7 @@ export const CreateTask: React.FC<CreateTaskProps> = ({ onClose }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Categoria</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Serviço</label>
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}

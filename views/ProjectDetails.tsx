@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile } from '../types';
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category } from '../types';
 import { 
   subscribeToProjectActivities, 
   subscribeToProjectTeamMembers,
@@ -8,6 +8,7 @@ import {
   addTeamMember,
   removeTeamMember,
   updateProject,
+  subscribeToProject,
   subscribeToCategories,
   subscribeToStages,
   Stage,
@@ -17,7 +18,10 @@ import {
   initializeProjectStageTasks,
   subscribeToProjectFiles,
   uploadProjectFile,
-  deleteProjectFile
+  deleteProjectFile,
+  getUniqueClients,
+  uploadProjectAvatar,
+  deleteProject
 } from '../firebase/services';
 
 interface ProjectDetailsProps {
@@ -26,6 +30,7 @@ interface ProjectDetailsProps {
 }
 
 export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose }) => {
+  const [currentProject, setCurrentProject] = useState<Project>(project);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [showAddActivity, setShowAddActivity] = useState(false);
@@ -35,28 +40,67 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showShareProject, setShowShareProject] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [stageTasks, setStageTasks] = useState<{ [stageId: string]: StageTask[] }>({});
   const [projectStageTasks, setProjectStageTasks] = useState<ProjectStageTask[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [fileToDelete, setFileToDelete] = useState<ProjectFile | null>(null);
+  const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
+  const [activeTab, setActiveTab] = useState<'description' | 'tasks' | 'access' | 'files'>('description');
+  const [activeManagementTab, setActiveManagementTab] = useState<'overview' | 'billing' | 'roadmap'>('overview');
+  const [showAddCredential, setShowAddCredential] = useState(false);
+  const [showEditCredential, setShowEditCredential] = useState<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string } | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([
+    { id: '1', title: 'WP Engine Hosting', sub: 'Servidor de Produção', icon: 'dns', url: 'wpengine.example.com', user: 'admin_user', password: '••••••••' },
+    { id: '2', title: 'Shopify Storefront', sub: 'Acesso Admin API', icon: 'data_object', url: 'store.myshopify.com', user: 'api_key_...', password: '••••••••' }
+  ]);
+
+  // Sincroniza o estado local quando o projeto prop mudar
+  useEffect(() => {
+    setCurrentProject(project);
+  }, [project]);
+
+  // Fechar calendário ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDatePicker && !(event.target as Element).closest('.date-picker-container')) {
+        setShowDatePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDatePicker]);
 
   useEffect(() => {
-    if (!project.id) {
-      console.error("Project ID is missing:", project);
+    if (!currentProject.id) {
+      console.error("Project ID is missing:", currentProject);
       return;
     }
 
-    console.log("Subscribing to activities and members for project:", project.id);
+    console.log("Subscribing to project, activities and members for project:", currentProject.id);
     
-    const unsubscribeActivities = subscribeToProjectActivities(project.id, (data) => {
+    // Subscrever atualizações do projeto em tempo real
+    const unsubscribeProject = subscribeToProject(currentProject.id, (updatedProject) => {
+      if (updatedProject) {
+        console.log("Project updated:", updatedProject);
+        setCurrentProject(updatedProject);
+      }
+    });
+
+    const unsubscribeActivities = subscribeToProjectActivities(currentProject.id, (data) => {
       console.log("Activities updated:", data);
       setActivities(data);
     });
 
-    const unsubscribeMembers = subscribeToProjectTeamMembers(project.id, (data) => {
+    const unsubscribeMembers = subscribeToProjectTeamMembers(currentProject.id, (data) => {
       console.log("Team members updated:", data);
       setTeamMembers(data);
     });
@@ -70,25 +114,31 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       });
     });
 
-    const unsubscribeProjectStageTasks = subscribeToProjectStageTasks(project.id, (data) => {
+    const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
+      setCategories(firebaseCategories);
+    }, currentProject.workspaceId);
+
+    const unsubscribeProjectStageTasks = subscribeToProjectStageTasks(currentProject.id, (data) => {
       setProjectStageTasks(data);
     });
 
-    const unsubscribeProjectFiles = subscribeToProjectFiles(project.id, (data) => {
+    const unsubscribeProjectFiles = subscribeToProjectFiles(currentProject.id, (data) => {
       setProjectFiles(data);
     });
 
     // Inicializar tarefas do projeto para a etapa atual
-    initializeProjectStageTasks(project.id, project.status).catch(console.error);
+    initializeProjectStageTasks(currentProject.id, currentProject.status).catch(console.error);
 
     return () => {
+      unsubscribeProject();
       unsubscribeActivities();
       unsubscribeMembers();
       unsubscribeStages();
+      unsubscribeCategories();
       unsubscribeProjectStageTasks();
       unsubscribeProjectFiles();
     };
-  }, [project.id, project.status]);
+  }, [currentProject.id, currentProject.status, currentProject.workspaceId]);
 
   const formatDate = (date: Date | any): string => {
     if (!date) return 'Data não disponível';
@@ -119,7 +169,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     setUploading(true);
     try {
       for (let i = 0; i < files.length; i++) {
-        await uploadProjectFile(project.id, files[i]);
+        await uploadProjectFile(currentProject.id, files[i]);
       }
       setToast({ message: "Arquivo(s) enviado(s) com sucesso!", type: 'success' });
       setTimeout(() => setToast(null), 3000);
@@ -175,362 +225,968 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       setTimeout(() => setToast(null), 3000);
     }
   };
+
+  // Obter cor baseada na categoria do projeto (mesma lógica da legenda do Timeline)
+  const getCategoryColor = (projectType: string) => {
+    const categoryIndex = categories.findIndex(cat => cat.name === projectType);
+    if (categoryIndex === -1) return 'blue'; // Cor padrão se não encontrar
+    
+    const colorMap: { [key: number]: string } = {
+      0: 'amber',
+      1: 'blue',
+      2: 'indigo',
+      3: 'purple',
+      4: 'rose',
+      5: 'emerald', // Verde só aparece depois de outras cores
+    };
+    
+    return colorMap[categoryIndex % 6] || 'blue';
+  };
+
+  // Obter classes CSS baseadas na cor da categoria
+  const getCategoryBadgeClasses = (projectType: string) => {
+    const color = getCategoryColor(projectType);
+    const colorMap: { [key: string]: string } = {
+      'amber': 'text-amber-600 bg-amber-50 dark:bg-amber-900/20',
+      'blue': 'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
+      'emerald': 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20',
+      'indigo': 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20',
+      'purple': 'text-purple-600 bg-purple-50 dark:bg-purple-900/20',
+      'rose': 'text-rose-600 bg-rose-50 dark:bg-rose-900/20',
+    };
+    return colorMap[color] || 'text-blue-600 bg-blue-50 dark:bg-blue-900/20';
+  };
+
   return (
-    <div className="p-8 h-full bg-slate-50 dark:bg-slate-900/20 overflow-y-auto">
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-6 flex items-center gap-4">
-          <button 
-            onClick={onClose}
-            className="size-10 flex items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-          >
-            <span className="material-symbols-outlined">arrow_back</span>
-          </button>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
-                project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-              }`}>
-                {project.type}
-              </span>
-              <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-                project.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
-                project.status === 'Active' ? 'bg-primary/10 text-primary' :
-                project.status === 'Completed' ? 'bg-green-100 text-green-700' :
+    <>
+    <div className="flex h-full">
+      {/* Coluna do Meio - Informações do Projeto */}
+      <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
+        <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-4">
+              <div className="bg-primary/10 rounded-xl p-2 relative group">
+                {currentProject.avatar ? (
+                  <div 
+                    className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity" 
+                    style={{ backgroundImage: `url(${currentProject.avatar})`, backgroundSize: 'cover' }}
+                    onClick={() => avatarInputRef.current?.click()}
+                    title="Alterar foto de perfil"
+                  ></div>
+                ) : (
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="size-12 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+                    title="Adicionar foto de perfil"
+                  >
+                    <span className="material-symbols-outlined text-slate-500 dark:text-slate-400">add</span>
+                  </button>
+                )}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    
+                    setUploadingAvatar(true);
+                    try {
+                      const avatarUrl = await uploadProjectAvatar(currentProject.id, file);
+                      await updateProject(currentProject.id, { avatar: avatarUrl });
+                      setToast({ message: "Foto de perfil atualizada com sucesso!", type: 'success' });
+                      setTimeout(() => setToast(null), 3000);
+                    } catch (error) {
+                      console.error("Error uploading avatar:", error);
+                      setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
+                      setTimeout(() => setToast(null), 3000);
+                    } finally {
+                      setUploadingAvatar(false);
+                      if (avatarInputRef.current) {
+                        avatarInputRef.current.value = '';
+                      }
+                    }
+                  }}
+                />
+                {uploadingAvatar && (
+                  <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                    <span className="material-symbols-outlined text-white animate-spin">sync</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <h1 className="text-lg font-bold leading-tight">{currentProject.name}</h1>
+                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{currentProject.client}</p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
+                currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700' :
+                currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
+                currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
                 'bg-indigo-100 text-indigo-700'
               }`}>
-                {project.status === 'Lead' ? 'Proposta Enviada' : 
-                 project.status === 'Active' ? 'Em Desenvolvimento' :
-                 project.status === 'Completed' ? 'Concluído' : 'Em Revisão'}
+                {(() => {
+                  // Verificar se é um serviço recorrente
+                  const isRecurringService = categories.find(cat => 
+                    cat.name === currentProject.type && cat.isRecurring
+                  );
+                  
+                  // Se for serviço recorrente e status Completed, mostrar "Gestão"
+                  if (isRecurringService && currentProject.status === 'Completed') {
+                    return 'Gestão';
+                  }
+                  
+                  // Caso contrário, usar a lógica padrão
+                  return currentProject.status === 'Lead' ? 'On-boarding' : 
+                         currentProject.status === 'Active' ? 'Em Desenvolvimento' :
+                         currentProject.status === 'Completed' ? 'Concluído' : 
+                         currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
+                })()}
+              </span>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${getCategoryBadgeClasses(currentProject.type)}`}>
+                {currentProject.type}
               </span>
             </div>
-            <h1 className="text-3xl font-black tracking-tight">{project.name}</h1>
-            <p className="text-slate-500 text-sm mt-1">Cliente: {project.client}</p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-              <h2 className="text-lg font-bold mb-4">Descrição do Projeto</h2>
-              <p className="text-slate-600 dark:text-slate-400">{project.description}</p>
-            </div>
-
-            {/* Tarefas por Etapa */}
-            {stages.length > 0 && Object.keys(stageTasks).length > 0 && (
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-                <h2 className="text-lg font-bold mb-4">Tarefas do Projeto</h2>
-                <div className="space-y-6">
-                  {stages.map((stage) => {
-                    const tasks = stageTasks[stage.id] || [];
-                    if (tasks.length === 0) return null;
-                    
-                    const isCurrentStage = stage.status === project.status;
-                    
-                    // Encontrar a ordem da etapa atual
-                    const currentStage = stages.find(s => s.status === project.status);
-                    const currentStageOrder = currentStage?.order ?? -1;
-                    const stageOrder = stage.order;
-                    
-                    // Verificar se é uma etapa anterior à atual (ordem menor)
-                    const isPreviousStage = stageOrder < currentStageOrder;
-                    
-                    // Verificar se todas as tarefas da etapa estão concluídas
-                    const allTasksCompleted = tasks.every((task) => {
-                      const projectTask = projectStageTasks.find(
-                        pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                      );
-                      return projectTask?.completed || false;
-                    });
-                    
-                    // Se todas as tarefas estão concluídas E (é etapa atual OU é etapa anterior), usar verde
-                    const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
-                    
-                    return (
-                      <div 
-                        key={stage.id} 
-                        className={`space-y-3 p-3 rounded-lg border transition-all ${
-                          isCompleted
-                            ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/30'
-                            : isCurrentStage 
-                            ? 'bg-slate-50/50 dark:bg-slate-800/30 border-slate-300 dark:border-slate-700' 
-                            : 'bg-transparent border-transparent'
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+            <div className="flex flex-col gap-1">
+              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Informações</p>
+            <ContactInfo label="Cliente" value={currentProject.client} />
+            <ContactInfo label="Projeto" value={currentProject.name} />
+            <div className="py-2">
+              <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
+              <div className="flex items-center gap-2">
+                <div className="relative date-picker-container flex-1">
+                  <button
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                  >
+                    <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                      {currentProject.deadline 
+                        ? new Date(currentProject.deadline).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : 'Selecione uma data'
+                      }
+                    </span>
+                    <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                  </button>
+                  {showDatePicker && (
+                    <DatePicker
+                      selectedDate={currentProject.deadline ? new Date(currentProject.deadline) : null}
+                      onSelectDate={async (date) => {
+                        const newDeadline = date ? date.toISOString() : null;
+                        try {
+                          await updateProject(currentProject.id, { deadline: newDeadline });
+                          setToast({ message: "Data de entrega atualizada", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                          setShowDatePicker(false);
+                        } catch (error) {
+                          console.error("Error updating deadline:", error);
+                          setToast({ message: "Erro ao atualizar data de entrega", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }}
+                      onClose={() => setShowDatePicker(false)}
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-2 w-full">
+                {currentProject.status !== 'Completed' && (
+                  <>
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Buscar a etapa "Concluído"
+                          const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
+                          await updateProject(currentProject.id, { 
+                            status: 'Completed' as Project['status'],
+                            stageId: completedStage?.id, // Atualizar stageId
+                            progress: completedStage ? completedStage.progress : 100
+                          });
+                          setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error marking project as completed:", error);
+                          setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }}
+                      className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                        currentProject.status === 'Completed'
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
+                      }`}
+                      title="Marcar como concluído"
+                    >
+                      <span className="material-symbols-outlined text-sm">check_circle</span>
+                      <span className="hidden sm:inline">Concluir</span>
+                    </button>
+                    {currentProject.status !== 'Completed' && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Buscar a etapa "Em Revisão"
+                            const reviewStage = stages.find(s => s.status === 'Review');
+                            await updateProject(currentProject.id, { 
+                              status: 'Review' as Project['status'],
+                              stageId: reviewStage?.id, // Atualizar stageId
+                              progress: reviewStage ? reviewStage.progress : 75,
+                              updatedAt: new Date()
+                            });
+                            setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error marking project as review:", error);
+                            setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                          currentProject.status === 'Review'
+                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
                         }`}
+                        title="Enviar para revisão"
                       >
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-sm font-semibold uppercase tracking-wider ${
-                            isCompleted
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : isCurrentStage 
-                              ? 'text-slate-700 dark:text-slate-300' 
-                              : 'text-slate-600 dark:text-slate-400'
-                          }`}>
-                            {stage.title}
-                          </h3>
-                          {(isCurrentStage || isPreviousStage) && (
-                            <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
-                              isCompleted 
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' 
-                                : isCurrentStage 
-                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300' 
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                            }`}>
-                              {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          {tasks.map((task) => {
-                            const projectTask = projectStageTasks.find(
-                              pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                            );
-                            const isTaskCompleted = projectTask?.completed || false;
+                        <span className="material-symbols-outlined text-sm">rate_review</span>
+                        <span className="hidden sm:inline">Revisar</span>
+                      </button>
+                    )}
+                  </>
+                )}
+                {currentProject.status === 'Completed' && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Buscar a etapa "Em Desenvolvimento" para voltar
+                        const activeStage = stages.find(s => s.status === 'Active') || 
+                                            stages.find(s => s.status === 'Review') || 
+                                            stages.find(s => s.status === 'Lead') ||
+                                            stages[Math.max(0, stages.length - 2)];
+                        await updateProject(currentProject.id, { 
+                          status: (activeStage?.status || 'Active') as Project['status'],
+                          stageId: activeStage?.id, // Atualizar stageId
+                          progress: activeStage ? activeStage.progress : 50
+                        });
+                        setToast({ message: "Projeto marcado como pendente", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } catch (error) {
+                        console.error("Error marking project as pending:", error);
+                        setToast({ message: "Erro ao marcar projeto como pendente", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                    }}
+                    className="w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                    title="Marcar como pendente"
+                  >
+                    <span className="material-symbols-outlined text-sm">pending</span>
+                    <span className="hidden sm:inline">Pendente</span>
+                  </button>
+                )}
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+            <div className="flex flex-col gap-1">
+              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Budget</p>
+            <div className="py-2">
+              <p className="text-slate-500 text-xs mb-1">Valor do Projeto</p>
+              <p className="text-lg font-bold text-slate-900 dark:text-white">
+                {currentProject.budget ? 
+                  new Intl.NumberFormat('pt-BR', { 
+                    style: 'currency', 
+                    currency: 'BRL' 
+                  }).format(currentProject.budget) 
+                  : 'R$ 0,00'}
+              </p>
+            </div>
+            <div className="py-2">
+              <p className="text-slate-500 text-xs mb-1">Status de Pagamento</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (currentProject.isPaid) return;
+                    try {
+                      await updateProject(currentProject.id, { isPaid: true });
+                      setToast({ message: "Status atualizado para Pago", type: 'success' });
+                      setTimeout(() => setToast(null), 3000);
+                    } catch (error) {
+                      console.error("Error updating payment status:", error);
+                      setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
+                      setTimeout(() => setToast(null), 3000);
+                    }
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                    currentProject.isPaid
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  Pago
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!currentProject.isPaid) return;
+                    try {
+                      await updateProject(currentProject.id, { isPaid: false });
+                      setToast({ message: "Status atualizado para Pendente", type: 'success' });
+                      setTimeout(() => setToast(null), 3000);
+                    } catch (error) {
+                      console.error("Error updating payment status:", error);
+                      setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
+                      setTimeout(() => setToast(null), 3000);
+                    }
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                    !currentProject.isPaid
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">pending</span>
+                  Pendente
+                </button>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest">Equipe</p>
+              <button
+                onClick={() => setShowAddMember(true)}
+                className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
+                title="Adicionar membro"
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+              </button>
+            </div>
+            {teamMembers.length > 0 ? (
+              <>
+                <div className="flex -space-x-2 mb-3 flex-wrap">
+                  {teamMembers.slice(0, 5).map((member) => (
+                    <div 
+                      key={member.id}
+                      className="size-10 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 relative group"
+                      style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
+                      title={member.name}
+                    >
+                      <button
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        title="Remover membro"
+                      >
+                        <span className="material-symbols-outlined text-xs">close</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button 
+                  onClick={() => setShowAllMembers(true)}
+                  className="text-sm font-semibold text-primary hover:underline text-left"
+                >
+                  {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
+                </button>
+              </>
+            ) : (
+              <div className="text-center py-2">
+                <p className="text-xs text-slate-500 mb-2">Nenhum membro</p>
+                <button
+                  onClick={() => setShowAddMember(true)}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Adicionar membro
+                </button>
+              </div>
+            )}
+            </div>
+          </div>
+
+          <nav className="border-t border-slate-200 dark:border-slate-800 pt-8 pb-8 flex flex-col gap-1">
+            <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
+            <NavBtn 
+              icon="description" 
+              label="Visão Geral" 
+              active={activeManagementTab === 'overview'} 
+              onClick={() => setActiveManagementTab('overview')} 
+            />
+            <NavBtn 
+              icon="payments" 
+              label="Faturamento e Notas" 
+              active={activeManagementTab === 'billing'} 
+              onClick={() => setActiveManagementTab('billing')} 
+            />
+            <NavBtn 
+              icon="rocket_launch" 
+              label="Roteiro do Projeto" 
+              active={activeManagementTab === 'roadmap'} 
+              onClick={() => setActiveManagementTab('roadmap')} 
+            />
+          </nav>
+        </div>
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-8 mt-auto">
+          <button 
+            onClick={() => setShowEditProject(true)}
+            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-lg">edit</span>
+            Editar Projeto
+          </button>
+          <button
+            onClick={() => setShowDeleteProjectConfirm(true)}
+            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg text-sm font-semibold hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20 mt-3"
+          >
+            <span className="material-symbols-outlined text-lg">delete</span>
+            Excluir Projeto
+          </button>
+        </div>
+      </aside>
+
+      {/* Coluna Direita - Conteúdo Principal */}
+      <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10">
+        {activeManagementTab === 'overview' && (
+          <div className="p-8">
+            <div className="max-w-5xl mx-auto flex flex-col gap-6">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <button 
+                  onClick={onClose}
+                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">arrow_back</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                </button>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+              </div>
+              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6">
+                <div className="flex flex-col gap-1">
+                  <p className="text-3xl font-black leading-tight tracking-tight">Detalhes do Projeto</p>
+                  <p className="text-slate-500 text-sm">Gerencie informações, tarefas, atividades e arquivos do projeto.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowShareProject(true)}
+                    className="flex items-center px-4 h-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px] mr-2">share</span> Compartilhar
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="border-b border-slate-100 dark:border-slate-800 px-6 pt-2 flex gap-10">
+                <TabLink 
+                  label="Descrição" 
+                  icon="description" 
+                  active={activeTab === 'description'} 
+                  onClick={() => setActiveTab('description')} 
+                />
+                <TabLink 
+                  label="Tarefas" 
+                  icon="checklist" 
+                  active={activeTab === 'tasks'} 
+                  badge={(() => {
+                    let totalTasks = 0;
+                    let completedTasks = 0;
+                    stages.forEach((stage) => {
+                      const tasks = stageTasks[stage.id] || [];
+                      totalTasks += tasks.length;
+                      tasks.forEach((task) => {
+                        const projectTask = projectStageTasks.find(
+                          pt => pt.stageTaskId === task.id && pt.stageId === stage.id
+                        );
+                        if (projectTask?.completed) completedTasks++;
+                      });
+                    });
+                    const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                    return totalTasks > 0 ? `${progressPercentage}%` : undefined;
+                  })()}
+                  onClick={() => setActiveTab('tasks')} 
+                />
+                <TabLink 
+                  label="Dados de Acesso" 
+                  icon="key" 
+                  active={activeTab === 'access'} 
+                  onClick={() => setActiveTab('access')} 
+                />
+                <TabLink 
+                  label="Arquivos" 
+                  icon="folder" 
+                  active={activeTab === 'files'} 
+                  onClick={() => setActiveTab('files')} 
+                />
+              </div>
+              <div className="p-6">
+                {activeTab === 'description' && (
+                  <div>
+                    <h3 className="text-lg font-bold mb-4">Descrição do Projeto</h3>
+                    <p className="text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap overflow-wrap-anywhere leading-relaxed">
+                      {currentProject.description || 'Nenhuma descrição adicionada ainda.'}
+                    </p>
+                  </div>
+                )}
+
+                {activeTab === 'tasks' && (
+                  <div>
+                    <div className="mb-6">
+                      <h3 className="text-lg font-bold">Progresso de Tarefas</h3>
+                    </div>
+                    {stages.length > 0 && Object.keys(stageTasks).length > 0 ? (
+                      <>
+                        {/* Calcular progresso total */}
+                        {(() => {
+                          let totalTasks = 0;
+                          let completedTasks = 0;
+                          stages.forEach((stage) => {
+                            const tasks = stageTasks[stage.id] || [];
+                            totalTasks += tasks.length;
+                            tasks.forEach((task) => {
+                              const projectTask = projectStageTasks.find(
+                                pt => pt.stageTaskId === task.id && pt.stageId === stage.id
+                              );
+                              if (projectTask?.completed) completedTasks++;
+                            });
+                          });
+                          const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+                          
+                          return (
+                            <div className="space-y-4 mb-6">
+                              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                <div 
+                                  className="bg-primary h-full rounded-full transition-all" 
+                                  style={{ width: `${progressPercentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        
+                        <div className="space-y-6">
+                          {stages.map((stage) => {
+                            const tasks = stageTasks[stage.id] || [];
+                            if (tasks.length === 0) return null;
+                            
+                            const isCurrentStage = stage.status === currentProject.status;
+                            const currentStage = stages.find(s => s.status === currentProject.status);
+                            const currentStageOrder = currentStage?.order ?? -1;
+                            const stageOrder = stage.order;
+                            const isPreviousStage = stageOrder < currentStageOrder;
+                            
+                            const allTasksCompleted = tasks.every((task) => {
+                              const projectTask = projectStageTasks.find(
+                                pt => pt.stageTaskId === task.id && pt.stageId === stage.id
+                              );
+                              return projectTask?.completed || false;
+                            });
+                            
+                            const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
                             
                             return (
-                              <label
-                                key={task.id}
-                                className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors cursor-pointer ${
-                                  isCompleted
-                                    ? 'bg-white dark:bg-slate-800/50 border-emerald-200 dark:border-emerald-800/30 hover:border-emerald-300'
-                                    : isCurrentStage
-                                    ? 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isTaskCompleted}
-                                  onChange={async () => {
-                                    try {
-                                      await toggleProjectStageTask(project.id, task.id, stage.id, !isTaskCompleted);
-                                    } catch (error) {
-                                      console.error("Error toggling task:", error);
-                                      setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
-                                      setTimeout(() => setToast(null), 3000);
-                                    }
-                                  }}
-                                  className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
-                                />
-                                <span className={`flex-1 text-sm ${isTaskCompleted ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                                  {task.title}
-                                </span>
-                              </label>
+                              <div key={stage.id} className="space-y-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className={`text-sm font-semibold uppercase tracking-wider ${
+                                    isCompleted
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : isCurrentStage 
+                                      ? 'text-primary dark:text-primary' 
+                                      : 'text-slate-600 dark:text-slate-400'
+                                  }`}>
+                                    {stage.title}
+                                  </h4>
+                                  {(isCurrentStage || isPreviousStage) && (
+                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
+                                      isCompleted 
+                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' 
+                                        : isCurrentStage 
+                                        ? 'bg-primary/10 text-primary' 
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                    }`}>
+                                      {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-3">
+                                  {tasks.map((task) => {
+                                    const projectTask = projectStageTasks.find(
+                                      pt => pt.stageTaskId === task.id && pt.stageId === stage.id
+                                    );
+                                    const isTaskCompleted = projectTask?.completed || false;
+                                    const isTaskInProgress = isCurrentStage && !isTaskCompleted;
+                                    
+                                    return (
+                                      <label
+                                        key={task.id}
+                                        className="flex items-center gap-3 cursor-pointer group"
+                                        onClick={async (e) => {
+                                          if (e.target instanceof HTMLElement && e.target.closest('input')) return;
+                                          try {
+                                            await toggleProjectStageTask(currentProject.id, task.id, stage.id, !isTaskCompleted);
+                                          } catch (error) {
+                                            console.error("Error toggling task:", error);
+                                            setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
+                                            setTimeout(() => setToast(null), 3000);
+                                          }
+                                        }}
+                                      >
+                                        <span className={`material-symbols-outlined transition-colors ${
+                                          isTaskCompleted 
+                                            ? 'text-green-500' 
+                                            : isTaskInProgress 
+                                            ? 'text-primary' 
+                                            : 'text-slate-400'
+                                        }`}>
+                                          {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
+                                        </span>
+                                        <p className={`text-sm flex-1 ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}>
+                                          {task.title}
+                                        </p>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             );
                           })}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-500 text-center py-8">Nenhuma tarefa definida para este projeto.</p>
+                    )}
+                  </div>
+                )}
 
-            {/* Mídias e Documentos */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold">Mídias e Documentos</h2>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                    disabled={uploading}
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                      uploading
-                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                        : 'text-primary hover:bg-primary/10'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {uploading ? 'hourglass_empty' : 'upload'}
-                    </span>
-                    {uploading ? 'Enviando...' : 'Enviar Arquivo'}
-                  </label>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {projectFiles.length > 0 ? (
-                  projectFiles.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors"
-                    >
-                      <div className="flex-shrink-0">
-                        {file.type === 'image' ? (
-                          <span className="material-symbols-outlined text-2xl text-blue-500">image</span>
-                        ) : file.type === 'video' ? (
-                          <span className="material-symbols-outlined text-2xl text-purple-500">videocam</span>
-                        ) : file.type === 'document' ? (
-                          <span className="material-symbols-outlined text-2xl text-red-500">description</span>
-                        ) : (
-                          <span className="material-symbols-outlined text-2xl text-slate-500">attach_file</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <a
-                          href={file.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
-                        >
-                          {file.name}
-                        </a>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
-                          <span className="text-xs text-slate-400">•</span>
-                          <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
+                {activeTab === 'access' && (
+                  <>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-lg font-bold">Credenciais de Hospedagem e CMS</h3>
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
                         </div>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteFile(file)}
-                        className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
-                        title="Excluir arquivo"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-500 text-center py-4">Nenhum arquivo enviado ainda</p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold">Atividades Recentes</h2>
-                <button
-                  onClick={() => setShowAddActivity(true)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">add</span>
-                  Adicionar
-                </button>
-              </div>
-              <div className="space-y-4">
-                {activities.length > 0 ? (
-                  activities.slice(0, 5).map((activity) => (
-                    <ActivityItem 
-                      key={activity.id}
-                      icon={activity.icon} 
-                      text={activity.text} 
-                      date={formatDate(activity.createdAt)}
-                    />
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-500 text-center py-4">Nenhuma atividade registrada ainda</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-              <h3 className="text-sm font-bold mb-4 uppercase tracking-wider text-slate-500">Informações</h3>
-              <div className="space-y-4">
-                <InfoRow label="Cliente" value={project.client} />
-                <InfoRow label="Tipo" value={project.type} />
-                <InfoRow 
-                  label="Etapa" 
-                  value={
-                    stages.find(s => s.status === project.status)?.title || 
-                    (project.status === 'Lead' ? 'Leads (Proposta Enviada)' :
-                     project.status === 'Active' ? 'Desenvolvimento Ativo' :
-                     project.status === 'Completed' ? 'Projetos Concluídos' :
-                     project.status === 'Review' ? 'Em Revisão' : project.status)
-                  } 
-                />
-                {project.deadline && <InfoRow label="Prazo" value={project.deadline} />}
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Equipe</h3>
-                <button
-                  onClick={() => setShowAddMember(true)}
-                  className="size-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
-                  title="Adicionar membro"
-                >
-                  <span className="material-symbols-outlined text-sm">add</span>
-                </button>
-              </div>
-              {teamMembers.length > 0 ? (
-                <>
-                  <div className="flex -space-x-2 mb-4 flex-wrap">
-                    {teamMembers.map((member) => (
-                      <div 
-                        key={member.id}
-                        className="size-10 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 relative group"
-                        style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
-                        title={member.name}
-                      >
-                        <button
-                          onClick={() => handleRemoveMember(member.id)}
-                          className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                          title="Remover membro"
+                        <button 
+                          onClick={() => setShowAddCredential(true)}
+                          className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-xs">close</span>
+                          <span className="material-symbols-outlined text-base">add</span>
+                          Adicionar Credencial
                         </button>
                       </div>
-                    ))}
-                  </div>
-                  <button 
-                    onClick={() => setShowAllMembers(true)}
-                    className="w-full text-sm font-bold text-primary hover:underline"
-                  >
-                    {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
-                  </button>
-                </>
-              ) : (
-                <div className="text-center py-4">
-                  <p className="text-sm text-slate-500 mb-3">Nenhum membro adicionado</p>
-                  <button
-                    onClick={() => setShowAddMember(true)}
-                    className="text-xs font-semibold text-primary hover:underline"
-                  >
-                    Adicionar primeiro membro
-                  </button>
-                </div>
-              )}
-            </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {credentials.map((credential) => (
+                        <CredentialCard 
+                          key={credential.id}
+                          title={credential.title} 
+                          sub={credential.sub} 
+                          icon={credential.icon} 
+                          url={credential.url} 
+                          user={credential.user}
+                          password={credential.password}
+                          onEdit={() => setShowEditCredential(credential)}
+                          onDelete={() => {
+                            setCredentials(credentials.filter(c => c.id !== credential.id));
+                            setToast({ message: "Credencial removida com sucesso!", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
 
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={() => setShowEditProject(true)}
-                className="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
-              >
-                Editar Projeto
-              </button>
-              <button 
-                onClick={() => setShowShareProject(true)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              >
-                Compartilhar
-              </button>
+                {activeTab === 'files' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold">Mídias e Documentos</h3>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          id="file-upload"
+                          disabled={uploading}
+                        />
+                        <label
+                          htmlFor="file-upload"
+                          className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                            uploading
+                              ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                              : 'text-primary hover:bg-primary/10'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {uploading ? 'hourglass_empty' : 'upload'}
+                          </span>
+                          {uploading ? 'Enviando...' : 'Enviar Arquivo'}
+                        </label>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {projectFiles.length > 0 ? (
+                        projectFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors"
+                          >
+                            <div className="flex-shrink-0">
+                              {file.type === 'image' ? (
+                                <span className="material-symbols-outlined text-2xl text-blue-500">image</span>
+                              ) : file.type === 'video' ? (
+                                <span className="material-symbols-outlined text-2xl text-purple-500">videocam</span>
+                              ) : file.type === 'document' ? (
+                                <span className="material-symbols-outlined text-2xl text-red-500">description</span>
+                              ) : (
+                                <span className="material-symbols-outlined text-2xl text-slate-500">attach_file</span>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
+                              >
+                                {file.name}
+                              </a>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                                <span className="text-xs text-slate-400">•</span>
+                                <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteFile(file)}
+                              className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
+                              title="Excluir arquivo"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-slate-500 text-center py-8">Nenhum arquivo enviado ainda</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+        )}
+
+        {activeManagementTab === 'billing' && (
+          <div className="p-8">
+            <div className="max-w-5xl mx-auto">
+              <div className="flex items-center gap-2 text-slate-500 mb-4">
+                <button 
+                  onClick={onClose}
+                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">arrow_back</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                </button>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+              </div>
+              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
+                  <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+                </div>
+                <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                  <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
+                </button>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold">Faturas</h3>
+                    <div className="flex gap-2">
+                      <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
+                      <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Número</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-bold">INV-2024-001</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm">Fatura principal do projeto</p>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-500">15 Jan, 2024</td>
+                        <td className="px-6 py-4 text-sm font-bold text-right">
+                          {currentProject.budget ? 
+                            new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentProject.budget) 
+                            : 'R$ 0,00'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className={`flex items-center gap-1.5 ${currentProject.isPaid ? 'text-green-600' : 'text-amber-600'}`}>
+                            <div className={`size-1.5 rounded-full ${currentProject.isPaid ? 'bg-green-600' : 'bg-amber-600'}`}></div>
+                            <span className="text-xs font-bold">{currentProject.isPaid ? 'Pago' : 'Pendente'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2">
+                            <button className="text-slate-400 hover:text-primary">
+                              <span className="material-symbols-outlined text-lg">download</span>
+                            </button>
+                            <button className="text-slate-400 hover:text-primary">
+                              <span className="material-symbols-outlined text-lg">edit</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeManagementTab === 'roadmap' && (
+          <div className="p-8">
+            <div className="max-w-5xl mx-auto">
+              <div className="flex items-center gap-2 text-slate-500 mb-4">
+                <button 
+                  onClick={onClose}
+                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">arrow_back</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                </button>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+              </div>
+              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
+                  <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+                </div>
+                <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                  <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
+                </button>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
+                <div className="relative">
+                  {[
+                    { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
+                    { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
+                    { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
+                    { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
+                    { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
+                    { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
+                  ].map((milestone, index) => (
+                    <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
+                      <div className="flex flex-col items-center">
+                        <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${
+                          milestone.status === 'completed' ? 'bg-green-500 text-white' :
+                          milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
+                          'bg-slate-200 text-slate-400'
+                        }`}>
+                          {milestone.status === 'completed' ? (
+                            <span className="material-symbols-outlined">check</span>
+                          ) : (
+                            <span>{index + 1}</span>
+                          )}
+                        </div>
+                        {index < 5 && (
+                          <div className={`w-0.5 h-full mt-2 ${
+                            milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
+                          }`} style={{ minHeight: '80px' }}></div>
+                        )}
+                      </div>
+                      <div className="flex-1 pb-8">
+                        <div className={`p-4 rounded-lg border-2 ${
+                          milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
+                          milestone.status === 'current' ? 'border-primary bg-primary/5' :
+                          'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-bold">{milestone.title}</h3>
+                            <span className="text-sm text-slate-500">{milestone.date}</span>
+                          </div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Modal Adicionar Credencial */}
+      {showAddCredential && (
+        <AddCredentialModal
+          onClose={() => setShowAddCredential(false)}
+          onSave={(credentialData) => {
+            const newCredential = {
+              id: Date.now().toString(),
+              ...credentialData
+            };
+            setCredentials([...credentials, newCredential]);
+            setShowAddCredential(false);
+            setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+          }}
+        />
+      )}
+
+      {/* Modal Editar Credencial */}
+      {showEditCredential && (
+        <EditCredentialModal
+          credential={showEditCredential}
+          onClose={() => setShowEditCredential(null)}
+          onSave={(credentialData) => {
+            setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
+            setShowEditCredential(null);
+            setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+          }}
+        />
+      )}
 
       {/* Modal Adicionar Atividade */}
       {showAddActivity && (
         <AddActivityModal
-          projectId={project.id}
+          projectId={currentProject.id}
           onClose={() => setShowAddActivity(false)}
           onSave={async (activityData) => {
             try {
-              console.log("Adding activity:", { projectId: project.id, ...activityData });
+              console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
               const activityId = await addActivity({
-                projectId: project.id,
+                projectId: currentProject.id,
                 text: activityData.text,
                 icon: activityData.icon,
                 userName: activityData.userName || 'Usuário',
@@ -549,13 +1205,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       {/* Modal Adicionar Membro */}
       {showAddMember && (
         <AddMemberModal
-          projectId={project.id}
+          projectId={currentProject.id}
           onClose={() => setShowAddMember(false)}
           onSave={async (memberData) => {
             try {
-              console.log("Adding team member:", { projectId: project.id, ...memberData });
+              console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
               const memberId = await addTeamMember({
-                projectId: project.id,
+                projectId: currentProject.id,
                 name: memberData.name,
                 role: memberData.role,
                 avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
@@ -589,12 +1245,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       {/* Modal Editar Projeto */}
       {showEditProject && (
         <EditProjectModal
-          project={project}
+          project={currentProject}
           onClose={() => setShowEditProject(false)}
           onSave={async (updatedData) => {
             try {
-              await updateProject(project.id, updatedData);
-              setShowEditProject(false);
+              await updateProject(currentProject.id, updatedData);
+              // Atualiza o estado local imediatamente para refletir as mudanças
+              setCurrentProject(prev => ({ ...prev, ...updatedData }));
               setToast({ message: "Projeto atualizado com sucesso!", type: 'success' });
               setTimeout(() => setToast(null), 3000);
             } catch (error: any) {
@@ -609,7 +1266,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       {/* Modal Compartilhar Projeto */}
       {showShareProject && (
         <ShareProjectModal
-          project={project}
+          project={currentProject}
           onClose={() => setShowShareProject(false)}
         />
       )}
@@ -686,6 +1343,54 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         </div>
       )}
 
+      {showDeleteProjectConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Excluir Projeto</h3>
+                  <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
+              </p>
+            </div>
+            <div className="p-6 flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setShowDeleteProjectConfirm(false)}
+                className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await deleteProject(currentProject.id);
+                    setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
+                    setTimeout(() => {
+                      setShowDeleteProjectConfirm(false);
+                      onClose();
+                    }, 1000);
+                  } catch (error) {
+                    console.error("Error deleting project:", error);
+                    setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
+                    setTimeout(() => setToast(null), 3000);
+                  }
+                }}
+                className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
@@ -716,6 +1421,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         </div>
       )}
     </div>
+    </>
   );
 };
 
@@ -729,12 +1435,580 @@ const ActivityItem: React.FC<{ icon: string; text: string; date: string }> = ({ 
   </div>
 );
 
-const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div>
-    <p className="text-xs text-slate-500 mb-1">{label}</p>
+const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="py-2">
+    <p className="text-slate-500 text-xs mb-0.5">{label}</p>
     <p className="text-sm font-semibold">{value}</p>
   </div>
 );
+
+const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const today = new Date();
+  
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+  const startingDayOfWeek = firstDayOfMonth.getDay();
+  const daysInMonth = lastDayOfMonth.getDate();
+  
+  const days = [];
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
+  }
+  
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+  
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+  
+  const isToday = (date: Date | null) => {
+    if (!date) return false;
+    return date.toDateString() === today.toDateString();
+  };
+  
+  const isSelected = (date: Date | null) => {
+    if (!date || !selectedDate) return false;
+    return date.toDateString() === selectedDate.toDateString();
+  };
+  
+  const handleDateClick = (date: Date | null) => {
+    if (date) {
+      onSelectDate(date);
+    }
+  };
+  
+  const clearDate = () => {
+    onSelectDate(null);
+  };
+  
+  return (
+    <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg z-50 p-4 w-72">
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={prevMonth}
+          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_left</span>
+        </button>
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+          {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        </h3>
+        <button
+          onClick={nextMonth}
+          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {weekDays.map((day) => (
+          <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
+            {day}
+          </div>
+        ))}
+      </div>
+      
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((date, index) => (
+          <button
+            key={index}
+            onClick={() => handleDateClick(date)}
+            disabled={!date}
+            className={`
+              aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
+              ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
+              ${date && isToday(date) ? 'ring-2 ring-primary' : ''}
+              ${date && isSelected(date) 
+                ? 'bg-primary text-white hover:bg-primary/90' 
+                : date 
+                  ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
+                  : 'text-transparent'
+              }
+            `}
+          >
+            {date ? date.getDate() : ''}
+          </button>
+        ))}
+      </div>
+      
+      <div className="flex items-center justify-start mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+        <button
+          onClick={clearDate}
+          className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        >
+          Limpar
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const TabLink: React.FC<{ label: string; icon: string; active?: boolean; badge?: string; onClick?: () => void }> = ({ label, icon, active, badge, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center gap-2 border-b-[3px] pb-3 pt-4 font-bold text-sm transition-colors ${
+      active ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'
+    }`}
+  >
+    <span className="material-symbols-outlined text-[18px]">{icon}</span>
+    {label}
+    {badge && <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] rounded">{badge}</span>}
+  </button>
+);
+
+const NavBtn: React.FC<{ icon: string; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+      active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
+    }`}
+  >
+    <span className="material-symbols-outlined text-[20px]">{icon}</span>
+    {label}
+  </button>
+);
+
+const CredentialCard: React.FC<{ 
+  title: string; 
+  sub: string; 
+  icon: string; 
+  url: string; 
+  user: string; 
+  password: string;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}> = ({ title, sub, icon, url, user, password, onEdit, onDelete }) => {
+  const [showPassword, setShowPassword] = useState(false);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    // TODO: Mostrar toast de sucesso
+  };
+
+  return (
+    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col gap-3">
+      <div className="flex justify-between items-start">
+        <div className="flex items-center gap-3">
+          <div className="size-8 rounded bg-white dark:bg-slate-900 flex items-center justify-center border border-slate-100 dark:border-slate-800">
+            <span className="material-symbols-outlined text-primary">{icon}</span>
+          </div>
+          <div>
+            <p className="text-sm font-bold leading-tight">{title}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{sub}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={onEdit}
+            className="text-slate-400 hover:text-primary transition-colors p-1"
+            title="Editar credencial"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+          </button>
+          {onDelete && (
+            <button 
+              onClick={onDelete}
+              className="text-slate-400 hover:text-red-500 transition-colors p-1"
+              title="Excluir credencial"
+            >
+              <span className="material-symbols-outlined text-[18px]">delete</span>
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <div className="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+          <span className="text-slate-500 dark:text-slate-400">URL</span>
+          <div className="flex items-center gap-2">
+            <span className="text-primary font-medium">{url}</span>
+            <button 
+              onClick={() => copyToClipboard(url, 'URL')}
+              className="text-slate-400 hover:text-primary transition-colors"
+              title="Copiar URL"
+            >
+              <span className="material-symbols-outlined text-[14px]">content_copy</span>
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+          <span className="text-slate-500 dark:text-slate-400">Usuário</span>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{user}</span>
+            <button 
+              onClick={() => copyToClipboard(user, 'Usuário')}
+              className="text-slate-400 hover:text-primary transition-colors"
+              title="Copiar usuário"
+            >
+              <span className="material-symbols-outlined text-[14px]">content_copy</span>
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-between items-center text-xs py-1">
+          <span className="text-slate-500 dark:text-slate-400">Senha</span>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{showPassword ? password : '••••••••'}</span>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-slate-400 hover:text-primary transition-colors"
+                title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              >
+                <span className="material-symbols-outlined text-[14px]">{showPassword ? 'visibility_off' : 'visibility'}</span>
+              </button>
+              <button 
+                onClick={() => copyToClipboard(password, 'Senha')}
+                className="text-slate-400 hover:text-primary transition-colors"
+                title="Copiar senha"
+              >
+                <span className="material-symbols-outlined text-[14px]">content_copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title: string; sub: string; icon: string; url: string; user: string; password: string }) => void }> = ({ onClose, onSave }) => {
+  const [formData, setFormData] = useState({ title: '', sub: '', icon: 'dns', url: '', user: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const iconOptions = [
+    { value: 'dns', label: 'DNS', icon: 'dns' },
+    { value: 'data_object', label: 'API', icon: 'data_object' },
+    { value: 'storage', label: 'Storage', icon: 'storage' },
+    { value: 'cloud', label: 'Cloud', icon: 'cloud' },
+    { value: 'database', label: 'Database', icon: 'database' },
+    { value: 'key', label: 'Key', icon: 'key' },
+    { value: 'web', label: 'WordPress', icon: 'web' },
+    { value: 'rocket_launch', label: 'Vercel', icon: 'rocket_launch' },
+    { value: 'code', label: 'GitHub', icon: 'code' },
+    { value: 'more_horiz', label: 'Outro', icon: 'more_horiz' },
+  ];
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.title.trim() && formData.url.trim() && formData.user.trim()) {
+      onSave(formData);
+    }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(prev => !prev);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+          <h3 className="text-xl font-bold">Adicionar Credencial</h3>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Título</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: WP Engine Hosting"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Subtítulo</label>
+            <input
+              type="text"
+              value={formData.sub}
+              onChange={(e) => setFormData({ ...formData, sub: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: Servidor de Produção"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ícone</label>
+            <div className="grid grid-cols-5 gap-2">
+              {iconOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, icon: option.value })}
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    formData.icon === option.value
+                      ? 'border-primary bg-primary/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
+                  }`}
+                  title={option.label}
+                >
+                  <span className={`material-symbols-outlined text-xl ${
+                    formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {option.icon}
+                  </span>
+                  <span className={`text-[10px] font-medium ${
+                    formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
+                  }`}>
+                    {option.label.length > 8 ? option.label.substring(0, 6) + '..' : option.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">URL</label>
+            <input
+              type="text"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: wpengine.example.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Usuário</label>
+            <input
+              type="text"
+              value={formData.user}
+              onChange={(e) => setFormData({ ...formData, user: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: admin_user"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Senha</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full px-4 py-2.5 pr-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+                placeholder="••••••••"
+              />
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePasswordVisibility();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePasswordVisibility();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors z-20 cursor-pointer select-none"
+                title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    togglePasswordVisibility();
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined text-lg pointer-events-none">{showPassword ? 'visibility_off' : 'visibility'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit"
+              className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Adicionar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const EditCredentialModal: React.FC<{ 
+  credential: { id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }; 
+  onClose: () => void; 
+  onSave: (data: { title: string; sub: string; icon: string; url: string; user: string; password: string }) => void 
+}> = ({ credential, onClose, onSave }) => {
+  const [formData, setFormData] = useState(credential);
+  const [showPassword, setShowPassword] = useState(false);
+  const iconOptions = [
+    { value: 'dns', label: 'DNS', icon: 'dns' },
+    { value: 'data_object', label: 'API', icon: 'data_object' },
+    { value: 'storage', label: 'Storage', icon: 'storage' },
+    { value: 'cloud', label: 'Cloud', icon: 'cloud' },
+    { value: 'database', label: 'Database', icon: 'database' },
+    { value: 'key', label: 'Key', icon: 'key' },
+    { value: 'web', label: 'WordPress', icon: 'web' },
+    { value: 'rocket_launch', label: 'Vercel', icon: 'rocket_launch' },
+    { value: 'code', label: 'GitHub', icon: 'code' },
+    { value: 'more_horiz', label: 'Outro', icon: 'more_horiz' },
+  ];
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.title.trim() && formData.url.trim() && formData.user.trim()) {
+      onSave(formData);
+    }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(prev => !prev);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+          <h3 className="text-xl font-bold">Editar Credencial</h3>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Título</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: WP Engine Hosting"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Subtítulo</label>
+            <input
+              type="text"
+              value={formData.sub}
+              onChange={(e) => setFormData({ ...formData, sub: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: Servidor de Produção"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ícone</label>
+            <div className="grid grid-cols-5 gap-2">
+              {iconOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, icon: option.value })}
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    formData.icon === option.value
+                      ? 'border-primary bg-primary/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
+                  }`}
+                  title={option.label}
+                >
+                  <span className={`material-symbols-outlined text-xl ${
+                    formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {option.icon}
+                  </span>
+                  <span className={`text-[10px] font-medium ${
+                    formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
+                  }`}>
+                    {option.label.length > 8 ? option.label.substring(0, 6) + '..' : option.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">URL</label>
+            <input
+              type="text"
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: wpengine.example.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Usuário</label>
+            <input
+              type="text"
+              value={formData.user}
+              onChange={(e) => setFormData({ ...formData, user: e.target.value })}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Ex: admin_user"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Senha</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full px-4 py-2.5 pr-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+                placeholder="••••••••"
+              />
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePasswordVisibility();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  togglePasswordVisibility();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors z-20 cursor-pointer select-none"
+                title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    togglePasswordVisibility();
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined text-lg pointer-events-none">{showPassword ? 'visibility_off' : 'visibility'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit"
+              className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Salvar Alterações
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const AddActivityModal: React.FC<{ projectId: string; onClose: () => void; onSave: (data: { text: string; icon: string; userName?: string }) => void }> = ({ onClose, onSave }) => {
   const [formData, setFormData] = useState({ text: '', icon: 'check_circle', userName: '' });
@@ -945,38 +2219,181 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onSave
     type: project.type,
     status: project.status,
     progress: project.progress,
+    budget: project.budget || 0,
+    isPaid: project.isPaid || false,
   });
-  const [categories, setCategories] = useState<string[]>([]);
+  const [budgetDisplay, setBudgetDisplay] = useState<string>(
+    project.budget ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(project.budget) : '0,00'
+  );
+  const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initialFormDataRef = useRef(formData);
+  const hasUserInteracted = useRef(false);
+  const [availableClients, setAvailableClients] = useState<string[]>([]);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const [filteredClients, setFilteredClients] = useState<string[]>([]);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+
+  // Usar workspaceId do projeto para filtrar categorias e clientes
+  const workspaceId = project.workspaceId;
 
   useEffect(() => {
     const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
-      setCategories(firebaseCategories);
-    });
+      // Filtrar categorias pelo workspaceId do projeto
+      // Se temos workspaceId, incluir APENAS categorias com esse workspaceId (excluir sem workspaceId)
+      let filteredCategories = workspaceId 
+        ? firebaseCategories.filter(cat => cat.workspaceId === workspaceId && cat.workspaceId !== undefined)
+        : firebaseCategories;
+      
+      // Remover duplicatas baseado no nome (caso existam categorias duplicadas)
+      const uniqueCategories = filteredCategories.reduce((acc, cat) => {
+        if (!acc.find(c => c.name === cat.name)) {
+          acc.push(cat);
+        }
+        return acc;
+      }, [] as Category[]);
+      
+      // Ordenar por nome
+      uniqueCategories.sort((a, b) => a.name.localeCompare(b.name));
+      
+      setCategories(uniqueCategories);
+    }, workspaceId);
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
-      setStages(firebaseStages);
+      // Filtrar etapas pelo workspaceId do projeto
+      const filteredStages = workspaceId
+        ? firebaseStages.filter(stage => (stage as any).workspaceId === workspaceId)
+        : firebaseStages;
+      setStages(filteredStages);
+    }, workspaceId);
+
+    // Load available clients filtrados por workspaceId
+    getUniqueClients(workspaceId).then(clients => {
+      setAvailableClients(clients);
     });
 
     return () => {
       unsubscribeCategories();
       unsubscribeStages();
     };
+  }, [workspaceId]);
+
+  // Filter clients based on input
+  useEffect(() => {
+    if (formData.client.trim()) {
+      const filtered = availableClients.filter(client =>
+        client.toLowerCase().includes(formData.client.toLowerCase())
+      );
+      setFilteredClients(filtered);
+      setShowClientSuggestions(filtered.length > 0);
+    } else {
+      setFilteredClients([]);
+      setShowClientSuggestions(false);
+    }
+  }, [formData.client, availableClients]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (clientInputRef.current && !clientInputRef.current.contains(event.target as Node)) {
+        setShowClientSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Quando o status muda, atualizar também o progresso baseado na etapa selecionada
-    const selectedStage = stages.find(s => s.status === formData.status);
-    if (selectedStage) {
-      onSave({
-        ...formData,
-        progress: selectedStage.progress
-      });
-    } else {
-      onSave(formData);
+  // Auto-save quando formData mudar (apenas se o usuário interagiu)
+  useEffect(() => {
+    // Só salva se o usuário já interagiu com o formulário
+    if (!hasUserInteracted.current) {
+      return;
     }
+
+    // Verifica se realmente houve mudança comparando com os dados iniciais
+    const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormDataRef.current);
+    if (!hasChanged) {
+      return;
+    }
+
+    // Limpa o timeout anterior se houver
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Define um novo timeout para salvar após 800ms de inatividade
+    saveTimeoutRef.current = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        const selectedStage = stages.find(s => s.status === formData.status);
+        const dataToSave = selectedStage 
+          ? { ...formData, progress: selectedStage.progress }
+          : formData;
+        
+        await onSave(dataToSave);
+        setLastSaved(new Date());
+        // Atualiza os dados iniciais após salvar
+        initialFormDataRef.current = { ...formData };
+        // Esconde a mensagem de "Salvo automaticamente" após 2 segundos
+        setTimeout(() => {
+          setLastSaved(null);
+        }, 2000);
+      } catch (error) {
+        console.error("Error auto-saving project:", error);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 800);
+
+    // Limpa o timeout quando o componente desmontar
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, stages, onSave]);
+
+  const formatCurrency = (value: string): string => {
+    // Remove tudo que não é dígito
+    const numbers = value.replace(/\D/g, '');
+    if (numbers === '' || numbers === '0') return '0,00';
+    
+    // Converte para número e divide por 100 para ter centavos
+    const amount = parseFloat(numbers) / 100;
+    // Formata como número brasileiro (sem o símbolo R$)
+    return new Intl.NumberFormat('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
   };
+
+  const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    hasUserInteracted.current = true;
+    const inputValue = e.target.value;
+    // Remove tudo que não é dígito
+    const numbers = inputValue.replace(/\D/g, '');
+    
+    // Atualiza o display formatado
+    const formatted = formatCurrency(numbers);
+    setBudgetDisplay(formatted);
+    
+    // Extrai o valor numérico (divide por 100 porque estamos trabalhando com centavos)
+    const numericValue = numbers ? parseFloat(numbers) / 100 : 0;
+    setFormData({ ...formData, budget: numericValue });
+  };
+
+  const handleBudgetFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Ao focar, seleciona todo o texto para facilitar substituição
+    e.target.select();
+  };
+
+  // Auto-save implementado via useEffect acima
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -987,85 +2404,197 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onSave
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div className="p-6 space-y-4">
+          {(isSaving || lastSaved) && (
+            <div className={`mb-4 flex items-center gap-2 text-sm ${
+              isSaving ? 'text-primary' : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              <span className={`material-symbols-outlined text-base ${isSaving ? 'animate-spin' : ''}`}>
+                {isSaving ? 'sync' : 'check_circle'}
+              </span>
+              <span>{isSaving ? 'Salvando...' : 'Salvo automaticamente'}</span>
+            </div>
+          )}
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome do Projeto</label>
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => {
+                hasUserInteracted.current = true;
+                setFormData({ ...formData, name: e.target.value });
+              }}
               className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
               required
             />
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Cliente</label>
-            <input
-              type="text"
-              value={formData.client}
-              onChange={(e) => setFormData({ ...formData, client: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              required
-            />
+            <div className="relative" ref={clientInputRef}>
+              <input
+                type="text"
+                value={formData.client}
+                onChange={(e) => {
+                  hasUserInteracted.current = true;
+                  setFormData({ ...formData, client: e.target.value });
+                }}
+                onFocus={() => {
+                  if (formData.client.trim() && filteredClients.length > 0) {
+                    setShowClientSuggestions(true);
+                  }
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                required
+              />
+              {showClientSuggestions && filteredClients.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {filteredClients.map((client, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        hasUserInteracted.current = true;
+                        setFormData({ ...formData, client });
+                        setShowClientSuggestions(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                    >
+                      {client}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Descrição</label>
             <textarea
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => {
+                hasUserInteracted.current = true;
+                setFormData({ ...formData, description: e.target.value });
+              }}
               rows={3}
               className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Tipo (Categoria)</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Selecione uma categoria</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Tipo (Serviço)</label>
+              <div className="relative">
+                <select
+                  value={formData.type}
+                  onChange={(e) => {
+                    hasUserInteracted.current = true;
+                    setFormData({ ...formData, type: e.target.value });
+                  }}
+                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
+                >
+                  <option value="">Selecione um serviço</option>
+                  {categories
+                    .filter((cat, index, self) => 
+                      // Remover duplicatas baseado no nome
+                      index === self.findIndex(c => c.name === cat.name)
+                    )
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((category) => (
+                      <option key={category.id || category.name} value={category.name}>
+                        {category.name}
+                      </option>
+                    ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <span className="material-symbols-outlined text-lg">expand_more</span>
+                </span>
+              </div>
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Etapa</label>
-              <select
-                value={formData.status}
-                onChange={(e) => {
-                  const selectedStatus = e.target.value as Project['status'];
-                  const selectedStage = stages.find(s => s.status === selectedStatus);
-                  setFormData({ 
-                    ...formData, 
-                    status: selectedStatus,
-                    progress: selectedStage ? selectedStage.progress : formData.progress
-                  });
-                }}
-                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Selecione uma etapa</option>
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.status}>
-                    {stage.title}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={formData.status}
+                  onChange={(e) => {
+                    hasUserInteracted.current = true;
+                    const selectedStatus = e.target.value as Project['status'];
+                    const selectedStage = stages.find(s => s.status === selectedStatus);
+                    setFormData({ 
+                      ...formData, 
+                      status: selectedStatus,
+                      progress: selectedStage ? selectedStage.progress : formData.progress
+                    });
+                  }}
+                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
+                >
+                  <option value="">Selecione uma etapa</option>
+                  {stages.map((stage) => (
+                    <option key={stage.id} value={stage.status}>
+                      {stage.title}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <span className="material-symbols-outlined text-lg">expand_more</span>
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
-              Cancelar
-            </button>
-            <button type="submit" className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all">
-              Salvar Alterações
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Budget</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none font-medium">R$</span>
+                <input
+                  type="text"
+                  value={budgetDisplay}
+                  onChange={handleBudgetChange}
+                  onFocus={handleBudgetFocus}
+                  className="w-full pl-12 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                  placeholder="0,00"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Status de Pagamento</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    hasUserInteracted.current = true;
+                    setFormData({ ...formData, isPaid: true });
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                    formData.isPaid
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  Pago
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    hasUserInteracted.current = true;
+                    setFormData({ ...formData, isPaid: false });
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                    !formData.isPaid
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">pending</span>
+                  Pendente
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
+            <button type="button" onClick={onClose} className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all">
+              Fechar
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

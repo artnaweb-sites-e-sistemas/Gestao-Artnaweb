@@ -5,6 +5,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
+  deleteField,
   query, 
   orderBy,
   where,
@@ -19,7 +20,7 @@ import {
   StorageReference 
 } from "firebase/storage";
 import { db, storage } from "./config";
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile } from "../types";
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category } from "../types";
 
 // Habilitar persistência offline (opcional)
 try {
@@ -42,6 +43,7 @@ const STAGES_COLLECTION = "stages";
 const STAGE_TASKS_COLLECTION = "stageTasks";
 const PROJECT_STAGE_TASKS_COLLECTION = "projectStageTasks";
 const PROJECT_FILES_COLLECTION = "projectFiles";
+const WORKSPACES_COLLECTION = "workspaces";
 
 // Projects
 export const getProjects = async (): Promise<Project[]> => {
@@ -60,8 +62,25 @@ export const getProjects = async (): Promise<Project[]> => {
   }
 };
 
-export const subscribeToProjects = (callback: (projects: Project[]) => void) => {
-  const q = query(collection(db, PROJECTS_COLLECTION), orderBy("createdAt", "desc"));
+export const subscribeToProjects = (callback: (projects: Project[]) => void, workspaceId?: string | null) => {
+  if (!db) {
+    console.warn("Firebase não está inicializado");
+    return () => {};
+  }
+  
+  // Sempre usar ordenação no cliente quando há workspaceId para evitar necessidade de índice composto
+  let q;
+  if (workspaceId) {
+    // Filtrar por workspaceId sem orderBy (ordenar no cliente)
+    q = query(
+      collection(db, PROJECTS_COLLECTION), 
+      where("workspaceId", "==", workspaceId)
+    );
+  } else {
+    // Se não houver workspaceId, usar orderBy (sem where)
+    q = query(collection(db, PROJECTS_COLLECTION), orderBy("createdAt", "desc"));
+  }
+  
   return onSnapshot(q, (querySnapshot) => {
     const projects = querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -72,20 +91,71 @@ export const subscribeToProjects = (callback: (projects: Project[]) => void) => 
         updatedAt: data.updatedAt?.toDate?.() || data.updatedAt
       };
     }) as Project[];
-    callback(projects);
+    
+    // Se houver workspaceId, filtrar no cliente (caso haja projetos sem workspaceId)
+    let filteredProjects = projects;
+    if (workspaceId) {
+      filteredProjects = projects.filter(p => p.workspaceId === workspaceId || !p.workspaceId);
+      // Ordenar no cliente por createdAt (mais recente primeiro)
+      filteredProjects.sort((a, b) => {
+        const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+        const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+        return dateB - dateA; // Descendente
+      });
+    }
+    
+    callback(filteredProjects);
   }, (error) => {
     console.error("Error in projects subscription:", error);
     callback([]);
   });
 };
 
-export const addProject = async (project: Omit<Project, "id">): Promise<string> => {
+// Get unique clients from all projects (filtered by workspaceId)
+export const getUniqueClients = async (workspaceId?: string | null): Promise<string[]> => {
   try {
-    const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), {
+    let q;
+    if (workspaceId) {
+      q = query(collection(db, PROJECTS_COLLECTION), where("workspaceId", "==", workspaceId));
+    } else {
+      q = collection(db, PROJECTS_COLLECTION);
+    }
+    const querySnapshot = await getDocs(q);
+    const clients = new Set<string>();
+    querySnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.client && typeof data.client === 'string') {
+        clients.add(data.client);
+      }
+    });
+    return Array.from(clients).sort();
+  } catch (error) {
+    console.error("Error getting unique clients:", error);
+    return [];
+  }
+};
+
+export const addProject = async (project: Omit<Project, "id">, workspaceId?: string | null): Promise<string> => {
+  try {
+    const projectData: any = {
       ...project,
       createdAt: new Date(),
       updatedAt: new Date()
+    };
+    
+    // Adicionar workspaceId se fornecido
+    if (workspaceId) {
+      projectData.workspaceId = workspaceId;
+    }
+    
+    // Remover campos undefined (Firestore não aceita undefined)
+    Object.keys(projectData).forEach(key => {
+      if (projectData[key] === undefined) {
+        delete projectData[key];
+      }
     });
+    
+    const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), projectData);
     return docRef.id;
   } catch (error) {
     console.error("Error adding project:", error);
@@ -96,14 +166,58 @@ export const addProject = async (project: Omit<Project, "id">): Promise<string> 
 export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<void> => {
   try {
     const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
-    await updateDoc(projectRef, {
+    const updateData: any = {
       ...updates,
       updatedAt: new Date()
+    };
+    
+    // Remover campos undefined (Firestore não aceita undefined)
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
     });
+    
+    await updateDoc(projectRef, updateData);
   } catch (error) {
     console.error("Error updating project:", error);
     throw error;
   }
+};
+
+// Função para remover o campo stageId de um projeto (para serviços recorrentes)
+export const removeProjectStageId = async (projectId: string): Promise<void> => {
+  try {
+    const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+    await updateDoc(projectRef, {
+      stageId: deleteField(),
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error("Error removing project stageId:", error);
+    throw error;
+  }
+};
+
+export const subscribeToProject = (projectId: string, callback: (project: Project | null) => void) => {
+  const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+  return onSnapshot(projectRef, (docSnapshot) => {
+    if (docSnapshot.exists()) {
+      const data = docSnapshot.data();
+      const project = {
+        id: docSnapshot.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.() || data.updatedAt
+      } as Project;
+      callback(project);
+    } else {
+      callback(null);
+    }
+  }, (error) => {
+    console.error("Error in project subscription:", error);
+    callback(null);
+  });
 };
 
 export const deleteProject = async (projectId: string): Promise<void> => {
@@ -127,34 +241,137 @@ export const getCategories = async (): Promise<string[]> => {
   }
 };
 
-export const subscribeToCategories = (callback: (categories: string[]) => void) => {
-  return onSnapshot(collection(db, CATEGORIES_COLLECTION), (querySnapshot) => {
-    const categories = querySnapshot.docs.map(doc => doc.data().name);
-    callback(categories.length > 0 ? categories : ['Web Design', 'App Dev', 'Identidade Visual']);
+export const subscribeToCategories = (callback: (categories: Category[]) => void, workspaceId?: string | null) => {
+  if (!db) {
+    console.warn("Firebase não está inicializado");
+    return () => {};
+  }
+  
+  // Sempre usar ordenação no cliente quando há workspaceId para evitar necessidade de índice composto
+  let q;
+  if (workspaceId) {
+    // Filtrar por workspaceId sem orderBy (ordenar no cliente)
+    q = query(
+      collection(db, CATEGORIES_COLLECTION),
+      where("workspaceId", "==", workspaceId)
+    );
+  } else {
+    // Se não houver workspaceId, buscar todos (compatibilidade)
+    q = query(collection(db, CATEGORIES_COLLECTION));
+  }
+  
+  return onSnapshot(q, (querySnapshot) => {
+    const categories = querySnapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        // Se não houver workspaceId na query, filtrar no cliente
+        if (workspaceId && data.workspaceId && data.workspaceId !== workspaceId) {
+          return null;
+        }
+        // Se não houver workspaceId no documento e estamos filtrando, incluir apenas se for o primeiro workspace
+        if (workspaceId && !data.workspaceId) {
+          // Incluir categorias sem workspaceId para compatibilidade
+          return {
+            id: doc.id,
+            name: data.name,
+            isRecurring: data.isRecurring || false,
+            workspaceId: data.workspaceId,
+            createdAt: data.createdAt
+          };
+        }
+        return {
+          id: doc.id,
+          name: data.name,
+          isRecurring: data.isRecurring || false,
+          workspaceId: data.workspaceId,
+          createdAt: data.createdAt
+        };
+      })
+      .filter(Boolean) as Category[];
+    
+    // Se não houver categorias e não houver workspaceId, retornar padrão
+    if (categories.length === 0 && !workspaceId) {
+      callback([
+        { id: 'default-1', name: 'Web Design', isRecurring: false },
+        { id: 'default-2', name: 'App Dev', isRecurring: false },
+        { id: 'default-3', name: 'Identidade Visual', isRecurring: false }
+      ]);
+    } else {
+      callback(categories);
+    }
   }, (error) => {
     console.error("Error in categories subscription:", error);
-    callback(['Web Design', 'App Dev', 'Identidade Visual']);
+    // Se não houver workspaceId, retornar padrão em caso de erro
+    if (!workspaceId) {
+      callback([
+        { id: 'default-1', name: 'Web Design', isRecurring: false },
+        { id: 'default-2', name: 'App Dev', isRecurring: false },
+        { id: 'default-3', name: 'Identidade Visual', isRecurring: false }
+      ]);
+    } else {
+      callback([]);
+    }
   });
 };
 
-export const addCategory = async (categoryName: string): Promise<void> => {
+export const addCategory = async (categoryName: string, workspaceId?: string | null, isRecurring: boolean = false): Promise<void> => {
   try {
-    await addDoc(collection(db, CATEGORIES_COLLECTION), {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    const categoryData: any = { 
       name: categoryName,
+      isRecurring: isRecurring,
       createdAt: new Date()
-    });
+    };
+    if (workspaceId) {
+      categoryData.workspaceId = workspaceId;
+    }
+    await addDoc(collection(db, CATEGORIES_COLLECTION), categoryData);
   } catch (error) {
     console.error("Error adding category:", error);
     throw error;
   }
 };
 
-export const deleteCategory = async (categoryName: string): Promise<void> => {
+export const deleteCategory = async (categoryName: string, workspaceId?: string | null): Promise<void> => {
   try {
-    const querySnapshot = await getDocs(collection(db, CATEGORIES_COLLECTION));
-    const categoryDoc = querySnapshot.docs.find(doc => doc.data().name === categoryName);
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    
+    // Usar apenas workspaceId na query para evitar índice composto, filtrar nome no cliente
+    let q;
+    if (workspaceId) {
+      // Filtrar por workspaceId apenas
+      q = query(
+        collection(db, CATEGORIES_COLLECTION),
+        where("workspaceId", "==", workspaceId)
+      );
+    } else {
+      // Se não houver workspaceId, buscar todas
+      q = query(collection(db, CATEGORIES_COLLECTION));
+    }
+    
+    const querySnapshot = await getDocs(q);
+    const categoryDoc = querySnapshot.docs.find(doc => {
+      const data = doc.data();
+      // Filtrar por nome no cliente
+      if (data.name !== categoryName) {
+        return false;
+      }
+      // Se houver workspaceId, garantir que corresponde
+      if (workspaceId && data.workspaceId !== workspaceId) {
+        return false;
+      }
+      return true;
+    });
+    
     if (categoryDoc) {
       await deleteDoc(doc(db, CATEGORIES_COLLECTION, categoryDoc.id));
+      console.log(`✅ Categoria "${categoryName}" excluída com sucesso`);
+    } else {
+      console.warn(`⚠️ Categoria "${categoryName}" não encontrada para exclusão no workspace ${workspaceId || 'geral'}`);
     }
   } catch (error) {
     console.error("Error deleting category:", error);
@@ -346,6 +563,7 @@ export interface Stage {
   status: 'Lead' | 'Active' | 'Completed' | 'Review';
   order: number;
   progress: number;
+  isFixed?: boolean; // Etapas fixas não podem ser excluídas
 }
 
 export const getStages = async (): Promise<Stage[]> => {
@@ -362,23 +580,59 @@ export const getStages = async (): Promise<Stage[]> => {
   }
 };
 
-export const subscribeToStages = (callback: (stages: Stage[]) => void) => {
-  const q = query(collection(db, STAGES_COLLECTION), orderBy("order", "asc"));
+export const subscribeToStages = (callback: (stages: Stage[]) => void, workspaceId?: string | null) => {
+  if (!db) {
+    console.warn("Firebase não está inicializado");
+    return () => {};
+  }
+  
+  // Sempre usar ordenação no cliente quando há workspaceId para evitar necessidade de índice composto
+  let q;
+  if (workspaceId) {
+    // Filtrar por workspaceId sem orderBy (ordenar no cliente)
+    q = query(
+      collection(db, STAGES_COLLECTION),
+      where("workspaceId", "==", workspaceId)
+    );
+  } else {
+    // Se não houver workspaceId, usar orderBy (sem where)
+    q = query(collection(db, STAGES_COLLECTION), orderBy("order", "asc"));
+  }
+  
   return onSnapshot(q, (querySnapshot) => {
     const stages = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     })) as Stage[];
-    callback(stages);
+    
+    // Filtrar no cliente se necessário
+    let filteredStages = stages;
+    if (workspaceId) {
+      filteredStages = stages.filter(s => {
+        // Incluir etapas do workspace ou etapas sem workspaceId (compatibilidade)
+        return s.workspaceId === workspaceId || !s.workspaceId;
+      });
+    }
+    
+    // Sempre ordenar no cliente quando há workspaceId (ou se não há orderBy)
+    if (workspaceId || !q || !q._query || !q._query.explicitOrderBy) {
+      filteredStages.sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+    
+    callback(filteredStages);
   }, (error) => {
     console.error("Error in stages subscription:", error);
     callback([]);
   });
 };
 
-export const addStage = async (stage: Omit<Stage, "id">): Promise<string> => {
+export const addStage = async (stage: Omit<Stage, "id">, workspaceId?: string | null): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, STAGES_COLLECTION), stage);
+    const stageData: any = { ...stage };
+    if (workspaceId) {
+      stageData.workspaceId = workspaceId;
+    }
+    const docRef = await addDoc(collection(db, STAGES_COLLECTION), stageData);
     return docRef.id;
   } catch (error) {
     console.error("Error adding stage:", error);
@@ -405,25 +659,32 @@ export const deleteStage = async (stageId: string): Promise<void> => {
   }
 };
 
-export const saveStages = async (stages: Stage[]): Promise<void> => {
+export const saveStages = async (stages: Stage[], workspaceId?: string | null): Promise<void> => {
   try {
-    console.log("saveStages: Iniciando salvamento de", stages.length, "etapas");
+    console.log("saveStages: Iniciando salvamento de", stages.length, "etapas para workspace:", workspaceId);
     
-    // Primeiro, deletar todas as etapas existentes
+    // Primeiro, deletar todas as etapas existentes do workspace
     const existingStages = await getStages();
-    console.log("saveStages: Etapas existentes no Firebase:", existingStages.length);
+    const stagesToDelete = workspaceId 
+      ? existingStages.filter(s => s.workspaceId === workspaceId || (!s.workspaceId && workspaceId))
+      : existingStages;
     
-    if (existingStages.length > 0) {
-      await Promise.all(existingStages.map(stage => {
+    console.log("saveStages: Etapas existentes no Firebase para deletar:", stagesToDelete.length);
+    
+    if (stagesToDelete.length > 0) {
+      await Promise.all(stagesToDelete.map(stage => {
         console.log("saveStages: Deletando etapa:", stage.id);
         return deleteStage(stage.id);
       }));
     }
     
-    // Depois, adicionar as novas etapas
+    // Depois, adicionar as novas etapas com workspaceId
     const promises = stages.map(stage => {
       const { id, ...stageData } = stage;
-      console.log("saveStages: Adicionando etapa:", stageData.title);
+      if (workspaceId) {
+        (stageData as any).workspaceId = workspaceId;
+      }
+      console.log("saveStages: Adicionando etapa:", stageData.title, "workspaceId:", workspaceId);
       return addDoc(collection(db, STAGES_COLLECTION), stageData);
     });
     
@@ -832,6 +1093,188 @@ export const deleteProjectFile = async (fileId: string, fileUrl: string): Promis
     await deleteDoc(doc(db, PROJECT_FILES_COLLECTION, fileId));
   } catch (error) {
     console.error("Error deleting file:", error);
+    throw error;
+  }
+};
+
+// Upload project avatar
+export const uploadProjectAvatar = async (projectId: string, file: File): Promise<string> => {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage não está inicializado");
+    }
+    
+    // Criar referência no Storage
+    const fileRef = ref(storage, `projects/${projectId}/avatar/${Date.now()}_${file.name}`);
+    
+    // Fazer upload do arquivo
+    const snapshot = await uploadBytes(fileRef, file);
+    
+    // Obter URL de download
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    
+    return downloadURL;
+  } catch (error) {
+    console.error("Error uploading project avatar:", error);
+    throw error;
+  }
+};
+
+// Workspaces
+export const getWorkspaces = async (): Promise<Workspace[]> => {
+  try {
+    if (!db) {
+      console.warn("Firebase não está inicializado");
+      return [];
+    }
+    const q = query(collection(db, WORKSPACES_COLLECTION));
+    const querySnapshot = await getDocs(q);
+    const workspaces = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+      updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
+    })) as Workspace[];
+    
+    // Ordenar no cliente por data de criação (mais recente primeiro)
+    workspaces.sort((a, b) => {
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+    
+    return workspaces;
+  } catch (error) {
+    console.error("Error getting workspaces:", error);
+    console.error("Error details:", error);
+    return [];
+  }
+};
+
+export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => void) => {
+  if (!db) {
+    console.warn("Firebase não está inicializado");
+    return () => {};
+  }
+  
+  try {
+    // Usar query sem orderBy inicialmente para evitar problemas com índices
+    // Se necessário, ordenar no cliente
+    const q = query(collection(db, WORKSPACES_COLLECTION));
+    return onSnapshot(q, 
+      (querySnapshot) => {
+        const workspaces = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+          updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
+        })) as Workspace[];
+        
+        // Ordenar no cliente por data de criação (mais recente primeiro)
+        workspaces.sort((a, b) => {
+          const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+          const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        
+        callback(workspaces);
+      }, 
+      (error) => {
+        console.error("Error in workspaces subscription:", error);
+        console.error("Error code:", error?.code);
+        console.error("Error message:", error?.message);
+        
+        // Se for erro de permissão, tentar novamente após um delay
+        if (error?.code === 'permission-denied') {
+          console.warn("⚠️ Erro de permissão detectado. Verifique as regras do Firestore no Firebase Console.");
+          console.warn("⚠️ As regras devem permitir leitura/escrita para a coleção 'workspaces'");
+        }
+        
+        // Retornar array vazio em caso de erro para não quebrar a UI
+        callback([]);
+      }
+    );
+  } catch (error: any) {
+    console.error("Error setting up workspaces subscription:", error);
+    return () => {};
+  }
+};
+
+// Serviços padrão para novos workspaces
+const DEFAULT_CATEGORIES = [
+  { name: 'Sob Demanda', isRecurring: false },
+  { name: 'Recorrência', isRecurring: true }
+];
+
+export const addWorkspace = async (workspace: Omit<Workspace, "id">): Promise<string> => {
+  try {
+    if (!db) {
+      console.error("Firebase não está inicializado - db é", db);
+      throw new Error("Firebase não está inicializado");
+    }
+    
+    if (!workspace.name || !workspace.name.trim()) {
+      throw new Error("Nome do workspace é obrigatório");
+    }
+    
+    const workspaceData = {
+      name: workspace.name.trim(),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log("Adicionando workspace:", workspaceData);
+    const docRef = await addDoc(collection(db, WORKSPACES_COLLECTION), workspaceData);
+    const workspaceId = docRef.id;
+    console.log("Workspace adicionado com ID:", workspaceId);
+    
+    // Criar serviços padrão para o novo workspace
+    try {
+      console.log("Criando serviços padrão para o workspace:", workspaceId);
+      const defaultCategoriesPromises = DEFAULT_CATEGORIES.map(category => 
+        addCategory(category.name, workspaceId, category.isRecurring)
+      );
+      await Promise.all(defaultCategoriesPromises);
+      console.log("✅ Serviços padrão criados com sucesso:", DEFAULT_CATEGORIES.map(c => c.name));
+    } catch (error) {
+      console.error("⚠️ Erro ao criar serviços padrão (workspace já foi criado):", error);
+      // Não lançar erro aqui - o workspace já foi criado, apenas logar o erro
+    }
+    
+    return workspaceId;
+  } catch (error: any) {
+    console.error("Error adding workspace:", error);
+    console.error("Error code:", error?.code);
+    console.error("Error message:", error?.message);
+    console.error("Error stack:", error?.stack);
+    throw error;
+  }
+};
+
+export const updateWorkspace = async (workspaceId: string, updates: Partial<Workspace>): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    const workspaceRef = doc(db, WORKSPACES_COLLECTION, workspaceId);
+    await updateDoc(workspaceRef, {
+      ...updates,
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error("Error updating workspace:", error);
+    throw error;
+  }
+};
+
+export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    await deleteDoc(doc(db, WORKSPACES_COLLECTION, workspaceId));
+  } catch (error) {
+    console.error("Error deleting workspace:", error);
     throw error;
   }
 };

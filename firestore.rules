@@ -77,6 +77,15 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
     
+    // Regras para a coleção de workspaces
+    match /workspaces/{workspaceId} {
+      // Permite leitura para todos
+      allow read: if true;
+      
+      // Permite escrita para todos (apenas para desenvolvimento)
+      allow create, update, delete: if true;
+    }
+    
     // Bloqueia acesso a todas as outras coleções
     match /{document=**} {
       allow read, write: if false;

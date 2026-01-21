@@ -8,6 +8,8 @@ export type ViewState =
   | 'Settings' 
   | 'Timeline'
   | 'ProjectDetails'
+  | 'ProjectBilling'
+  | 'ProjectRoadmap'
   | 'CreateInvoice'
   | 'CreateTask'
   | 'ClientBilling'
@@ -20,12 +22,16 @@ export interface Project {
   client: string;
   description: string;
   type: string;
-  status: 'Lead' | 'Active' | 'Completed' | 'Review';
+  status: 'Lead' | 'Active' | 'Completed' | 'Review' | 'Finished';
+  stageId?: string; // ID da etapa para filtragem correta
   progress: number;
   tagColor: string;
   avatar: string;
   deadline?: string;
   urgency?: boolean;
+  budget?: number;
+  isPaid?: boolean;
+  workspaceId?: string;
   createdAt?: Date | any;
   updatedAt?: Date | any;
 }
@@ -62,6 +68,16 @@ export interface TeamMember {
   addedAt: Date | any;
 }
 
+export interface Stage {
+  id: string;
+  title: string;
+  status: string;
+  order: number;
+  progress: number;
+  isFixed?: boolean;
+  workspaceId?: string;
+}
+
 export interface StageTask {
   id: string;
   stageId: string;
@@ -89,4 +105,19 @@ export interface ProjectFile {
   size: number;
   uploadedBy?: string;
   uploadedAt: Date | any;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: Date | any;
+  updatedAt?: Date | any;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  isRecurring?: boolean;
+  workspaceId?: string;
+  createdAt?: Date | any;
 }
