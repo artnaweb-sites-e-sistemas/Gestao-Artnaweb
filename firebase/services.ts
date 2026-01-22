@@ -6,6 +6,7 @@ import {
   updateDoc, 
   deleteDoc, 
   deleteField,
+  setDoc,
   query, 
   orderBy,
   where,
@@ -679,11 +680,23 @@ export const saveStages = async (stages: Stage[], workspaceId?: string | null): 
     }
     
     // Depois, adicionar as novas etapas com workspaceId
+    // IMPORTANTE: Para etapas fixas (isFixed: true), usar setDoc com ID explícito
+    // para preservar os IDs como 'onboarding', 'development', 'review', 'completed'
     const promises = stages.map(stage => {
       const { id, ...stageData } = stage;
       if (workspaceId) {
         (stageData as any).workspaceId = workspaceId;
       }
+      
+      // Se é uma etapa fixa com ID predefinido, usar setDoc para preservar o ID
+      if (stage.isFixed && id) {
+        // Criar ID único combinando o ID da etapa com o workspaceId para evitar conflitos
+        const uniqueId = workspaceId ? `${id}-${workspaceId}` : id;
+        console.log("saveStages: Salvando etapa fixa com ID:", uniqueId, "título:", stageData.title);
+        const stageRef = doc(db, STAGES_COLLECTION, uniqueId);
+        return setDoc(stageRef, { ...stageData, originalId: id });
+      }
+      
       console.log("saveStages: Adicionando etapa:", stageData.title, "workspaceId:", workspaceId);
       return addDoc(collection(db, STAGES_COLLECTION), stageData);
     });

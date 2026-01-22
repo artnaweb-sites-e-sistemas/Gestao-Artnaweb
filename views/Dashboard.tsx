@@ -158,6 +158,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
   const [stageToEditTasks, setStageToEditTasks] = useState<Stage | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const isInitialStagesLoad = useRef(true);
   const isDeletingStage = useRef(false);
   const isAddingFixedStages = useRef(false);
@@ -179,6 +180,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   // Função para lidar com o drop de projeto
   const handleProjectDrop = async (project: Project, targetStage: Stage) => {
     try {
+      // IDs fixos conhecidos para etapas normais
+      const fixedStageIds = ['onboarding', 'development', 'review', 'completed'];
+      
       // Verificar se é uma etapa recorrente (Manutenção ou Finalizado)
       const isRecurringStage = targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado';
       
@@ -187,9 +191,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         cat.name === project.type && cat.isRecurring
       );
       
+      // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
+      const hasFixedStageId = (projectStageId: string | undefined): boolean => {
+        if (!projectStageId) return false;
+        const projectIdBase = projectStageId.split('-')[0];
+        return fixedStageIds.includes(projectIdBase) || fixedStageIds.includes(projectStageId);
+      };
+      
+      // Função para obter o ID base da etapa (originalId ou ID sem sufixo de workspace)
+      const getStageBaseId = (stage: Stage): string => {
+        const originalId = (stage as any).originalId;
+        if (originalId) return originalId;
+        // Se não tem originalId, extrair o ID base (antes do primeiro '-')
+        const baseId = stage.id.split('-')[0];
+        return fixedStageIds.includes(baseId) ? baseId : stage.id;
+      };
+      
       // Validar: projetos normais não podem ir para etapas recorrentes
       if (isRecurringStage && !isProjectRecurring) {
-        alert("Apenas projetos de serviços recorrentes podem ser movidos para esta etapa.");
+        setToast({ 
+          message: "Apenas projetos de serviços recorrentes podem ser movidos para esta etapa.", 
+          type: 'error' 
+        });
+        setTimeout(() => setToast(null), 5000);
         return;
       }
       
@@ -201,28 +225,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         }
       }
       
-      // Verificar se o projeto já está na etapa de destino
+      // Obter o ID base da etapa alvo para comparação
+      const targetStageBaseId = getStageBaseId(targetStage);
+      const projectStageBaseId = project.stageId ? project.stageId.split('-')[0] : null;
+      
+      // Verificar se o projeto já está na etapa de destino (usando ID base ou status)
       if (selectedFilter === 'all' && !isRecurringStage) {
-        // Em "Todos os Projetos" com etapa normal: verificar por stageId
-        if (project.stageId === targetStage.id) return;
+        // Em "Todos os Projetos" com etapa normal:
+        if (isProjectRecurring) {
+          // Projeto recorrente: verificar por stageId (se tiver) ou por status (se não tiver)
+          if (hasFixedStageId(project.stageId)) {
+            if (projectStageBaseId === targetStageBaseId) return;
+          } else {
+            // Projeto recorrente sem stageId: verificar por status
+            if (project.status === targetStage.status) return;
+          }
+        } else {
+          // Projeto normal: verificar por stageId base
+          if (projectStageBaseId === targetStageBaseId) return;
+        }
       } else if (isRecurringStage) {
-        // Para etapas recorrentes: verificar por status (projetos recorrentes sem stageId)
-        if (isProjectRecurring && !project.stageId && project.status === targetStage.status) return;
+        // Para etapas recorrentes: verificar por status (projetos recorrentes sem stageId fixo)
+        if (isProjectRecurring && !hasFixedStageId(project.stageId) && project.status === targetStage.status) return;
       } else if (isProjectRecurring && selectedFilter !== 'all') {
         // Para projetos recorrentes em serviço específico: verificar por status
         if (project.status === targetStage.status) return;
       } else {
-        // Para projetos normais: verificar por stageId
-        if (project.stageId === targetStage.id) return;
+        // Para projetos normais: verificar por stageId base
+        if (projectStageBaseId === targetStageBaseId) return;
       }
+      
+      // Definir progresso: 100% para Manutenção e Finalizado, senão usar o progresso da etapa
+      const progress = (targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado') 
+        ? 100 
+        : targetStage.progress;
       
       const updates: Partial<Project> = {
         status: targetStage.status,
-        progress: targetStage.progress
+        progress: progress
       };
-      
-      // Lógica de stageId:
-      const hasFixedStageId = project.stageId && ['onboarding', 'development', 'review', 'completed'].includes(project.stageId);
       
       if (selectedFilter === 'all') {
         // Em "Todos os Projetos":
@@ -232,25 +273,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             await removeProjectStageId(project.id);
           }
         } else {
-          // Movendo para etapa normal: sempre definir stageId (tanto para projetos normais quanto recorrentes)
-          updates.stageId = targetStage.id;
+          // Movendo para etapa normal: usar o ID base da etapa para consistência
+          updates.stageId = targetStageBaseId;
         }
       } else if (isSelectedCategoryRecurring) {
-        // Em serviço recorrente específico: 
-        // NÃO remover stageId se for de etapa fixa (projeto foi movido para etapa normal em "Todos os Projetos")
-        // Isso preserva a posição do projeto nas etapas normais
-        if (project.stageId && !hasFixedStageId) {
+        // Em serviço recorrente específico:
+        // SEMPRE remover stageId para que o projeto seja filtrado por status em "Todos os Projetos"
+        // Isso garante sincronização: movimentos na aba "Recorrência" refletem em "Todos os Projetos"
+        if (project.stageId) {
           await removeProjectStageId(project.id);
         }
       } else {
-        // Em serviço normal específico: sempre usar stageId
-        updates.stageId = targetStage.id;
+        // Em serviço normal específico: usar o ID base da etapa para consistência
+        updates.stageId = targetStageBaseId;
       }
       
       await updateProjectInFirebase(project.id, updates);
     } catch (error) {
       console.error("Error updating project status:", error);
-      alert("Erro ao mover projeto. Tente novamente.");
+      setToast({ 
+        message: "Erro ao mover projeto. Tente novamente.", 
+        type: 'error' 
+      });
+      setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -762,6 +807,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           // Migrar projetos para garantir integridade de stageId
           // IMPORTANTE: Não remover stageId de projetos recorrentes em "Todos os Projetos"
           // pois eles podem estar em etapas normais
+          
+          // IDs fixos conhecidos para etapas normais
+          const fixedStageIdsLocal = ['onboarding', 'development', 'review', 'completed'];
+          
+          // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
+          const hasFixedStageIdLocal = (projectStageId: string | undefined): boolean => {
+            if (!projectStageId) return false;
+            const projectIdBase = projectStageId.split('-')[0];
+            return fixedStageIdsLocal.includes(projectIdBase) || fixedStageIdsLocal.includes(projectStageId);
+          };
+          
+          // Função para obter o ID base de uma etapa
+          const getStageBaseIdLocal = (stage: Stage): string => {
+            const originalId = (stage as any).originalId;
+            if (originalId) return originalId;
+            const baseId = stage.id.split('-')[0];
+            return fixedStageIdsLocal.includes(baseId) ? baseId : stage.id;
+          };
+          
           const projectsForBoard = filteredProjects.map(p => {
             const isProjectRecurring = categories.find(cat => 
               cat.name === p.type && cat.isRecurring
@@ -771,9 +835,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // Para projetos recorrentes:
               // - Se tem stageId de etapa fixa (foi movido para etapa normal), NUNCA remover
               // - Se tem stageId de outra origem, pode remover quando em serviço recorrente específico
-              const hasFixedStageId = p.stageId && ['onboarding', 'development', 'review', 'completed'].includes(p.stageId);
-              
-              if (selectedFilter !== 'all' && isSelectedCategoryRecurring && p.stageId && !hasFixedStageId) {
+              if (selectedFilter !== 'all' && isSelectedCategoryRecurring && p.stageId && !hasFixedStageIdLocal(p.stageId)) {
                 // Remover stageId apenas se NÃO for de etapa fixa
                 removeProjectStageId(p.id).catch(err => {
                   console.error("Error removing project stageId:", err);
@@ -787,12 +849,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               if (!p.stageId) {
                 const matchingStage = stages.find(s => s.status === p.status);
                 if (matchingStage) {
+                  // Usar o ID base da etapa para consistência
+                  const stageBaseId = getStageBaseIdLocal(matchingStage);
                   // Atualizar no Firebase (sem await para não bloquear UI)
-                  updateProjectInFirebase(p.id, { stageId: matchingStage.id }).catch(err => {
+                  updateProjectInFirebase(p.id, { stageId: stageBaseId }).catch(err => {
                     console.error("Error migrating project stageId:", err);
                   });
                   // Retornar projeto com stageId atualizado
-                  return { ...p, stageId: matchingStage.id };
+                  return { ...p, stageId: stageBaseId };
                 }
               }
             }
@@ -854,6 +918,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   // Verificar se é uma etapa recorrente (Manutenção ou Finalizado)
                   const isRecurringStage = stage.title === 'Manutenção' || stage.title === 'Finalizado';
                   
+                  // IDs fixos conhecidos para etapas normais
+                  const fixedStageIds = ['onboarding', 'development', 'review', 'completed'];
+                  
+                  // Função auxiliar para verificar se o stageId do projeto corresponde a esta etapa
+                  // Considera: match direto, match por originalId, ou match parcial (ID base)
+                  const matchesStageId = (projectStageId: string | undefined, stageId: string, stageOriginalId?: string): boolean => {
+                    if (!projectStageId) return false;
+                    
+                    // Match direto
+                    if (projectStageId === stageId) return true;
+                    
+                    // Match por originalId (se a etapa tiver)
+                    if (stageOriginalId && projectStageId === stageOriginalId) return true;
+                    
+                    // Match por ID base (ex: 'onboarding' matches 'onboarding-workspace123')
+                    const stageIdBase = stageId.split('-')[0];
+                    if (projectStageId === stageIdBase) return true;
+                    
+                    // Match reverso (ex: 'onboarding-workspace123' matches 'onboarding')
+                    const projectIdBase = projectStageId.split('-')[0];
+                    if (projectIdBase === stageIdBase) return true;
+                    
+                    return false;
+                  };
+                  
+                  // Verificar se o projeto tem stageId de etapa fixa (considera variações de ID)
+                  const hasFixedStageId = (projectStageId: string | undefined): boolean => {
+                    if (!projectStageId) return false;
+                    const projectIdBase = projectStageId.split('-')[0];
+                    return fixedStageIds.includes(projectIdBase) || fixedStageIds.includes(projectStageId);
+                  };
+                  
                   const stageProjects = projectsForBoard.filter(p => {
                     // Verificar se o projeto é de um serviço recorrente
                     const isProjectRecurring = categories.find(cat => 
@@ -862,24 +958,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     
                     if (selectedFilter === 'all') {
                       // Quando "Todos os Projetos" está selecionado:
-                      // Usamos STATUS para filtrar porque as etapas fixas têm IDs diferentes das do Firebase
                       if (isRecurringStage) {
                         // Para etapas recorrentes (Manutenção/Finalizado): 
                         // Mostrar apenas projetos recorrentes que estão nesse status
                         // E que NÃO foram movidos para etapas normais (não têm stageId de etapa fixa)
-                        const hasFixedStageId = p.stageId && ['onboarding', 'development', 'review', 'completed'].includes(p.stageId);
-                        return isProjectRecurring && p.status === stage.status && !hasFixedStageId;
+                        return isProjectRecurring && p.status === stage.status && !hasFixedStageId(p.stageId);
                       } else {
                         // Para etapas normais:
-                        // 1. Projetos recorrentes que foram movidos para etapas normais (têm stageId de etapa fixa)
-                        // 2. Projetos normais (filtrar por status)
-                        const hasFixedStageId = p.stageId && ['onboarding', 'development', 'review', 'completed'].includes(p.stageId);
-                        
                         if (isProjectRecurring) {
-                          // Projeto recorrente: só mostrar se tiver stageId de etapa fixa que corresponde
-                          return hasFixedStageId && p.stageId === stage.id;
+                          // Projeto recorrente:
+                          // 1. Se tem stageId de etapa fixa → mostrar na etapa correspondente
+                          if (hasFixedStageId(p.stageId)) {
+                            return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
+                          }
+                          // 2. Se NÃO tem stageId (projeto recém-criado em Recorrência):
+                          //    Mostrar na etapa normal correspondente ao status
+                          //    EXCETO se o status for Completed (vai para Manutenção) ou Finished (vai para Finalizado)
+                          if (!p.stageId && p.status !== 'Completed' && p.status !== 'Finished') {
+                            return p.status === stage.status;
+                          }
+                          return false;
                         } else {
-                          // Projeto normal: filtrar por status (etapas do Firebase podem ter IDs diferentes)
+                          // Projeto normal: filtrar por status OU stageId correspondente
+                          // Prioriza stageId se existir, senão usa status
+                          if (p.stageId) {
+                            return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
+                          }
                           return p.status === stage.status;
                         }
                       }
@@ -887,8 +991,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       // Serviço recorrente selecionado: filtrar apenas por status
                       return p.status === stage.status;
                     } else {
-                      // Serviço normal selecionado: filtrar por stageId (obrigatório)
-                      return p.stageId === stage.id;
+                      // Serviço normal selecionado: filtrar por stageId (com match flexível)
+                      return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
                     }
                   });
                   return (
@@ -1314,6 +1418,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           onClose={() => setStageToEditTasks(null)}
         />
       )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${
+            toast.type === 'success' 
+              ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50' 
+              : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
+          }`}>
+            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${
+              toast.type === 'success' 
+                ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                : 'bg-amber-100 dark:bg-amber-900/30'
+            }`}>
+              <span className={`material-symbols-outlined text-xl ${
+                toast.type === 'success' 
+                  ? 'text-emerald-600 dark:text-emerald-400' 
+                  : 'text-amber-600 dark:text-amber-400'
+              }`}>
+                {toast.type === 'success' ? 'check_circle' : 'warning'}
+              </span>
+            </div>
+            <p className={`text-sm font-semibold flex-1 leading-relaxed ${
+              toast.type === 'success' 
+                ? 'text-emerald-900 dark:text-emerald-100' 
+                : 'text-amber-900 dark:text-amber-100'
+            }`}>
+              {toast.message}
+            </p>
+            <button 
+              onClick={() => setToast(null)}
+              className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Fechar"
+            >
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1449,8 +1592,8 @@ const StageColumn: React.FC<{
             <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">
               {count} {count === 1 ? 'Projeto' : 'Projetos'}
             </span>
-          </div>
-        </div>
+      </div>
+    </div>
         <div className="relative stage-menu-container flex items-center gap-1">
           <button 
             onClick={(e) => {
@@ -1487,7 +1630,7 @@ const StageColumn: React.FC<{
                 >
                   <span className="material-symbols-outlined text-[18px]">delete</span>
                   <span className="font-semibold">Excluir Etapa</span>
-                </button>
+        </button>
               )}
             </div>
           )}
@@ -1512,10 +1655,10 @@ const StageColumn: React.FC<{
               Nenhum projeto nesta etapa
             </p>
           </div>
-        )}
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 };
 
 const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean }> = ({ project, onClick, onDelete, isHighlighted }) => {
@@ -2941,26 +3084,35 @@ const DefineStageTasksModal: React.FC<{
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${
             toast.type === 'success' 
-              ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50' 
-              : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
+              ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50' 
+              : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
           }`}>
-            <span className={`material-symbols-outlined flex-shrink-0 ${
-              toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${
+              toast.type === 'success' 
+                ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                : 'bg-amber-100 dark:bg-amber-900/30'
             }`}>
-              {toast.type === 'success' ? 'check_circle' : 'error'}
-            </span>
-            <p className={`text-sm font-semibold flex-1 ${
+              <span className={`material-symbols-outlined text-xl ${
+                toast.type === 'success' 
+                  ? 'text-emerald-600 dark:text-emerald-400' 
+                  : 'text-amber-600 dark:text-amber-400'
+              }`}>
+                {toast.type === 'success' ? 'check_circle' : 'warning'}
+              </span>
+            </div>
+            <p className={`text-sm font-semibold flex-1 leading-relaxed ${
               toast.type === 'success' 
                 ? 'text-emerald-900 dark:text-emerald-100' 
-                : 'text-red-900 dark:text-red-100'
+                : 'text-amber-900 dark:text-amber-100'
             }`}>
               {toast.message}
             </p>
             <button 
               onClick={() => setToast(null)}
-              className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
+              className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Fechar"
             >
               <span className="material-symbols-outlined text-lg">close</span>
             </button>
