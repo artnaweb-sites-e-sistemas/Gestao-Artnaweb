@@ -24,8 +24,26 @@ import {
   deleteProject,
   subscribeToInvoices,
   addInvoice,
-  updateInvoice
+  updateInvoice,
+  removeProjectStageId
 } from '../firebase/services';
+
+// Etapas fixas para serviços normais (sob demanda)
+const fixedStages: Stage[] = [
+  { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
+  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
+  { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
+];
+
+// Etapas fixas para serviços recorrentes
+const fixedStagesRecurring: Stage[] = [
+  { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 75, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+];
 
 interface ProjectDetailsProps {
   project: Project;
@@ -169,6 +187,61 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const isProjectRecurring = () => {
     const projectCategory = categories.find(cat => cat.name === currentProject.type);
     return projectCategory?.isRecurring || false;
+  };
+
+  // Obter as etapas corretas baseado no tipo de serviço
+  const currentFixedStages = isProjectRecurring() ? fixedStagesRecurring : fixedStages;
+
+  // Obter a etapa atual do projeto
+  const getCurrentStage = (): Stage | undefined => {
+    // Primeiro, tentar encontrar pela stageId
+    if (currentProject.stageId) {
+      const stage = currentFixedStages.find(s => 
+        s.id === currentProject.stageId || 
+        currentProject.stageId?.startsWith(s.id.split('-')[0])
+      );
+      if (stage) return stage;
+    }
+    // Se não encontrar por stageId, usar o status
+    return currentFixedStages.find(s => s.status === currentProject.status);
+  };
+
+  // Mover o projeto para outra etapa
+  const moveProjectToStage = async (targetStage: Stage) => {
+    const currentStage = getCurrentStage();
+    if (currentStage?.id === targetStage.id) return;
+    
+    try {
+      const isRecurringStage = targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado';
+      
+      // Definir progresso: 100% para Manutenção e Finalizado, senão usar o progresso da etapa
+      const progress = isRecurringStage ? 100 : targetStage.progress;
+      
+      const updates: Partial<Project> = {
+        status: targetStage.status as Project['status'],
+        progress: progress
+      };
+
+      // Se for projeto recorrente movendo para etapas recorrentes, não usar stageId
+      if (isProjectRecurring() && isRecurringStage) {
+        // Remover stageId se existir
+        if (currentProject.stageId) {
+          await removeProjectStageId(currentProject.id);
+        }
+      } else {
+        // Para outras etapas, definir o stageId
+        updates.stageId = targetStage.id;
+      }
+
+      await updateProject(currentProject.id, updates);
+      
+      setToast({ message: `Projeto movido para "${targetStage.title}"`, type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error("Error moving project:", error);
+      setToast({ message: "Erro ao mover projeto", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   // Criar nova fatura recorrente (+30 dias)
@@ -1013,6 +1086,62 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   >
                     <span className="material-symbols-outlined text-[18px] mr-2">share</span> Compartilhar
                   </button>
+                </div>
+              </div>
+
+              {/* Pipeline de Etapas */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-lg text-primary">account_tree</span>
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Pipeline do Projeto</h3>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                    {isProjectRecurring() ? 'Recorrente' : 'Sob Demanda'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-1">
+                  {currentFixedStages.map((stage, index) => {
+                    const currentStage = getCurrentStage();
+                    const isCurrentStage = currentStage?.id === stage.id;
+                    const isPastStage = currentStage && currentFixedStages.findIndex(s => s.id === currentStage.id) > index;
+                    
+                    // Cores baseadas no estado
+                    const getStageColors = () => {
+                      if (isCurrentStage) {
+                        if (stage.title === 'Manutenção') return 'bg-emerald-500 text-white border-emerald-500 shadow-emerald-500/30';
+                        if (stage.title === 'Finalizado') return 'bg-rose-500 text-white border-rose-500 shadow-rose-500/30';
+                        if (stage.title === 'Concluído') return 'bg-emerald-500 text-white border-emerald-500 shadow-emerald-500/30';
+                        return 'bg-primary text-white border-primary shadow-primary/30';
+                      }
+                      if (isPastStage) {
+                        return 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700';
+                      }
+                      return 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-primary/50 hover:text-primary';
+                    };
+
+                    return (
+                      <React.Fragment key={stage.id}>
+                        <button
+                          onClick={() => moveProjectToStage(stage)}
+                          className={`flex-1 flex flex-col items-center justify-center py-3 px-2 rounded-lg border-2 transition-all cursor-pointer ${getStageColors()} ${isCurrentStage ? 'shadow-lg scale-105 z-10' : 'hover:scale-102'}`}
+                          title={`Mover para ${stage.title}`}
+                        >
+                          <span className={`material-symbols-outlined text-xl mb-1 ${isCurrentStage ? '' : isPastStage ? 'text-emerald-500' : ''}`}>
+                            {isPastStage ? 'check_circle' : isCurrentStage ? 'radio_button_checked' : 'radio_button_unchecked'}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-center leading-tight">
+                            {stage.title}
+                          </span>
+                        </button>
+                        
+                        {index < currentFixedStages.length - 1 && (
+                          <div className={`w-4 h-0.5 flex-shrink-0 ${isPastStage ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
               </div>
 

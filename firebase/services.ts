@@ -279,6 +279,7 @@ export const subscribeToCategories = (callback: (categories: Category[]) => void
             name: data.name,
             isRecurring: data.isRecurring || false,
             workspaceId: data.workspaceId,
+            order: data.order ?? 999,
             createdAt: data.createdAt
           };
         }
@@ -287,10 +288,24 @@ export const subscribeToCategories = (callback: (categories: Category[]) => void
           name: data.name,
           isRecurring: data.isRecurring || false,
           workspaceId: data.workspaceId,
+          order: data.order ?? 999, // Default para categorias antigas
           createdAt: data.createdAt
         };
       })
       .filter(Boolean) as Category[];
+    
+    // Ordenar por order (menor primeiro), depois por createdAt para estabilidade
+    categories.sort((a, b) => {
+      const orderA = a.order ?? 999;
+      const orderB = b.order ?? 999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      // Se order for igual, ordenar por data de criação
+      const dateA = a.createdAt?.toDate?.() || new Date(0);
+      const dateB = b.createdAt?.toDate?.() || new Date(0);
+      return dateA.getTime() - dateB.getTime();
+    });
     
     // Se não houver categorias e não houver workspaceId, retornar padrão
     if (categories.length === 0 && !workspaceId) {
@@ -322,9 +337,26 @@ export const addCategory = async (categoryName: string, workspaceId?: string | n
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
+    
+    // Calcular o próximo order baseado nas categorias existentes
+    let maxOrder = 0;
+    if (workspaceId) {
+      const q = query(
+        collection(db, CATEGORIES_COLLECTION),
+        where("workspaceId", "==", workspaceId)
+      );
+      const snapshot = await getDocs(q);
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const order = data.order ?? 0;
+        if (order > maxOrder) maxOrder = order;
+      });
+    }
+    
     const categoryData: any = { 
       name: categoryName,
       isRecurring: isRecurring,
+      order: maxOrder + 1,
       createdAt: new Date()
     };
     if (workspaceId) {
@@ -333,6 +365,36 @@ export const addCategory = async (categoryName: string, workspaceId?: string | n
     await addDoc(collection(db, CATEGORIES_COLLECTION), categoryData);
   } catch (error) {
     console.error("Error adding category:", error);
+    throw error;
+  }
+};
+
+export const updateCategoryOrder = async (categoryId: string, newOrder: number): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    await updateDoc(doc(db, CATEGORIES_COLLECTION, categoryId), {
+      order: newOrder
+    });
+  } catch (error) {
+    console.error("Error updating category order:", error);
+    throw error;
+  }
+};
+
+export const updateCategoriesOrder = async (categoryOrders: { id: string; order: number }[]): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    // Atualizar todas as categorias em paralelo
+    const updates = categoryOrders.map(({ id, order }) =>
+      updateDoc(doc(db, CATEGORIES_COLLECTION, id), { order })
+    );
+    await Promise.all(updates);
+  } catch (error) {
+    console.error("Error updating categories order:", error);
     throw error;
   }
 };

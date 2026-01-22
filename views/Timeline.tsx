@@ -161,6 +161,15 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   
   const days = generateDays();
   
+  // Função para verificar se uma data é hoje
+  const isToday = (date: Date): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return today.getTime() === compareDate.getTime();
+  };
+  
   // Calcular posição e duração de cada projeto
   const getProjectPosition = (project: Project) => {
     const startDate = calculateStartDate();
@@ -566,15 +575,45 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
           <div className="sticky top-0 z-10 flex bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-400">Projetos / Clientes</div>
               <div className="flex-1 flex bg-white dark:bg-slate-900">
-                {days.map((day, i) => (
-                  <div key={i} className="w-[100px] flex-shrink-0 text-center border-r border-slate-100 dark:border-slate-800/50 flex items-center justify-center">
-                    <span className="block text-xs font-bold py-4">
-                      {day.label.split(' ')[0]}
-                      <br />
-                      {day.label.split(' ')[1]}
-                    </span>
+                {days.map((day, i) => {
+                  const today = isToday(day.date);
+                  
+                  // Calcular posição da bolinha no topo baseado no horário atual
+                  const now = new Date();
+                  const minutesInDay = (now.getHours() * 60) + now.getMinutes();
+                  const positionX = (minutesInDay / 1440) * 100;
+
+                  return (
+                    <div 
+                      key={i} 
+                      className={`w-[100px] flex-shrink-0 text-center border-r flex items-center justify-center relative ${
+                        today 
+                          ? 'bg-slate-50/30 dark:bg-slate-800/10 border-r-slate-100 dark:border-r-slate-800/50' 
+                          : 'border-slate-100 dark:border-slate-800/50'
+                      }`}
+                    >
+                      {/* Bolinha única no topo */}
+                      {today && (
+                        <div 
+                          className="absolute -bottom-1 size-2 rounded-full bg-primary z-30 shadow-sm"
+                          style={{ left: `${positionX - 4}px` }}
+                        ></div>
+                      )}
+                      <div className="flex flex-col items-center justify-center py-2">
+                        <span className={`block text-[9px] font-bold leading-tight uppercase ${today ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
+                          {day.label.split(' ')[0]}
+                        </span>
+                        <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all ${
+                          today 
+                            ? 'bg-primary text-white shadow-sm shadow-primary/20' 
+                            : 'text-slate-900 dark:text-white'
+                        }`}>
+                          {day.label.split(' ')[1]}
+                        </span>
+                      </div>
                 </div>
-              ))}
+                  );
+                })}
                 {/* Preenchimento para ocupar o resto do espaço */}
                 <div className="flex-1 bg-white dark:bg-slate-900" />
             </div>
@@ -626,12 +665,34 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                     {/* Colunas - mesma estrutura flex do header */}
                     <div className="flex-1 flex relative bg-white dark:bg-slate-900">
                       {/* Grid de colunas de fundo */}
-                      {days.map((_, i) => (
-                        <div 
-                          key={i} 
-                          className="w-[100px] h-20 border-r border-slate-100 dark:border-slate-800/50 bg-white dark:bg-slate-900 flex-shrink-0"
-                        />
-                      ))}
+                      {days.map((day, i) => {
+                        const today = isToday(day.date);
+                        
+                        // Calcular posição da linha baseado no horário atual (0-100px)
+                        const now = new Date();
+                        const minutesInDay = (now.getHours() * 60) + now.getMinutes();
+                        const positionX = (minutesInDay / 1440) * 100;
+
+                        return (
+                          <div 
+                            key={i} 
+                            className={`w-[100px] h-20 border-r flex-shrink-0 relative ${
+                              today 
+                                ? 'bg-primary/[0.01] dark:bg-primary/[0.02] border-r-slate-100 dark:border-r-slate-800/50' 
+                                : 'border-slate-100 dark:border-slate-800/50'
+                            }`}
+                          >
+                            {/* Linha vertical indicadora do horário atual */}
+                            {today && (
+                              <div 
+                                className="absolute inset-y-0 w-px bg-primary/40 z-20"
+                                style={{ left: `${positionX}px` }}
+                              >
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                       {/* Preenchimento para ocupar o resto do espaço */}
                       <div className="flex-1 h-20 bg-white dark:bg-slate-900" />
                       

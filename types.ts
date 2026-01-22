@@ -124,6 +124,7 @@ export interface Category {
   name: string;
   isRecurring?: boolean;
   workspaceId?: string;
+  order?: number; // Ordem de exibição das categorias
   createdAt?: Date | any;
 }
 

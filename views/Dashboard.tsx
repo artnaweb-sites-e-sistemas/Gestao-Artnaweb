@@ -20,7 +20,8 @@ import {
   getUniqueClients,
   deleteProject,
   removeProjectStageId,
-  addInvoice
+  addInvoice,
+  updateCategoriesOrder
 } from '../firebase/services';
 
 interface DashboardProps {
@@ -149,6 +150,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const [showAddStage, setShowAddStage] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [stages, setStages] = useState<Stage[]>(recalculateStageProgress(fixedStages));
   const [loading, setLoading] = useState(true);
   const [draggedStage, setDraggedStage] = useState<Stage | null>(null);
@@ -641,69 +644,171 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             </button>
         </div>
         </div>
-        <div className="flex border-b border-slate-200 dark:border-slate-800 gap-8 items-center">
+        <div 
+          className="flex border-b border-slate-200 dark:border-slate-800 gap-2 items-center overflow-x-auto no-scrollbar"
+          onDragOver={(e) => e.preventDefault()}
+        >
           <button 
             onClick={() => {
               setSelectedFilter('all');
-              // Limpar destaque quando mudar filtro manualmente
-              if (highlightedProjectId) {
-                // Isso será limpo pelo App quando necessário
-              }
             }}
-            className={`border-b-2 pb-3 text-sm font-semibold transition-colors ${
+            className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
               selectedFilter === 'all' 
-                ? 'border-primary text-primary' 
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'text-primary' 
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            Todos os Projetos
+            <span className="material-symbols-outlined text-lg">grid_view</span>
+            <span>Todos os Projetos</span>
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
+              selectedFilter === 'all' ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+            }`}>
+              {projects.length}
+            </span>
+            {selectedFilter === 'all' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
+            )}
           </button>
+
           {categories.map((category, index) => {
             const filterKey = category.name.toLowerCase().replace(/\s+/g, '-');
+            const isActive = selectedFilter === filterKey;
+            const projectCount = projects.filter(p => p.type === category.name).length;
+            const isDragging = draggedCategoryId === category.id;
+            const isDragOver = dragOverIndex === index && draggedCategoryId !== category.id;
+            
             return (
-              <div key={category.id || index} className="flex items-center gap-1 group relative">
+              <div 
+                key={category.id || index} 
+                className={`flex items-center group relative whitespace-nowrap transition-all ${
+                  isDragging ? 'opacity-30 scale-95' : ''
+                }`}
+                draggable
+                onDragStart={(e) => {
+                  setDraggedCategoryId(category.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', category.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (draggedCategoryId && draggedCategoryId !== category.id) {
+                    setDragOverIndex(index);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  // Só limpar se realmente saiu do elemento (não apenas de um filho)
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    setDragOverIndex(null);
+                  }
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData('text/plain');
+                  
+                  if (draggedId && draggedId !== category.id) {
+                    const draggedIndex = categories.findIndex(c => c.id === draggedId);
+                    if (draggedIndex !== -1) {
+                      const newCategories = [...categories];
+                      const [removed] = newCategories.splice(draggedIndex, 1);
+                      newCategories.splice(index, 0, removed);
+                      
+                      // Atualizar ordem no Firebase
+                      const categoryOrders = newCategories.map((cat, idx) => ({
+                        id: cat.id,
+                        order: idx + 1
+                      }));
+                      
+                      try {
+                        await updateCategoriesOrder(categoryOrders);
+                      } catch (error) {
+                        console.error('Error updating category order:', error);
+                      }
+                    }
+                  }
+                  
+                  setDraggedCategoryId(null);
+                  setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedCategoryId(null);
+                  setDragOverIndex(null);
+                }}
+              >
+                {/* Indicador visual de drop */}
+                {isDragOver && (
+                  <div className="absolute -left-1 top-0 bottom-0 w-1 bg-primary rounded-full z-10 animate-pulse"></div>
+                )}
+                
                 <button 
                   onClick={() => setSelectedFilter(filterKey)}
-                  className={`border-b-2 pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-                    selectedFilter === filterKey 
-                      ? 'border-primary text-primary' 
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative cursor-grab active:cursor-grabbing ${
+                    isActive 
+                      ? 'text-primary' 
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
-                  <span>{category.name}</span>
-                  {category.isRecurring && (
-                    <span className="material-symbols-outlined text-xs text-primary" title="Serviço Recorrente">
-                      repeat
+                  <span className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity ${isDragging ? 'opacity-100' : ''}`} style={{ fontSize: '16px' }}>
+                    drag_indicator
+                  </span>
+                  {category.isRecurring ? (
+                    <span className={`material-symbols-outlined text-lg ${isActive ? 'text-primary' : 'text-amber-500'}`}>
+                      autorenew
+                    </span>
+                  ) : (
+                    <span className={`material-symbols-outlined text-lg ${isActive ? 'text-primary' : 'text-slate-400'}`}>
+                      inventory_2
                     </span>
                   )}
+                  <span>{category.name}</span>
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
+                    isActive ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {projectCount}
+                  </span>
+                  
+                  {isActive && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
+                  )}
                 </button>
+                
                 <button
                   onClick={() => setCategoryToDelete(category.name)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 pb-3"
+                  className="opacity-0 group-hover:opacity-100 transition-all size-6 flex items-center justify-center rounded-full hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-500 -ml-2 mr-2 mb-3"
                   title="Excluir serviço"
                 >
-                  <span className="material-symbols-outlined text-xs">delete</span>
+                  <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>
               </div>
             );
           })}
+
           {projects.some(p => p.type === 'Sem categoria') && (
             <button 
               onClick={() => setSelectedFilter('sem-categoria')}
-              className={`border-b-2 pb-3 text-sm font-semibold transition-colors ${
+              className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
                 selectedFilter === 'sem-categoria' 
-                  ? 'border-primary text-primary' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'text-primary' 
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Sem serviço
+              <span className="material-symbols-outlined text-lg">help_outline</span>
+              <span>Sem serviço</span>
+              {selectedFilter === 'sem-categoria' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
+              )}
             </button>
           )}
+          
           <button 
             onClick={() => setShowAddCategory(true)}
-            className="flex items-center gap-1 border-b-2 border-transparent pb-3 text-sm font-semibold text-slate-500 hover:text-primary transition-colors"
+            className="flex items-center gap-1.5 px-4 pb-3 text-sm font-bold text-primary hover:bg-primary/5 transition-all whitespace-nowrap"
           >
-            <span className="material-symbols-outlined text-lg">add</span>
+            <span className="material-symbols-outlined text-lg">add_circle</span>
             <span>Novo Serviço</span>
           </button>
         </div>
@@ -2416,15 +2521,47 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
         <div className="sticky top-0 z-10 flex bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-400">Projetos / Clientes</div>
           <div className="flex-1 flex">
-            {days.map((day, i) => (
-              <div key={i} className="w-[100px] p-4 text-center border-r border-slate-100 dark:border-slate-800/50">
-                <span className="block text-xs font-bold">
-                  {day.label.split(' ')[0]}
-                  <br />
-                  {day.label.split(' ')[1]}
-                </span>
-              </div>
-            ))}
+            {days.map((day, i) => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const isDayToday = day.date.getTime() === today.getTime();
+              
+              // Calcular posição da linha baseado no horário atual (0-100px)
+              const now = new Date();
+              const minutesInDay = (now.getHours() * 60) + now.getMinutes();
+              const positionX = (minutesInDay / 1440) * 100;
+
+              return (
+                <div 
+                  key={i} 
+                  className={`w-[100px] flex-shrink-0 text-center border-r flex items-center justify-center relative ${
+                    isDayToday 
+                      ? 'bg-slate-50/30 dark:bg-slate-800/10 border-r-slate-100 dark:border-r-slate-800/50' 
+                      : 'border-slate-100 dark:border-slate-800/50'
+                  }`}
+                >
+                  {/* Bolinha única no topo */}
+                  {isDayToday && (
+                    <div 
+                      className="absolute -bottom-1 size-2 rounded-full bg-primary z-30 shadow-sm"
+                      style={{ left: `${positionX - 4}px` }}
+                    ></div>
+                  )}
+                  <div className="flex flex-col items-center justify-center py-2">
+                    <span className={`block text-[9px] font-bold leading-tight uppercase ${isDayToday ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
+                      {day.label.split(' ')[0]}
+                    </span>
+                    <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all ${
+                      isDayToday 
+                        ? 'bg-primary text-white shadow-sm shadow-primary/20' 
+                        : 'text-slate-900 dark:text-white'
+                    }`}>
+                      {day.label.split(' ')[1]}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -2511,6 +2648,40 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                   </span>
                 </div>
                 <div className="flex-1 relative flex items-center h-20">
+                  {/* Grid de colunas de fundo */}
+                  <div className="absolute inset-0 flex">
+                    {days.map((day, i) => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const isDayToday = day.date.getTime() === today.getTime();
+                      
+                      // Calcular posição da linha baseado no horário atual (0-100px)
+                      const now = new Date();
+                      const minutesInDay = (now.getHours() * 60) + now.getMinutes();
+                      const positionX = (minutesInDay / 1440) * 100;
+
+                      return (
+                        <div 
+                          key={i} 
+                          className={`w-[100px] h-full border-r flex-shrink-0 relative ${
+                            isDayToday 
+                              ? 'bg-primary/[0.01] dark:bg-primary/[0.02] border-r-slate-100 dark:border-r-slate-800/50' 
+                              : 'border-slate-100 dark:border-slate-800/50'
+                          }`}
+                        >
+                          {/* Linha vertical indicadora do horário atual */}
+                          {isDayToday && (
+                            <div 
+                              className="absolute inset-y-0 w-px bg-primary/40 z-20"
+                              style={{ left: `${positionX}px` }}
+                            >
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
                   {/* Barra do projeto */}
                   <div 
                     className={`absolute h-8 ${statusColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
@@ -3193,50 +3364,77 @@ const AddCategoryModal: React.FC<{ onClose: () => void; onSave: (category: { nam
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome do Serviço</label>
-            <input
-              type="text"
-              value={categoryName}
-              onChange={(e) => setCategoryName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              placeholder="Ex: Marketing Digital"
-              required
-              autoFocus
-            />
-          </div>
-          <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors">
-            <label htmlFor="isRecurring" className="text-sm font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-              Serviço Recorrente
-            </label>
-            <button
-              type="button"
-              onClick={() => setIsRecurring(!isRecurring)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-                isRecurring ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                  isRecurring ? 'translate-x-6' : 'translate-x-1'
-                }`}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Nome do Serviço</label>
+            <div className="relative group">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors">
+                label
+              </span>
+              <input
+                type="text"
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all outline-none"
+                placeholder="Ex: Marketing Digital, Landing Pages..."
+                required
+                autoFocus
               />
-            </button>
+            </div>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+
+          <div 
+            onClick={() => setIsRecurring(!isRecurring)}
+            className={`flex flex-col gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
+              isRecurring 
+                ? 'bg-primary/5 border-primary shadow-sm shadow-primary/10' 
+                : 'bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`size-10 rounded-lg flex items-center justify-center transition-colors ${
+                  isRecurring ? 'bg-primary text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                }`}>
+                  <span className="material-symbols-outlined">autorenew</span>
+                </div>
+                <div>
+                  <h4 className={`text-sm font-bold ${isRecurring ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
+                    Serviço Recorrente
+                  </h4>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Cobranças mensais e gestão contínua
+                  </p>
+                </div>
+              </div>
+              <div className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isRecurring ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+              }`}>
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                    isRecurring ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
             <button 
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+              className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               Cancelar
             </button>
             <button 
               type="submit"
-              className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+              disabled={isSubmitting}
+              className={`px-8 py-2.5 text-sm font-black text-white bg-primary rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-95 ${
+                isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary/90'
+              }`}
             >
-              Adicionar
+              {isSubmitting ? 'Criando...' : 'Criar Serviço'}
             </button>
           </div>
         </form>
