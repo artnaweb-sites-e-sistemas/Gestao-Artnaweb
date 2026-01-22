@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc,
   addDoc, 
   updateDoc, 
   deleteDoc, 
@@ -21,7 +22,7 @@ import {
   StorageReference 
 } from "firebase/storage";
 import { db, storage } from "./config";
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category } from "../types";
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice } from "../types";
 
 // Habilitar persistência offline (opcional)
 try {
@@ -45,6 +46,7 @@ const STAGE_TASKS_COLLECTION = "stageTasks";
 const PROJECT_STAGE_TASKS_COLLECTION = "projectStageTasks";
 const PROJECT_FILES_COLLECTION = "projectFiles";
 const WORKSPACES_COLLECTION = "workspaces";
+const INVOICES_COLLECTION = "invoices";
 
 // Projects
 export const getProjects = async (): Promise<Project[]> => {
@@ -1288,6 +1290,167 @@ export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
     await deleteDoc(doc(db, WORKSPACES_COLLECTION, workspaceId));
   } catch (error) {
     console.error("Error deleting workspace:", error);
+    throw error;
+  }
+};
+
+// Invoices
+export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId: string) => {
+  if (!db) {
+    console.warn("Firebase não está inicializado");
+    return () => {};
+  }
+  
+  // Remover orderBy para evitar necessidade de índice composto - ordenar no cliente
+  const q = query(
+    collection(db, INVOICES_COLLECTION),
+    where("projectId", "==", projectId)
+  );
+  
+  return onSnapshot(q, (querySnapshot) => {
+    const invoices = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      date: doc.data().date?.toDate?.() || doc.data().date,
+      createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+      updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
+    })) as Invoice[];
+    
+    // Ordenar no cliente por data (mais recente primeiro)
+    invoices.sort((a, b) => {
+      const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+      const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    callback(invoices);
+  });
+};
+
+export const addInvoice = async (invoice: Omit<Invoice, "id">): Promise<string> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    
+    const invoiceData = {
+      ...invoice,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Remover campos undefined
+    Object.keys(invoiceData).forEach(key => {
+      if (invoiceData[key as keyof typeof invoiceData] === undefined) {
+        delete invoiceData[key as keyof typeof invoiceData];
+      }
+    });
+    
+    const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
+    
+    // Atualizar o budget do projeto (somar todos os valores das faturas)
+    const invoicesSnapshot = await getDocs(
+      query(collection(db, INVOICES_COLLECTION), where("projectId", "==", invoice.projectId))
+    );
+    
+    const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+      return sum + (doc.data().amount || 0);
+    }, 0);
+    
+    const projectRef = doc(db, PROJECTS_COLLECTION, invoice.projectId);
+    await updateDoc(projectRef, {
+      budget: totalAmount,
+      updatedAt: new Date()
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding invoice:", error);
+    throw error;
+  }
+};
+
+export const updateInvoice = async (invoiceId: string, updates: Partial<Invoice>): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    
+    const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
+    const updateData = {
+      ...updates,
+      updatedAt: new Date()
+    };
+    
+    // Remover campos undefined
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key as keyof typeof updateData] === undefined) {
+        delete updateData[key as keyof typeof updateData];
+      }
+    });
+    
+    await updateDoc(invoiceRef, updateData);
+    
+    // Buscar o projectId para atualizar o budget
+    const invoiceDoc = await getDoc(doc(db, INVOICES_COLLECTION, invoiceId));
+    if (invoiceDoc.exists()) {
+      const projectId = invoiceDoc.data().projectId;
+      
+      // Recalcular o budget total
+      const invoicesSnapshot = await getDocs(
+        query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
+      );
+      
+      const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+        return sum + (doc.data().amount || 0);
+      }, 0);
+      
+      const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+      await updateDoc(projectRef, {
+        budget: totalAmount,
+        updatedAt: new Date()
+      });
+    }
+  } catch (error) {
+    console.error("Error updating invoice:", error);
+    throw error;
+  }
+};
+
+export const deleteInvoice = async (invoiceId: string): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    
+    // Buscar o projectId antes de deletar
+    const invoiceDoc = await getDoc(doc(db, INVOICES_COLLECTION, invoiceId));
+    let projectId: string | null = null;
+    
+    if (invoiceDoc.exists()) {
+      projectId = invoiceDoc.data().projectId;
+    }
+    
+    await deleteDoc(doc(db, INVOICES_COLLECTION, invoiceId));
+    
+    // Recalcular o budget total
+    if (projectId) {
+      const invoicesSnapshot = await getDocs(
+        query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
+      );
+      
+      const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+        return sum + (doc.data().amount || 0);
+      }, 0);
+      
+      const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+      await updateDoc(projectRef, {
+        budget: totalAmount,
+        updatedAt: new Date()
+      });
+    }
+  } catch (error) {
+    console.error("Error deleting invoice:", error);
     throw error;
   }
 };

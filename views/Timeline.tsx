@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, Workspace, Category } from '../types';
 import { subscribeToProjects, subscribeToCategories } from '../firebase/services';
 
@@ -12,6 +12,9 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string[]>([]);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Carregar projetos do Firebase
   useEffect(() => {
@@ -37,65 +40,78 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     return () => unsubscribe();
   }, [currentWorkspace?.id]);
 
-  // Calcular a data inicial do cronograma (deadline mais antiga de projetos não concluídos)
+  // Calcular a data inicial do cronograma
   const calculateStartDate = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Filtrar apenas projetos não concluídos que tenham deadline
-    const activeProjects = projects.filter(p => 
-      p.status !== 'Completed' && p.status !== 'Finished' && p.deadline
-    );
+    let earliestDate: Date | null = null;
     
-    if (activeProjects.length === 0) {
-      return today;
-    }
-    
-    let earliestDeadline: Date | null = null;
-    
-    activeProjects.forEach(project => {
-      if (project.deadline) {
-        const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
-        deadline.setHours(0, 0, 0, 0);
-        
-        if (!earliestDeadline || deadline < earliestDeadline) {
-          earliestDeadline = deadline;
-        }
+    projects.forEach(project => {
+      // Verificar deadline
+      if (project.deadline && project.status !== 'Completed' && project.status !== 'Finished') {
+        const date = new Date(project.deadline);
+        date.setHours(0, 0, 0, 0);
+        if (!earliestDate || date < earliestDate) earliestDate = date;
+      }
+      
+      // Verificar data de manutenção
+      if (project.maintenanceDate) {
+        const date = new Date(project.maintenanceDate);
+        date.setHours(0, 0, 0, 0);
+        if (!earliestDate || date < earliestDate) earliestDate = date;
+      }
+      
+      // Verificar data de relatório
+      if (project.reportDate) {
+        const date = new Date(project.reportDate);
+        date.setHours(0, 0, 0, 0);
+        if (!earliestDate || date < earliestDate) earliestDate = date;
       }
     });
     
-    if (earliestDeadline && earliestDeadline < today) {
-      return earliestDeadline;
+    if (earliestDate && earliestDate < today) {
+      return earliestDate;
     }
     
     return today;
   };
   
-  // Calcular até quando mostrar o cronograma (3 dias após a deadline mais distante)
+  // Calcular até quando mostrar o cronograma
   const calculateEndDate = (startDate: Date) => {
-    let maxDeadline: Date | null = null;
+    let latestDate: Date | null = null;
     
     projects.forEach(project => {
+      // Verificar deadline
       if (project.deadline) {
-        const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
-        deadline.setHours(0, 0, 0, 0);
-        
-        if (!maxDeadline || deadline > maxDeadline) {
-          maxDeadline = deadline;
-        }
+        const date = new Date(project.deadline);
+        date.setHours(0, 0, 0, 0);
+        if (!latestDate || date > latestDate) latestDate = date;
+      }
+      
+      // Verificar data de manutenção
+      if (project.maintenanceDate) {
+        const date = new Date(project.maintenanceDate);
+        date.setHours(0, 0, 0, 0);
+        if (!latestDate || date > latestDate) latestDate = date;
+      }
+      
+      // Verificar data de relatório
+      if (project.reportDate) {
+        const date = new Date(project.reportDate);
+        date.setHours(0, 0, 0, 0);
+        if (!latestDate || date > latestDate) latestDate = date;
       }
     });
     
-    if (!maxDeadline) {
-      // Se não houver deadline, usar 3 dias a partir da data inicial
+    if (!latestDate) {
       const defaultEndDate = new Date(startDate);
-      defaultEndDate.setDate(startDate.getDate() + 3);
+      defaultEndDate.setDate(startDate.getDate() + 7);
       return defaultEndDate;
     }
     
-    // Adicionar 3 dias após a deadline mais distante
-    const endDate = new Date(maxDeadline);
-    endDate.setDate(maxDeadline.getDate() + 3);
+    const endDate = new Date(latestDate);
+    endDate.setDate(latestDate.getDate() + 3);
     
     return endDate;
   };
@@ -122,8 +138,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       index: 0
     });
     
-    // Depois mostrar a cada 2 dias
-    for (let i = 2; i < totalDays; i += 2) {
+    // Depois mostrar dia após dia
+    for (let i = 1; i < totalDays; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(startDate.getDate() + i);
       
@@ -171,40 +187,16 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     const actualStartDate = projectStartDate < firstDayDate ? firstDayDate : projectStartDate;
     
     const diffTimeStart = actualStartDate.getTime() - firstDayDate.getTime();
-    const diffDaysStart = Math.ceil(diffTimeStart / (1000 * 60 * 60 * 24));
+    const diffDaysStart = Math.floor(diffTimeStart / (1000 * 60 * 60 * 24));
     const startDay = Math.max(0, diffDaysStart);
     
-    let startColumn = 0;
-    for (let i = 0; i < days.length; i++) {
-      if (days[i].index >= startDay) {
-        startColumn = i;
-        break;
-      }
-      if (i === days.length - 1) {
-        startColumn = i;
-      }
-    }
+    let startColumn = startDay;
     
     const diffTimeEnd = endDate.getTime() - firstDayDate.getTime();
-    const diffDaysEnd = Math.ceil(diffTimeEnd / (1000 * 60 * 60 * 24));
+    const diffDaysEnd = Math.floor(diffTimeEnd / (1000 * 60 * 60 * 24));
     const endDay = Math.max(0, diffDaysEnd);
     
-    // Encontrar a coluna que contém ou está imediatamente antes do deadline
-    // A barra deve terminar na ou antes da deadline, nunca depois
-    let endColumn = startColumn; // Começar com a coluna inicial como mínimo
-    
-    // Procurar a coluna mais próxima que seja <= endDay
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (days[i].index <= endDay && i >= startColumn) {
-        endColumn = i;
-        break;
-      }
-    }
-    
-    // Se não encontrou nenhuma coluna <= endDay, usar a última coluna disponível
-    if (endColumn === startColumn && endDay > days[days.length - 1]?.index) {
-      endColumn = days.length - 1;
-    }
+    let endColumn = endDay;
     
     let durationColumns = endColumn - startColumn + 1;
     durationColumns = Math.max(1, durationColumns);
@@ -213,14 +205,6 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     const finalStartColumn = Math.min(startColumn, maxStartColumn);
     
     const maxDuration = days.length - finalStartColumn;
-    
-    if (endColumn >= days.length) {
-      const finalDuration = maxDuration;
-      return {
-        startColumn: finalStartColumn,
-        duration: finalDuration
-      };
-    }
     
     const finalDuration = Math.min(durationColumns, maxDuration);
     
@@ -354,13 +338,62 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     return 0;
   };
 
-  // Filtrar apenas projetos com deadline, não concluídos e por categoria se selecionada
-  const projectsWithDeadline = projects.filter(p => {
-    if (!p.deadline) return false;
-    if (p.status === 'Completed' || p.status === 'Finished') return false; // Excluir projetos finalizados
-    if (selectedCategoryFilter.length === 0) return true; // Nenhum filtro selecionado = mostra todos
+  // Filtrar apenas projetos com deadline, não concluídos (exceto recorrentes em manutenção) e por categoria
+  const projectsForTimeline = projects.filter(p => {
+    // Verificar se é um serviço recorrente
+    const isRecurringService = categories.find(cat => 
+      cat.name === p.type && cat.isRecurring
+    );
+    
+    // Critérios para aparecer no cronograma:
+    // 1. Tem deadline e não está concluído
+    const hasDeadlineAndActive = p.deadline && p.status !== 'Completed' && p.status !== 'Finished';
+    
+    // 2. É recorrente e tem data de manutenção ou relatório (mesmo se status for 'Completed')
+    const isRecurringWithDates = isRecurringService && (p.maintenanceDate || p.reportDate);
+    
+    if (!hasDeadlineAndActive && !isRecurringWithDates) return false;
+    
+    // Filtro de categoria
+    if (selectedCategoryFilter.length === 0) return true;
     return selectedCategoryFilter.some(filter => p.type === filter);
   });
+
+  // Função para obter a coluna de uma data específica
+  const getDateColumn = (dateString: string | undefined): number => {
+    if (!dateString || days.length === 0) return -1;
+    
+    const targetDate = new Date(dateString);
+    targetDate.setHours(0, 0, 0, 0);
+    
+    const firstDayDate = days[0].date;
+    firstDayDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = targetDate.getTime() - firstDayDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0 || diffDays >= days.length) return -1;
+    
+    return diffDays;
+  };
+
+  // Função auxiliar para determinar a cor da data baseada na proximidade
+  const getDateColorClass = (dateString: string | undefined): string => {
+    if (!dateString) return 'text-slate-400 bg-slate-100 border-slate-200';
+    
+    const date = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800/50';
+    if (diffDays <= 7) return 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50';
+    return 'text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700';
+  };
 
   // Função para toggle de categoria
   const toggleCategoryFilter = (category: string) => {
@@ -377,11 +410,11 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
   // Calcular estatísticas
   const stats = {
-    inDevelopment: projectsWithDeadline.filter(p => p.status === 'Active').length,
-    completed: projectsWithDeadline.filter(p => p.status === 'Completed' || p.status === 'Finished').length,
-    late: projectsWithDeadline.filter(p => {
+    inDevelopment: projectsForTimeline.filter(p => p.status === 'Active').length,
+    completed: projectsForTimeline.filter(p => p.status === 'Completed' || p.status === 'Finished').length,
+    late: projectsForTimeline.filter(p => {
       if (!p.deadline || p.status === 'Completed' || p.status === 'Finished') return false;
-      const deadline = p.deadline instanceof Date ? p.deadline : new Date(p.deadline);
+      const deadline = new Date(p.deadline);
       return deadline < new Date();
     }).length,
   };
@@ -469,12 +502,64 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-white dark:bg-slate-900">
-        {projectsWithDeadline.length === 0 ? (
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-x-auto overflow-y-auto bg-white dark:bg-slate-900"
+        style={{ 
+          scrollbarWidth: 'thin', 
+          WebkitOverflowScrolling: 'touch',
+          cursor: isPanning ? 'grabbing' : 'default'
+        }}
+        onMouseDown={(e: React.MouseEvent) => {
+          // Não ativa se for botão direito do mouse
+          if (e.button !== 0) return;
+          
+          const target = e.target as HTMLElement;
+          
+          // Não ativa se clicar em elementos interativos específicos
+          if (
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('select') ||
+            target.closest('textarea') ||
+            target.closest('a') ||
+            target.closest('[draggable="true"]') ||
+            target.closest('.group')
+          ) {
+            return;
+          }
+          
+          // Ativa pan
+          if (scrollContainerRef.current) {
+            setIsPanning(true);
+            setPanStart({
+              x: e.pageX,
+              y: e.pageY,
+              scrollLeft: scrollContainerRef.current.scrollLeft
+            });
+            e.preventDefault();
+          }
+        }}
+        onMouseMove={(e: React.MouseEvent) => {
+          if (!isPanning || !scrollContainerRef.current) return;
+          
+          e.preventDefault();
+          const x = e.pageX;
+          const walk = (x - panStart.x) * 1.5;
+          scrollContainerRef.current.scrollLeft = panStart.scrollLeft - walk;
+        }}
+        onMouseUp={() => {
+          setIsPanning(false);
+        }}
+        onMouseLeave={() => {
+          setIsPanning(false);
+        }}
+      >
+        {projectsForTimeline.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <span className="material-symbols-outlined text-6xl text-slate-300 mb-4">calendar_month</span>
-            <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400 mb-2">Nenhum projeto com prazo definido</h3>
-            <p className="text-sm text-slate-500">Adicione prazos aos seus projetos para visualizá-los no cronograma.</p>
+            <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400 mb-2">Nenhum projeto para exibir</h3>
+            <p className="text-sm text-slate-500">Projetos ativos com prazos ou serviços recorrentes em manutenção aparecerão aqui.</p>
           </div>
         ) : (
           <div className="min-w-full">
@@ -496,14 +581,18 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
           </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {projectsWithDeadline.map((project) => {
+              {projectsForTimeline.map((project) => {
                 const { startColumn, duration } = getProjectPosition(project);
                 const categoryColor = getCategoryColor(project.type);
-                const statusColor = getStatusColor(project.status, project.tagColor, project.type);
                 const isLate = project.deadline && new Date(project.deadline) < new Date() && project.status !== 'Completed' && project.status !== 'Finished';
                 const isReview = project.status === 'Review';
                 const temporalProgress = getTemporalProgress(project, startColumn, duration);
                 
+                const maintenanceCol = getDateColumn(project.maintenanceDate);
+                const reportCol = getDateColumn(project.reportDate);
+                const isRecurring = categories.find(cat => cat.name === project.type)?.isRecurring;
+                const showProjectBar = project.deadline && project.status !== 'Completed' && project.status !== 'Finished';
+
                 // Obter classes CSS baseadas na cor da categoria
                 const getCategoryBadgeClasses = (color: string) => {
                   const colorMap: { [key: string]: string } = {
@@ -524,11 +613,16 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                     className="flex hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
                   >
                     <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 flex flex-col gap-1 bg-white dark:bg-slate-900">
-                      <h4 className="text-sm font-bold">{project.name}</h4>
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${getCategoryBadgeClasses(categoryColor)}`}>
-                        {project.type}
-                      </span>
-                    </div>
+                      <h4 className="text-sm font-bold truncate">{project.name}</h4>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${getCategoryBadgeClasses(categoryColor)}`}>
+                          {project.type}
+                        </span>
+                        {isRecurring && project.status === 'Completed' && (
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-1.5 rounded border border-emerald-100">Gestão</span>
+                        )}
+                      </div>
+          </div>
                     {/* Colunas - mesma estrutura flex do header */}
                     <div className="flex-1 flex relative bg-white dark:bg-slate-900">
                       {/* Grid de colunas de fundo */}
@@ -540,25 +634,26 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       ))}
                       {/* Preenchimento para ocupar o resto do espaço */}
                       <div className="flex-1 h-20 bg-white dark:bg-slate-900" />
-                      {/* Barra do projeto posicionada sobre as colunas */}
-                      <div 
-                        className={`absolute top-1/2 -translate-y-1/2 h-8 ${isReview ? 'bg-amber-500/10 border-l-4 border-l-amber-500 ring-2 ring-amber-500/30' :
-                          categoryColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
-                          categoryColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
-                          categoryColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
-                          categoryColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
-                          categoryColor === 'purple' ? 'bg-purple-500/10 border-l-4 border-l-purple-500' :
-                          categoryColor === 'rose' ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                          isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                          'bg-blue-500/10 border-l-4 border-l-blue-500'
-                        } rounded-r-lg flex items-center px-3 gap-2 overflow-hidden`}
-                        style={{ 
-                          left: `${startColumn * 100}px`, 
-                          width: `${duration * 100}px`,
-                          minWidth: '100px'
-                        }}
-                      >
-                        {project.deadline && (
+                      
+                      {/* Barra do projeto (se aplicável) */}
+                      {showProjectBar && (
+                        <div 
+                          className={`absolute top-1/2 -translate-y-1/2 h-8 ${isReview ? 'bg-amber-500/10 border-l-4 border-l-amber-500 ring-2 ring-amber-500/30' :
+                            categoryColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
+                            categoryColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
+                            categoryColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
+                            categoryColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
+                            categoryColor === 'purple' ? 'bg-purple-500/10 border-l-4 border-l-purple-500' :
+                            categoryColor === 'rose' ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
+                            isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
+                            'bg-blue-500/10 border-l-4 border-l-blue-500'
+                          } rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
+                          style={{ 
+                            left: `${startColumn * 100}px`, 
+                            width: `${duration * 100}px`,
+                            minWidth: '100px'
+                          }}
+                        >
                           <div 
                             className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${
                               isReview ? 'bg-amber-500/40' :
@@ -574,29 +669,56 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             style={{ width: `${temporalProgress}%` }}
                             title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
                           />
-                        )}
-                        <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${
-                          isReview ? 'text-amber-700' :
-                          categoryColor === 'amber' ? 'text-amber-700' :
-                          categoryColor === 'blue' ? 'text-blue-700' :
-                          categoryColor === 'emerald' ? 'text-emerald-700' :
-                          categoryColor === 'indigo' ? 'text-indigo-700' :
-                          categoryColor === 'purple' ? 'text-purple-700' :
-                          categoryColor === 'rose' ? 'text-rose-700' :
-                          isLate ? 'text-rose-700' :
-                          'text-blue-700'
-                        }`}>
-                          {getStatusLabel(project)}
-                        </span>
-                        {isReview && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
-                        {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
-                      </div>
+                          <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${
+                            isReview ? 'text-amber-700' :
+                            categoryColor === 'amber' ? 'text-amber-700' :
+                            categoryColor === 'blue' ? 'text-blue-700' :
+                            categoryColor === 'emerald' ? 'text-emerald-700' :
+                            categoryColor === 'indigo' ? 'text-indigo-700' :
+                            categoryColor === 'purple' ? 'text-purple-700' :
+                            categoryColor === 'rose' ? 'text-rose-700' :
+                            isLate ? 'text-rose-700' :
+                            'text-blue-700'
+                          }`}>
+                            {getStatusLabel(project)}
+                          </span>
+                          {isReview && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
+                          {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
+                        </div>
+                      )}
+
+                      {/* Marcadores de Manutenção e Relatório (para Recorrência) */}
+                      {maintenanceCol !== -1 && (
+                        <div 
+                          className={`absolute top-1/2 -translate-y-1/2 -ml-5 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                          style={{ left: `${maintenanceCol * 100 + 50}px` }}
+                          title={`Manutenção: ${new Date(project.maintenanceDate!).toLocaleDateString('pt-BR')}`}
+                        >
+                          <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.maintenanceDate)}`}>
+                            <span className="material-symbols-outlined text-xl">build</span>
+                          </div>
+                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">Manutenção</span>
+                        </div>
+                      )}
+
+                      {reportCol !== -1 && (
+                        <div 
+                          className={`absolute top-1/2 -translate-y-1/2 -ml-5 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                          style={{ left: `${reportCol * 100 + 50}px` }}
+                          title={`Relatório: ${new Date(project.reportDate!).toLocaleDateString('pt-BR')}`}
+                        >
+                          <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.reportDate)}`}>
+                            <span className="material-symbols-outlined text-xl">description</span>
+                          </div>
+                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">Relatório</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
           </div>
-          </div>
+        </div>
         )}
       </div>
       
@@ -609,27 +731,21 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             </div>
           )}
           <div className="flex items-center gap-4">
-            {stats.inDevelopment > 0 && (
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-blue-500"></span>
-                <span>{stats.inDevelopment} em desenvolvimento</span>
-              </div>
-            )}
-            {stats.completed > 0 && (
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-500"></span>
-                <span>{stats.completed} concluídos</span>
-              </div>
-            )}
-            {stats.late > 0 && (
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-xs text-rose-500">priority_high</span>
-                <span className="text-rose-500">{stats.late} atrasados</span>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-blue-500"></span>
+              <span>Projetos ativos</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-xs">build</span>
+              <span>Manutenção</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-xs">description</span>
+              <span>Relatório</span>
+            </div>
           </div>
         </div>
-        <div>Exibindo {projectsWithDeadline.length} de {projects.length} projetos</div>
+        <div>Exibindo {projectsForTimeline.length} de {projects.length} projetos</div>
       </footer>
     </div>
   );

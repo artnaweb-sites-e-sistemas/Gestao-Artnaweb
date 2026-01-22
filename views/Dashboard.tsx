@@ -19,7 +19,8 @@ import {
   saveStageTasks,
   getUniqueClients,
   deleteProject,
-  removeProjectStageId
+  removeProjectStageId,
+  addInvoice
 } from '../firebase/services';
 
 interface DashboardProps {
@@ -1131,10 +1132,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 budget: projectData.budget || 0,
                 isPaid: projectData.isPaid || false,
               };
-              await addProjectToFirebase(newProject, currentWorkspace?.id);
+              const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id);
+              
+              // Criar faturas automaticamente se houver budget
+              if (projectData.budget && projectData.budget > 0 && projectId) {
+                const parcelas = (projectData as any).parcelas || 1;
+                const valorParcela = projectData.budget / parcelas;
+                const year = new Date().getFullYear();
+                
+                // Criar uma fatura para cada parcela
+                for (let i = 0; i < parcelas; i++) {
+                  const invoiceDate = new Date();
+                  invoiceDate.setMonth(invoiceDate.getMonth() + i); // Cada parcela vence um mês depois
+                  
+                  await addInvoice({
+                    projectId,
+                    workspaceId: currentWorkspace?.id,
+                    number: `INV-${year}-${String(i + 1).padStart(3, '0')}`,
+                    description: parcelas === 1 
+                      ? 'Pagamento à vista' 
+                      : `Parcela ${i + 1} de ${parcelas}`,
+                    amount: valorParcela,
+                    date: invoiceDate,
+                    status: 'Pending'
+                  });
+                }
+              }
             } catch (error) {
               console.error("Error adding project:", error);
-              alert("Erro ao adicionar projeto. Tente novamente.");
+              setToast({ message: "Erro ao adicionar projeto. Tente novamente.", type: 'error' });
+              setTimeout(() => setToast(null), 3000);
             }
           }}
         />
@@ -2446,6 +2473,7 @@ const AddProjectModal: React.FC<{
     status: stages.length > 0 ? stages[0].status : 'Lead' as Project['status'],
     budget: 0,
     isPaid: false,
+    parcelas: 1, // Número de parcelas (1x a 12x)
   });
   const [budgetDisplay, setBudgetDisplay] = useState<string>('0,00');
   const [availableClients, setAvailableClients] = useState<string[]>([]);
@@ -2735,33 +2763,35 @@ const AddProjectModal: React.FC<{
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Status de Pagamento</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, isPaid: true })}
-                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                    formData.isPaid
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Forma de Pagamento</label>
+              <div className="relative">
+                <select
+                  value={formData.parcelas}
+                  onChange={(e) => setFormData({ ...formData, parcelas: parseInt(e.target.value) })}
+                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
                 >
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                  Pago
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, isPaid: false })}
-                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                    !formData.isPaid
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-sm">pending</span>
-                  Pendente
-                </button>
+                  <option value={1}>À vista (1x)</option>
+                  <option value={2}>2x</option>
+                  <option value={3}>3x</option>
+                  <option value={4}>4x</option>
+                  <option value={5}>5x</option>
+                  <option value={6}>6x</option>
+                  <option value={7}>7x</option>
+                  <option value={8}>8x</option>
+                  <option value={9}>9x</option>
+                  <option value={10}>10x</option>
+                  <option value={11}>11x</option>
+                  <option value={12}>12x</option>
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <span className="material-symbols-outlined text-lg">expand_more</span>
+                </span>
               </div>
+              {formData.budget > 0 && formData.parcelas > 1 && (
+                <p className="text-xs text-slate-500 mt-1.5">
+                  {formData.parcelas}x de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.budget / formData.parcelas)}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">

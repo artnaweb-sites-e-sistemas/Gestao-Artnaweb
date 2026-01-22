@@ -123,3 +123,16 @@ export interface Category {
   workspaceId?: string;
   createdAt?: Date | any;
 }
+
+export interface Invoice {
+  id: string;
+  projectId: string;
+  number: string;
+  description: string;
+  amount: number;
+  date: Date | any;
+  status: 'Paid' | 'Pending' | 'Overdue';
+  workspaceId?: string;
+  createdAt?: Date | any;
+  updatedAt?: Date | any;
+}
