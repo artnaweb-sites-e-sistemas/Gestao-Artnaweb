@@ -32,7 +32,10 @@ export interface Project {
   reportDate?: string; // Data do Relatório (para projetos recorrentes em Manutenção)
   urgency?: boolean;
   budget?: number;
+  recurringAmount?: number; // Valor da mensalidade para projetos recorrentes
   isPaid?: boolean;
+  isImplementationPaid?: boolean; // Status de pagamento da implementação (projetos recorrentes)
+  isRecurringPaid?: boolean; // Status de pagamento da mensalidade (projetos recorrentes)
   workspaceId?: string;
   createdAt?: Date | any;
   updatedAt?: Date | any;

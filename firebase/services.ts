@@ -1348,12 +1348,18 @@ export const addInvoice = async (invoice: Omit<Invoice, "id">): Promise<string> 
     
     const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
     
-    // Atualizar o budget do projeto (somar todos os valores das faturas)
+    // Atualizar o budget do projeto (somar apenas faturas de implementação, não de mensalidade)
     const invoicesSnapshot = await getDocs(
       query(collection(db, INVOICES_COLLECTION), where("projectId", "==", invoice.projectId))
     );
     
+    // Somar apenas faturas que NÃO são de mensalidade (REC-*)
     const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+      const invoiceNumber = doc.data().number || '';
+      // Não somar faturas de mensalidade (REC-*) ao budget
+      if (invoiceNumber.startsWith('REC-')) {
+        return sum;
+      }
       return sum + (doc.data().amount || 0);
     }, 0);
     
@@ -1396,12 +1402,18 @@ export const updateInvoice = async (invoiceId: string, updates: Partial<Invoice>
     if (invoiceDoc.exists()) {
       const projectId = invoiceDoc.data().projectId;
       
-      // Recalcular o budget total
+      // Recalcular o budget total (excluindo faturas de mensalidade REC-*)
       const invoicesSnapshot = await getDocs(
         query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
       );
       
+      // Somar apenas faturas que NÃO são de mensalidade (REC-*)
       const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+        const invoiceNumber = doc.data().number || '';
+        // Não somar faturas de mensalidade (REC-*) ao budget
+        if (invoiceNumber.startsWith('REC-')) {
+          return sum;
+        }
         return sum + (doc.data().amount || 0);
       }, 0);
       
@@ -1433,13 +1445,19 @@ export const deleteInvoice = async (invoiceId: string): Promise<void> => {
     
     await deleteDoc(doc(db, INVOICES_COLLECTION, invoiceId));
     
-    // Recalcular o budget total
+    // Recalcular o budget total (excluindo faturas de mensalidade REC-*)
     if (projectId) {
       const invoicesSnapshot = await getDocs(
         query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
       );
       
+      // Somar apenas faturas que NÃO são de mensalidade (REC-*)
       const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
+        const invoiceNumber = doc.data().number || '';
+        // Não somar faturas de mensalidade (REC-*) ao budget
+        if (invoiceNumber.startsWith('REC-')) {
+          return sum;
+        }
         return sum + (doc.data().amount || 0);
       }, 0);
       

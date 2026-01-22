@@ -1134,8 +1134,64 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               };
               const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id);
               
-              // Criar faturas automaticamente se houver budget
-              if (projectData.budget && projectData.budget > 0 && projectId) {
+              // Verificar se é um projeto recorrente
+              const selectedCategory = categories.find(cat => cat.name === projectData.type);
+              const isRecurringProject = selectedCategory?.isRecurring || false;
+              
+              if (isRecurringProject && projectId) {
+                // Para projetos recorrentes: criar faturas separadas para implementação e mensalidade
+                const recurringAmount = (projectData as any).recurringAmount || 0;
+                const recurringFirstDate = (projectData as any).recurringFirstDate || '';
+                const implementationBudget = projectData.budget || 0; // Valor da implementação
+                const parcelas = (projectData as any).parcelas || 1; // Número de parcelas da implementação
+                const year = new Date().getFullYear();
+                
+                // 1. Criar faturas de implementação parceladas (se valor > 0)
+                if (implementationBudget > 0) {
+                  const valorParcela = implementationBudget / parcelas;
+                  
+                  for (let i = 0; i < parcelas; i++) {
+                    const invoiceDate = new Date();
+                    invoiceDate.setMonth(invoiceDate.getMonth() + i); // Cada parcela vence um mês depois
+                    
+                    await addInvoice({
+                      projectId,
+                      workspaceId: currentWorkspace?.id,
+                      number: `IMP-${year}-${String(i + 1).padStart(3, '0')}`,
+                      description: parcelas === 1 
+                        ? 'Implementação do Projeto' 
+                        : `Implementação - Parcela ${i + 1} de ${parcelas}`,
+                      amount: valorParcela,
+                      date: invoiceDate,
+                      status: 'Pending'
+                    });
+                  }
+                }
+                
+                // 2. Criar fatura de mensalidade (se valor e data definidos) - SEM numeração de parcelas
+                if (recurringAmount > 0 && recurringFirstDate) {
+                  const [rYear, rMonth, rDay] = recurringFirstDate.split('-').map(Number);
+                  const recurringDate = new Date(rYear, rMonth - 1, rDay);
+                  
+                  await addInvoice({
+                    projectId,
+                    workspaceId: currentWorkspace?.id,
+                    number: `REC-${rYear}-001`,
+                    description: 'Mensalidade', // Sem numeração de parcelas
+                    amount: recurringAmount,
+                    date: recurringDate,
+                    status: 'Pending'
+                  });
+                }
+                
+                // Restaurar o budget original (implementação) e salvar o recurringAmount (mensalidade)
+                // O addInvoice sobrescreve o budget com a soma das faturas, então precisamos restaurar
+                await updateProjectInFirebase(projectId, { 
+                  budget: implementationBudget, 
+                  recurringAmount: recurringAmount 
+                });
+              } else if (projectData.budget && projectData.budget > 0 && projectId) {
+                // Para projetos normais: criar faturas baseadas em parcelas
                 const parcelas = (projectData as any).parcelas || 1;
                 const valorParcela = projectData.budget / parcelas;
                 const year = new Date().getFullYear();
@@ -1808,30 +1864,96 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
     <h4 className="font-bold text-slate-900 dark:text-white text-base mb-1">{project.name}</h4>
     <p className="text-xs text-slate-500 mb-3 line-clamp-2">{project.description}</p>
     
-    {project.budget && project.budget > 0 && (
-      <div className="flex items-center justify-between mb-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-sm text-slate-400">payments</span>
-          <span className="text-sm font-bold text-slate-900 dark:text-white">
-            {new Intl.NumberFormat('pt-BR', { 
-              style: 'currency', 
-              currency: 'BRL' 
-            }).format(project.budget)}
-          </span>
-        </div>
-        {project.isPaid ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-            <span className="material-symbols-outlined text-xs">check_circle</span>
-            Pago
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-            <span className="material-symbols-outlined text-xs">pending</span>
-            Pendente
-          </span>
-        )}
-      </div>
-    )}
+    {/* Verificar se é projeto recorrente */}
+    {(() => {
+      const projectCategory = categories.find(cat => cat.name === project.type);
+      const isRecurring = projectCategory?.isRecurring || false;
+      
+      // Projeto recorrente: mostrar implementação e mensalidade separados
+      if (isRecurring && (project.budget > 0 || project.recurringAmount > 0)) {
+        return (
+          <div className="mb-3 space-y-2">
+            {/* Implementação */}
+            {project.budget > 0 && (
+              <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-indigo-400">build</span>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Implementação</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
+                    </span>
+                  </div>
+                </div>
+                {project.isImplementationPaid ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                    <span className="material-symbols-outlined text-xs">check_circle</span>
+                    Pago
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                    <span className="material-symbols-outlined text-xs">pending</span>
+                    Pendente
+                  </span>
+                )}
+              </div>
+            )}
+            {/* Mensalidade */}
+            {project.recurringAmount > 0 && (
+              <div className="flex items-center justify-between p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200/50 dark:border-amber-800/30">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-amber-500">autorenew</span>
+                  <div>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 block">Mensalidade</span>
+                    <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.recurringAmount)}
+                    </span>
+                  </div>
+                </div>
+                {project.isRecurringPaid ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                    <span className="material-symbols-outlined text-xs">check_circle</span>
+                    Pago
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                    <span className="material-symbols-outlined text-xs">pending</span>
+                    Pendente
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+      
+      // Projeto normal: mostrar apenas budget total
+      if (project.budget && project.budget > 0) {
+        return (
+          <div className="flex items-center justify-between mb-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-sm text-slate-400">payments</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-white">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
+              </span>
+            </div>
+            {project.isPaid ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                <span className="material-symbols-outlined text-xs">check_circle</span>
+                Pago
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                <span className="material-symbols-outlined text-xs">pending</span>
+                Pendente
+              </span>
+            )}
+          </div>
+        );
+      }
+      
+      return null;
+    })()}
     
     {project.progress > 0 && (
       <div className="space-y-1.5 mb-4">
@@ -2444,6 +2566,135 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
   );
 };
 
+// DatePicker para campos de recorrência
+const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+  const today = new Date();
+  
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+  const startingDayOfWeek = firstDayOfMonth.getDay();
+  const daysInMonth = lastDayOfMonth.getDate();
+  
+  const days: (Date | null)[] = [];
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
+  }
+  
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+  
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+  
+  const isToday = (date: Date | null) => {
+    if (!date) return false;
+    return date.getFullYear() === today.getFullYear() &&
+           date.getMonth() === today.getMonth() &&
+           date.getDate() === today.getDate();
+  };
+  
+  const isSelected = (date: Date | null) => {
+    if (!date || !selectedDate) return false;
+    return date.getFullYear() === selectedDate.getFullYear() &&
+           date.getMonth() === selectedDate.getMonth() &&
+           date.getDate() === selectedDate.getDate();
+  };
+  
+  const handleDateClick = (date: Date | null) => {
+    if (date) {
+      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      onSelectDate(localDate);
+    }
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[100]" onClick={onClose}>
+      <div 
+        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 w-72"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_left</span>
+          </button>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </h3>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {weekDays.map((day) => (
+            <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
+              {day}
+            </div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-1">
+          {days.map((date, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => handleDateClick(date)}
+              disabled={!date}
+              className={`
+                aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
+                ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-amber-500/10'}
+                ${date && isToday(date) ? 'ring-2 ring-amber-500' : ''}
+                ${date && isSelected(date) 
+                  ? 'bg-amber-500 text-white hover:bg-amber-500/90' 
+                  : date 
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-amber-600' 
+                    : 'text-transparent'
+                }
+              `}
+            >
+              {date ? date.getDate() : ''}
+            </button>
+          ))}
+        </div>
+        
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => onSelectDate(null)}
+            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            Limpar
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs font-semibold text-amber-600 hover:text-amber-500 transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AddProjectModal: React.FC<{ 
   categories: Category[]; 
   stages: Stage[]; 
@@ -2474,8 +2725,20 @@ const AddProjectModal: React.FC<{
     budget: 0,
     isPaid: false,
     parcelas: 1, // Número de parcelas (1x a 12x)
+    // Campos para projeto recorrente
+    recurringAmount: 0,
+    recurringFirstDate: '',
   });
   const [budgetDisplay, setBudgetDisplay] = useState<string>('0,00');
+  const [recurringAmountDisplay, setRecurringAmountDisplay] = useState<string>('0,00');
+  const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
+  const recurringDatePickerRef = useRef<HTMLDivElement>(null);
+  
+  // Verificar se o serviço selecionado é recorrente
+  const isSelectedTypeRecurring = () => {
+    const selectedCategory = categories.find(cat => cat.name === formData.type);
+    return selectedCategory?.isRecurring || false;
+  };
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [filteredClients, setFilteredClients] = useState<string[]>([]);
@@ -2588,6 +2851,26 @@ const AddProjectModal: React.FC<{
   const handleBudgetFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     e.target.select();
   };
+
+  const handleRecurringAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    const numbers = inputValue.replace(/\D/g, '');
+    const formatted = formatCurrency(numbers);
+    setRecurringAmountDisplay(formatted);
+    const numericValue = numbers ? parseFloat(numbers) / 100 : 0;
+    setFormData({ ...formData, recurringAmount: numericValue });
+  };
+
+  // Fechar date picker ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (recurringDatePickerRef.current && !recurringDatePickerRef.current.contains(event.target as Node)) {
+        setShowRecurringDatePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2749,7 +3032,7 @@ const AddProjectModal: React.FC<{
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Budget</label>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Implementação</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none font-medium">R$</span>
                 <input
@@ -2794,6 +3077,68 @@ const AddProjectModal: React.FC<{
               )}
             </div>
           </div>
+          
+          {/* Campos para projeto recorrente */}
+          {isSelectedTypeRecurring() && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 block">Valor Mensal</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none font-medium">R$</span>
+                    <input
+                      type="text"
+                      value={recurringAmountDisplay}
+                      onChange={handleRecurringAmountChange}
+                      onFocus={handleBudgetFocus}
+                      className="w-full pl-12 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 block">Data da 1ª Fatura</label>
+                  <div className="relative" ref={recurringDatePickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowRecurringDatePicker(!showRecurringDatePicker)}
+                      className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-left flex items-center justify-between hover:border-amber-500 transition-colors"
+                    >
+                      <span className={formData.recurringFirstDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                        {formData.recurringFirstDate 
+                          ? (() => {
+                              const [year, month, day] = formData.recurringFirstDate.split('-').map(Number);
+                              return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                            })()
+                          : 'Selecione uma data'
+                        }
+                      </span>
+                      <span className="material-symbols-outlined text-sm text-amber-500">calendar_today</span>
+                    </button>
+                    {showRecurringDatePicker && (
+                      <RecurringDatePicker
+                        selectedDate={formData.recurringFirstDate ? (() => {
+                          const [year, month, day] = formData.recurringFirstDate.split('-').map(Number);
+                          return new Date(year, month - 1, day);
+                        })() : null}
+                        onSelectDate={(date) => {
+                          if (date) {
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            setFormData({ ...formData, recurringFirstDate: `${year}-${month}-${day}` });
+                            setShowRecurringDatePicker(false);
+                          }
+                        }}
+                        onClose={() => setShowRecurringDatePicker(false)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
             <button 
               type="button"
