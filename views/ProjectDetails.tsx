@@ -56,6 +56,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAddCredential, setShowAddCredential] = useState(false);
   const [showEditCredential, setShowEditCredential] = useState<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showMaintenanceDatePicker, setShowMaintenanceDatePicker] = useState(false);
+  const [showReportDatePicker, setShowReportDatePicker] = useState(false);
   const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([
     { id: '1', title: 'WP Engine Hosting', sub: 'Servidor de Produção', icon: 'dns', url: 'wpengine.example.com', user: 'admin_user', password: '••••••••' },
     { id: '2', title: 'Shopify Storefront', sub: 'Acesso Admin API', icon: 'data_object', url: 'store.myshopify.com', user: 'api_key_...', password: '••••••••' }
@@ -66,18 +68,25 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     setCurrentProject(project);
   }, [project]);
 
-  // Fechar calendário ao clicar fora
+  // Fechar calendários ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (showDatePicker && !(event.target as Element).closest('.date-picker-container')) {
+      const target = event.target as Element;
+      if (showDatePicker && !target.closest('.date-picker-container')) {
         setShowDatePicker(false);
+      }
+      if (showMaintenanceDatePicker && !target.closest('.date-picker-container')) {
+        setShowMaintenanceDatePicker(false);
+      }
+      if (showReportDatePicker && !target.closest('.date-picker-container')) {
+        setShowReportDatePicker(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDatePicker]);
+  }, [showDatePicker, showMaintenanceDatePicker, showReportDatePicker]);
 
   useEffect(() => {
     if (!currentProject.id) {
@@ -394,71 +403,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 mt-2 w-full">
-                {currentProject.status !== 'Completed' && (
-                  <>
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Buscar a etapa "Concluído"
-                          const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
-                          await updateProject(currentProject.id, { 
-                            status: 'Completed' as Project['status'],
-                            stageId: completedStage?.id, // Atualizar stageId
-                            progress: completedStage ? completedStage.progress : 100
-                          });
-                          setToast({ message: "Projeto marcado como concluído", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        } catch (error) {
-                          console.error("Error marking project as completed:", error);
-                          setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }}
-                      className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                        currentProject.status === 'Completed'
-                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                      }`}
-                      title="Marcar como concluído"
-                    >
-                      <span className="material-symbols-outlined text-sm">check_circle</span>
-                      <span className="hidden sm:inline">Concluir</span>
-                    </button>
-                    {currentProject.status !== 'Completed' && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            // Buscar a etapa "Em Revisão"
-                            const reviewStage = stages.find(s => s.status === 'Review');
-                            await updateProject(currentProject.id, { 
-                              status: 'Review' as Project['status'],
-                              stageId: reviewStage?.id, // Atualizar stageId
-                              progress: reviewStage ? reviewStage.progress : 75,
-                              updatedAt: new Date()
-                            });
-                            setToast({ message: "Projeto enviado para revisão", type: 'success' });
-                            setTimeout(() => setToast(null), 3000);
-                          } catch (error) {
-                            console.error("Error marking project as review:", error);
-                            setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
-                            setTimeout(() => setToast(null), 3000);
-                          }
-                        }}
-                        className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                          currentProject.status === 'Review'
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                        }`}
-                        title="Enviar para revisão"
-                      >
-                        <span className="material-symbols-outlined text-sm">rate_review</span>
-                        <span className="hidden sm:inline">Revisar</span>
-                      </button>
-                    )}
-                  </>
-                )}
-                {currentProject.status === 'Completed' && (
+              
+              {/* Botão Pendente - aparece logo após Data de Entrega */}
+              {currentProject.status === 'Completed' && (
+                <div className="mt-2 w-full">
                   <button
                     onClick={async () => {
                       try {
@@ -486,8 +434,165 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <span className="material-symbols-outlined text-sm">pending</span>
                     <span className="hidden sm:inline">Pendente</span>
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+              
+              {/* Campos de data para projetos recorrentes em Manutenção */}
+              {(() => {
+                const isRecurringService = categories.find(cat => 
+                  cat.name === currentProject.type && cat.isRecurring
+                );
+                const isInMaintenance = isRecurringService && currentProject.status === 'Completed';
+                
+                if (!isInMaintenance) return null;
+                
+                return (
+                  <>
+                    <div className="py-2 mt-2">
+                      <p className="text-slate-500 text-xs mb-1">Data da Manutenção</p>
+                      <div className="flex items-center gap-2">
+                        <div className="relative date-picker-container flex-1">
+                          <button
+                            onClick={() => setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                          >
+                            <span className={currentProject.maintenanceDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                              {currentProject.maintenanceDate 
+                                ? new Date(currentProject.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                : 'Selecione uma data'
+                              }
+                            </span>
+                            <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                          </button>
+                          {showMaintenanceDatePicker && (
+                            <DatePicker
+                              selectedDate={currentProject.maintenanceDate ? new Date(currentProject.maintenanceDate) : null}
+                              onSelectDate={async (date) => {
+                                const newDate = date ? date.toISOString() : null;
+                                try {
+                                  await updateProject(currentProject.id, { maintenanceDate: newDate });
+                                  setToast({ message: "Data da Manutenção atualizada", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                  setShowMaintenanceDatePicker(false);
+                                } catch (error) {
+                                  console.error("Error updating maintenance date:", error);
+                                  setToast({ message: "Erro ao atualizar data da manutenção", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                }
+                              }}
+                              onClose={() => setShowMaintenanceDatePicker(false)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="py-2">
+                      <p className="text-slate-500 text-xs mb-1">Data do Relatório</p>
+                      <div className="flex items-center gap-2">
+                        <div className="relative date-picker-container flex-1">
+                          <button
+                            onClick={() => setShowReportDatePicker(!showReportDatePicker)}
+                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                          >
+                            <span className={currentProject.reportDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                              {currentProject.reportDate 
+                                ? new Date(currentProject.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                : 'Selecione uma data'
+                              }
+                            </span>
+                            <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                          </button>
+                          {showReportDatePicker && (
+                            <DatePicker
+                              selectedDate={currentProject.reportDate ? new Date(currentProject.reportDate) : null}
+                              onSelectDate={async (date) => {
+                                const newDate = date ? date.toISOString() : null;
+                                try {
+                                  await updateProject(currentProject.id, { reportDate: newDate });
+                                  setToast({ message: "Data do Relatório atualizada", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                  setShowReportDatePicker(false);
+                                } catch (error) {
+                                  console.error("Error updating report date:", error);
+                                  setToast({ message: "Erro ao atualizar data do relatório", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                }
+                              }}
+                              onClose={() => setShowReportDatePicker(false)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+              
+              {/* Botões Concluir e Revisar */}
+              {currentProject.status !== 'Completed' && (
+                <div className="flex items-center gap-2 mt-2 w-full">
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Buscar a etapa "Concluído"
+                        const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
+                        await updateProject(currentProject.id, { 
+                          status: 'Completed' as Project['status'],
+                          stageId: completedStage?.id, // Atualizar stageId
+                          progress: completedStage ? completedStage.progress : 100
+                        });
+                        setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } catch (error) {
+                        console.error("Error marking project as completed:", error);
+                        setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                    }}
+                    className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                      currentProject.status === 'Completed'
+                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
+                    }`}
+                    title="Marcar como concluído"
+                  >
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    <span className="hidden sm:inline">Concluir</span>
+                  </button>
+                  {currentProject.status !== 'Completed' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Buscar a etapa "Em Revisão"
+                          const reviewStage = stages.find(s => s.status === 'Review');
+                          await updateProject(currentProject.id, { 
+                            status: 'Review' as Project['status'],
+                            stageId: reviewStage?.id, // Atualizar stageId
+                            progress: reviewStage ? reviewStage.progress : 75,
+                            updatedAt: new Date()
+                          });
+                          setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error marking project as review:", error);
+                          setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }}
+                      className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
+                        currentProject.status === 'Review'
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
+                      }`}
+                      title="Enviar para revisão"
+                    >
+                      <span className="material-symbols-outlined text-sm">rate_review</span>
+                      <span className="hidden sm:inline">Revisar</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             </div>
           </div>

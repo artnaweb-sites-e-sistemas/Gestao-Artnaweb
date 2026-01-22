@@ -28,6 +28,8 @@ export interface Project {
   tagColor: string;
   avatar: string;
   deadline?: string;
+  maintenanceDate?: string; // Data da Manutenção (para projetos recorrentes em Manutenção)
+  reportDate?: string; // Data do Relatório (para projetos recorrentes em Manutenção)
   urgency?: boolean;
   budget?: number;
   isPaid?: boolean;

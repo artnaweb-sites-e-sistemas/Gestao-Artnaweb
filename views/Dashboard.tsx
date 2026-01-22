@@ -1017,6 +1017,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       onEditTasks={(stage) => setStageToEditTasks(stage)}
                       onMenuToggle={(stageId) => setStageMenuOpen(stageMenuOpen === stageId ? null : stageId)}
                       menuOpen={stageMenuOpen === stage.id}
+                      categories={categories}
                       onStageDrop={async (targetStage) => {
                         if (draggedStage && draggedStage.id !== targetStage.id) {
                           // Encontrar índices das etapas
@@ -1480,7 +1481,8 @@ const StageColumn: React.FC<{
   onEditTasks?: (stage: Stage) => void;
   onMenuToggle?: (stageId: string) => void;
   menuOpen?: boolean;
-}> = ({ stage, index, count, projects, allProjects, isActive, selectedFilter, highlightedProjectId, onProjectClick, onDelete, onDrop, onStageDragStart, onStageDragEnd, onStageDrop, onDeleteStage, onEditTasks, onMenuToggle, menuOpen }) => {
+  categories?: Category[];
+}> = ({ stage, index, count, projects, allProjects, isActive, selectedFilter, highlightedProjectId, onProjectClick, onDelete, onDrop, onStageDragStart, onStageDragEnd, onStageDrop, onDeleteStage, onEditTasks, onMenuToggle, menuOpen, categories = [] }) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isStageDragging, setIsStageDragging] = useState(false);
 
@@ -1646,6 +1648,7 @@ const StageColumn: React.FC<{
               onClick={() => onProjectClick?.(project)}
               onDelete={onDelete}
               isHighlighted={highlightedProjectId === project.id}
+              categories={categories}
             />
           ))
         ) : (
@@ -1661,10 +1664,35 @@ const StageColumn: React.FC<{
 );
 };
 
-const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean }> = ({ project, onClick, onDelete, isHighlighted }) => {
+const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean; categories?: Category[] }> = ({ project, onClick, onDelete, isHighlighted, categories = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
+  
+  // Função auxiliar para determinar a cor da data baseada na proximidade
+  const getDateColor = (dateString: string | undefined): string => {
+    if (!dateString) return 'text-slate-500 dark:text-slate-400';
+    
+    const date = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Vermelho: data passou
+    if (diffDays < 0) {
+      return 'text-rose-600 dark:text-rose-400';
+    }
+    // Laranja: data próxima (até 7 dias)
+    if (diffDays <= 7) {
+      return 'text-amber-600 dark:text-amber-400';
+    }
+    // Cinza: data longe
+    return 'text-slate-500 dark:text-slate-400';
+  };
 
   const handleDragStart = (e: React.DragEvent) => {
     setIsDragging(true);
@@ -1826,6 +1854,37 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
         <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">Definir data de entrega</span>
       </div>
     )}
+    
+    {/* Datas de Manutenção e Relatório para projetos recorrentes em Manutenção */}
+    {(() => {
+      const isRecurringService = categories.find(cat => 
+        cat.name === project.type && cat.isRecurring
+      );
+      const isInMaintenance = isRecurringService && project.status === 'Completed';
+      
+      if (!isInMaintenance || (!project.maintenanceDate && !project.reportDate)) return null;
+      
+      return (
+        <div className="space-y-2 mb-3">
+          {project.maintenanceDate && (
+            <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
+              <span className="material-symbols-outlined text-sm">build</span>
+              <span>
+                Manutenção: {new Date(project.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </span>
+            </div>
+          )}
+          {project.reportDate && (
+            <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
+              <span className="material-symbols-outlined text-sm">description</span>
+              <span>
+                Relatório: {new Date(project.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    })()}
         </div>
   );
 };
