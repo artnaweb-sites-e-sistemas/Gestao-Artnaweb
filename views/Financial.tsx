@@ -7,9 +7,10 @@ import { subscribeToInvoices, subscribeToProjects, updateInvoice } from '../fire
 interface FinancialProps {
   currentWorkspace?: Workspace | null;
   onCreateInvoice?: () => void;
+  onProjectClick?: (project: Project) => void;
 }
 
-export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreateInvoice }) => {
+export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreateInvoice, onProjectClick }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -514,7 +515,15 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   const invoiceType = getInvoiceType(invoice.number);
                   return (
                     <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                      <td className="px-6 py-4">
+                      <td 
+                        className="px-6 py-4 cursor-pointer"
+                        onClick={() => {
+                          const project = projects.find(p => p.id === invoice.projectId);
+                          if (project && onProjectClick) {
+                            onProjectClick(project);
+                          }
+                        }}
+                      >
                         <div>
                           <p className="text-sm font-bold">{getProjectName(invoice.projectId)}</p>
                           <p className="text-xs text-slate-500">{getProjectClient(invoice.projectId)}</p>

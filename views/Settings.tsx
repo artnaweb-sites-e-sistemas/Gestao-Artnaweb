@@ -5,9 +5,10 @@ import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCa
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
   onWorkspaceUpdate?: (workspace: Workspace) => void;
+  userId?: string | null;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate }) => {
+export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId }) => {
   const [activeSection, setActiveSection] = useState<'general' | 'services' | 'appearance' | 'danger'>('general');
   const [workspaceName, setWorkspaceName] = useState(currentWorkspace?.name || '');
   const [workspaceDescription, setWorkspaceDescription] = useState(currentWorkspace?.description || '');
@@ -112,7 +113,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     
     setUploadingAvatar(true);
     try {
-      const avatarUrl = await uploadWorkspaceAvatar(currentWorkspace.id, file);
+      const avatarUrl = await uploadWorkspaceAvatar(currentWorkspace.id, file, userId);
       await updateWorkspace(currentWorkspace.id, { avatar: avatarUrl });
       
       if (onWorkspaceUpdate) {

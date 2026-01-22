@@ -19,7 +19,8 @@ export interface Project {
   name: string;
   client: string;
   description: string;
-  type: string;
+  type: string; // @deprecated - usar types[] para novos projetos
+  types?: string[]; // Array de serviços associados ao projeto
   status: 'Lead' | 'Active' | 'Completed' | 'Review' | 'Finished';
   stageId?: string; // ID da etapa para filtragem correta
   progress: number;
@@ -39,6 +40,29 @@ export interface Project {
   createdAt?: Date | any;
   updatedAt?: Date | any;
 }
+
+// Helper para obter os tipos de um projeto (compatibilidade com projetos antigos)
+export const getProjectTypes = (project: Project): string[] => {
+  if (project.types && project.types.length > 0) {
+    return project.types;
+  }
+  return project.type ? [project.type] : [];
+};
+
+// Helper para verificar se um projeto pertence a uma categoria
+export const projectHasType = (project: Project, typeName: string): boolean => {
+  const types = getProjectTypes(project);
+  return types.includes(typeName);
+};
+
+// Helper para verificar se algum tipo do projeto é recorrente
+export const projectHasRecurringType = (project: Project, categories: Category[]): boolean => {
+  const types = getProjectTypes(project);
+  return types.some(typeName => {
+    const category = categories.find(cat => cat.name === typeName);
+    return category?.isRecurring || false;
+  });
+};
 
 export interface Transaction {
   id: string;
@@ -117,6 +141,7 @@ export interface Workspace {
   avatar?: string; // Foto do workspace
   description?: string; // Descrição do workspace
   color?: string; // Cor tema do workspace
+  userId?: string; // ID do usuário proprietário
   createdAt: Date | any;
   updatedAt?: Date | any;
 }

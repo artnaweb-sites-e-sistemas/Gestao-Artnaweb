@@ -1,0 +1,78 @@
+// ============================================
+// REGRAS DE SEGURANÇA DO FIREBASE STORAGE
+// ============================================
+// 
+// Cole estas regras no Firebase Console:
+// Storage > Rules
+//
+// ============================================
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Regra para arquivos de usuários autenticados
+    // Permite acesso apenas aos próprios arquivos
+    match /users/{userId}/{allPaths=**} {
+      // Permitir leitura e escrita apenas se o usuário estiver autenticado
+      // e o userId do caminho corresponder ao usuário logado
+      allow read, write: if request.auth != null 
+                        && request.auth.uid == userId;
+    }
+    
+    // Regra para projetos (compatibilidade com dados antigos)
+    // Permite acesso apenas se o projeto pertencer ao usuário
+    match /projects/{projectId}/{allPaths=**} {
+      // Permitir leitura e escrita apenas se o usuário estiver autenticado
+      // Nota: Esta regra permite acesso, mas você deve garantir que o projeto
+      // no Firestore tenha o userId correto
+      allow read, write: if request.auth != null;
+    }
+    
+    // Regra para workspaces (compatibilidade com dados antigos)
+    match /workspaces/{workspaceId}/{allPaths=**} {
+      // Permitir leitura e escrita apenas se o usuário estiver autenticado
+      // Nota: Esta regra permite acesso, mas você deve garantir que o workspace
+      // no Firestore tenha o userId correto
+      allow read, write: if request.auth != null;
+    }
+    
+    // Negar acesso a qualquer outro caminho
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ============================================
+// EXPLICAÇÃO DAS REGRAS:
+// ============================================
+//
+// 1. /users/{userId}/** - Arquivos isolados por usuário
+//    - Apenas o próprio usuário pode acessar seus arquivos
+//    - request.auth.uid == userId garante isolamento total
+//
+// 2. /projects/{projectId}/** - Arquivos de projetos (legado)
+//    - Permite acesso a usuários autenticados
+//    - O isolamento real deve ser feito no código verificando
+//      se o projeto pertence ao usuário no Firestore
+//
+// 3. /workspaces/{workspaceId}/** - Avatares de workspace (legado)
+//    - Permite acesso a usuários autenticados
+//    - O isolamento real deve ser feito no código verificando
+//      se o workspace pertence ao usuário no Firestore
+//
+// ============================================
+// COMO APLICAR:
+// ============================================
+//
+// 1. Acesse: https://console.firebase.google.com/
+// 2. Selecione seu projeto: gestao-artnaweb
+// 3. Vá em: Storage > Rules
+// 4. Cole as regras acima
+// 5. Clique em "Publicar"
+//
+// ============================================
+
+

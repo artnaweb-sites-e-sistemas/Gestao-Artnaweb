@@ -145,8 +145,13 @@ const App: React.FC = () => {
         highlightedProjectId={dashboardHighlightedProjectId}
         openAddProjectModal={openAddProjectModal}
         onAddProjectModalClose={() => setOpenAddProjectModal(false)}
+        userId={user?.uid}
       />;
-      case 'Financial': return <Financial currentWorkspace={currentWorkspace} onCreateInvoice={() => navigateToView('CreateInvoice')} />;
+      case 'Financial': return <Financial 
+        currentWorkspace={currentWorkspace} 
+        onCreateInvoice={() => navigateToView('CreateInvoice')}
+        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
+      />;
       case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'Settings': return <Settings 
         currentWorkspace={currentWorkspace}
@@ -156,6 +161,7 @@ const App: React.FC = () => {
             setCurrentWorkspace(updatedWorkspace);
           }
         }}
+        userId={user?.uid}
       />;
       case 'Clients': return <ClientProfile 
         currentWorkspace={currentWorkspace}
@@ -221,6 +227,7 @@ const App: React.FC = () => {
         workspaces={workspaces}
         onWorkspaceChange={handleWorkspaceChange}
         onWorkspacesChange={handleWorkspacesChange}
+        userId={user?.uid}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">

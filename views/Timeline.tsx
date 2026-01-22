@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Workspace, Category } from '../types';
-import { subscribeToProjects, subscribeToCategories } from '../firebase/services';
+import { Project, Workspace, Category, Stage } from '../types';
+import { subscribeToProjects, subscribeToCategories, subscribeToStages } from '../firebase/services';
 
 interface TimelineProps {
   currentWorkspace: Workspace | null;
@@ -11,10 +11,13 @@ interface TimelineProps {
 export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectClick }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string[]>([]);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasMovedRef = useRef(false); // Rastrear se houve movimento significativo
+  const clickPreventedRef = useRef(false); // Prevenir clique se houve arrasto
 
   // Carregar projetos do Firebase
   useEffect(() => {
@@ -35,6 +38,19 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
     const unsubscribe = subscribeToCategories((fetchedCategories) => {
       setCategories(fetchedCategories);
+    }, currentWorkspace.id);
+
+    return () => unsubscribe();
+  }, [currentWorkspace?.id]);
+
+  // Carregar etapas do Firebase
+  useEffect(() => {
+    if (!currentWorkspace?.id) return;
+
+    const unsubscribe = subscribeToStages((fetchedStages) => {
+      // Filtrar etapas do workspace atual
+      const workspaceStages = fetchedStages.filter(s => (s as any).workspaceId === currentWorkspace.id);
+      setStages(workspaceStages);
     }, currentWorkspace.id);
 
     return () => unsubscribe();
@@ -260,11 +276,28 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     return 'blue';
   };
 
-  // Obter label do status
+  // Obter label do status - usar título da etapa se disponível
   const getStatusLabel = (project: Project) => {
+    // Buscar a etapa correspondente ao status do projeto
+    const currentStage = stages.find(stage => stage.status === project.status);
+    
+    if (currentStage) {
+      // Se for serviço recorrente e status Completed, mostrar "Manutenção"
+      const pTypes = project.types || (project.type ? [project.type] : []);
+      const isRecurringService = pTypes.some(typeName => 
+        categories.find(cat => cat.name === typeName && cat.isRecurring)
+      );
+      if (isRecurringService && project.status === 'Completed') {
+        return 'Manutenção';
+      }
+      // Retornar o título da etapa
+      return currentStage.title;
+    }
+    
+    // Fallback para labels padrão se não encontrar etapa
     const progress = project.progress || 0;
     if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
-    if (project.status === 'Lead') return 'Proposta Enviada';
+    if (project.status === 'Lead') return 'On-boarding';
     if (project.status === 'Completed') return 'Concluído';
     if (project.status === 'Finished') return 'Finalizado';
     return `Em Revisão (${progress}%)`;
@@ -366,6 +399,29 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     // Filtro de categoria
     if (selectedCategoryFilter.length === 0) return true;
     return selectedCategoryFilter.some(filter => p.type === filter);
+  }).sort((a, b) => {
+    // Ordenar por data de vencimento (mais próximos primeiro)
+    // Para projetos recorrentes, usar data de manutenção ou relatório
+    const getSortDate = (project: Project): number => {
+      // Prioridade: deadline > maintenanceDate > reportDate
+      if (project.deadline) {
+        return new Date(project.deadline).getTime();
+      }
+      if (project.maintenanceDate) {
+        return new Date(project.maintenanceDate).getTime();
+      }
+      if (project.reportDate) {
+        return new Date(project.reportDate).getTime();
+      }
+      // Se não tiver nenhuma data, colocar no final
+      return Number.MAX_SAFE_INTEGER;
+    };
+    
+    const dateA = getSortDate(a);
+    const dateB = getSortDate(b);
+    
+    // Ordenar do menor para o maior (mais próximo primeiro)
+    return dateA - dateB;
   });
 
   // Função para obter a coluna de uma data específica
@@ -517,7 +573,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         style={{ 
           scrollbarWidth: 'thin', 
           WebkitOverflowScrolling: 'touch',
-          cursor: isPanning ? 'grabbing' : 'default'
+          cursor: isPanning ? 'grabbing' : 'grab'
         }}
         onMouseDown={(e: React.MouseEvent) => {
           // Não ativa se for botão direito do mouse
@@ -525,20 +581,22 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
           
           const target = e.target as HTMLElement;
           
-          // Não ativa se clicar em elementos interativos específicos
+          // Não ativa apenas em elementos realmente interativos (inputs, buttons, etc)
+          // Mas permite em qualquer outro lugar, incluindo projetos
           if (
-            target.closest('button') ||
             target.closest('input') ||
             target.closest('select') ||
             target.closest('textarea') ||
-            target.closest('a') ||
-            target.closest('[draggable="true"]') ||
-            target.closest('.group')
+            target.closest('a[href]')
           ) {
             return;
           }
           
-          // Ativa pan
+          // Resetar flags
+          hasMovedRef.current = false;
+          clickPreventedRef.current = false;
+          
+          // Ativa pan em qualquer lugar
           if (scrollContainerRef.current) {
             setIsPanning(true);
             setPanStart({
@@ -552,6 +610,16 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         onMouseMove={(e: React.MouseEvent) => {
           if (!isPanning || !scrollContainerRef.current) return;
           
+          const deltaX = Math.abs(e.pageX - panStart.x);
+          const deltaY = Math.abs(e.pageY - panStart.y);
+          const threshold = 5; // Threshold de 5px para considerar movimento
+          
+          // Se moveu mais que o threshold, considera arrasto
+          if (deltaX > threshold || deltaY > threshold) {
+            hasMovedRef.current = true;
+            clickPreventedRef.current = true;
+          }
+          
           e.preventDefault();
           const x = e.pageX;
           const walk = (x - panStart.x) * 1.5;
@@ -559,9 +627,16 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         }}
         onMouseUp={() => {
           setIsPanning(false);
+          // Resetar após um pequeno delay para permitir que onClick seja processado primeiro
+          setTimeout(() => {
+            hasMovedRef.current = false;
+            clickPreventedRef.current = false;
+          }, 100);
         }}
         onMouseLeave={() => {
           setIsPanning(false);
+          hasMovedRef.current = false;
+          clickPreventedRef.current = false;
         }}
       >
         {projectsForTimeline.length === 0 ? (
@@ -622,14 +697,15 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {projectsForTimeline.map((project) => {
                 const { startColumn, duration } = getProjectPosition(project);
-                const categoryColor = getCategoryColor(project.type);
+                const pTypes = project.types || (project.type ? [project.type] : []);
+                const categoryColor = getCategoryColor(pTypes[0] || '');
                 const isLate = project.deadline && new Date(project.deadline) < new Date() && project.status !== 'Completed' && project.status !== 'Finished';
                 const isReview = project.status === 'Review';
                 const temporalProgress = getTemporalProgress(project, startColumn, duration);
                 
                 const maintenanceCol = getDateColumn(project.maintenanceDate);
                 const reportCol = getDateColumn(project.reportDate);
-                const isRecurring = categories.find(cat => cat.name === project.type)?.isRecurring;
+                const isRecurring = pTypes.some(typeName => categories.find(cat => cat.name === typeName && cat.isRecurring));
                 const showProjectBar = project.deadline && project.status !== 'Completed' && project.status !== 'Finished';
 
                 // Obter classes CSS baseadas na cor da categoria
@@ -648,17 +724,32 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                 return (
                   <div 
                     key={project.id} 
-                    onClick={() => onProjectClick?.(project)}
-                    className="flex hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                    onClick={(e) => {
+                      // Prevenir clique se houve arrasto ou ainda está arrastando
+                      if (clickPreventedRef.current || hasMovedRef.current || isPanning) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      onProjectClick?.(project);
+                    }}
+                    className={`flex hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group ${isPanning ? 'cursor-grabbing' : 'cursor-pointer'}`}
                   >
                     <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 flex flex-col gap-1 bg-white dark:bg-slate-900">
                       <h4 className="text-sm font-bold truncate">{project.name}</h4>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${getCategoryBadgeClasses(categoryColor)}`}>
-                          {project.type}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {pTypes.slice(0, 2).map((typeName, idx) => (
+                          <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${getCategoryBadgeClasses(getCategoryColor(typeName))}`}>
+                            {typeName}
+                          </span>
+                        ))}
+                        {pTypes.length > 2 && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-1 py-0.5 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
+                            +{pTypes.length - 2}
+                          </span>
+                        )}
                         {isRecurring && project.status === 'Completed' && (
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-1.5 rounded border border-emerald-100">Gestão</span>
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-1.5 rounded border border-emerald-100">Manutenção</span>
                         )}
                       </div>
           </div>
@@ -697,56 +788,93 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       <div className="flex-1 h-20 bg-white dark:bg-slate-900" />
                       
                       {/* Barra do projeto (se aplicável) */}
-                      {showProjectBar && (
-                        <div 
-                          className={`absolute top-1/2 -translate-y-1/2 h-8 ${isReview ? 'bg-amber-500/10 border-l-4 border-l-amber-500 ring-2 ring-amber-500/30' :
-                            categoryColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
-                            categoryColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
-                            categoryColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
-                            categoryColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
-                            categoryColor === 'purple' ? 'bg-purple-500/10 border-l-4 border-l-purple-500' :
-                            categoryColor === 'rose' ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                            isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                            'bg-blue-500/10 border-l-4 border-l-blue-500'
-                          } rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
-                          style={{ 
-                            left: `${startColumn * 100}px`, 
-                            width: `${duration * 100}px`,
-                            minWidth: '100px'
-                          }}
-                        >
+                      {showProjectBar && (() => {
+                        // Calcular posição da régua em relação à barra do projeto
+                        const today = new Date();
+                        const todayColumn = days.findIndex(day => {
+                          const dayDate = new Date(day.date);
+                          return dayDate.toDateString() === today.toDateString();
+                        });
+                        
+                        let overlayWidth = temporalProgress;
+                        
+                        // Se hoje está dentro do período do projeto, limitar overlay até a régua
+                        if (todayColumn >= 0 && todayColumn >= startColumn && todayColumn < startColumn + duration) {
+                          // Calcular posição da régua dentro da coluna de hoje (0-100px)
+                          const now = new Date();
+                          const minutesInDay = (now.getHours() * 60) + now.getMinutes();
+                          const positionX = (minutesInDay / 1440) * 100; // Posição em pixels dentro da coluna (0-100)
+                          
+                          // Calcular posição absoluta da régua em pixels
+                          const rulerAbsolutePosition = todayColumn * 100 + positionX;
+                          
+                          // Calcular posição absoluta do início da barra
+                          const barStartPosition = startColumn * 100;
+                          
+                          // Calcular posição relativa da régua dentro da barra
+                          const rulerRelativePosition = rulerAbsolutePosition - barStartPosition;
+                          
+                          // Calcular largura da barra em pixels
+                          const barWidth = duration * 100;
+                          
+                          // Calcular porcentagem da régua dentro da barra
+                          const rulerPercentage = (rulerRelativePosition / barWidth) * 100;
+                          
+                          // Limitar overlay para não ultrapassar a régua
+                          overlayWidth = Math.min(temporalProgress, Math.max(0, rulerPercentage));
+                        }
+                        
+                        return (
                           <div 
-                            className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${
-                              isReview ? 'bg-amber-500/40' :
-                              categoryColor === 'amber' ? 'bg-amber-500/40' :
-                              categoryColor === 'blue' ? 'bg-blue-500/40' :
-                              categoryColor === 'emerald' ? 'bg-emerald-500/40' :
-                              categoryColor === 'indigo' ? 'bg-indigo-500/40' :
-                              categoryColor === 'purple' ? 'bg-purple-500/40' :
-                              categoryColor === 'rose' ? 'bg-rose-500/40' :
-                              isLate ? 'bg-rose-500/40' :
-                              'bg-blue-500/40'
-                            }`}
-                            style={{ width: `${temporalProgress}%` }}
-                            title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
-                          />
-                          <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${
-                            isReview ? 'text-amber-700' :
-                            categoryColor === 'amber' ? 'text-amber-700' :
-                            categoryColor === 'blue' ? 'text-blue-700' :
-                            categoryColor === 'emerald' ? 'text-emerald-700' :
-                            categoryColor === 'indigo' ? 'text-indigo-700' :
-                            categoryColor === 'purple' ? 'text-purple-700' :
-                            categoryColor === 'rose' ? 'text-rose-700' :
-                            isLate ? 'text-rose-700' :
-                            'text-blue-700'
-                          }`}>
-                            {getStatusLabel(project)}
-                          </span>
-                          {isReview && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
-                          {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
-                        </div>
-                      )}
+                            className={`absolute top-1/2 -translate-y-1/2 h-8 ${isReview ? 'bg-amber-500/10 border-l-4 border-l-amber-500 ring-2 ring-amber-500/30' :
+                              categoryColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
+                              categoryColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
+                              categoryColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
+                              categoryColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
+                              categoryColor === 'purple' ? 'bg-purple-500/10 border-l-4 border-l-purple-500' :
+                              categoryColor === 'rose' ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
+                              isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
+                              'bg-blue-500/10 border-l-4 border-l-blue-500'
+                            } rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
+                            style={{ 
+                              left: `${startColumn * 100}px`, 
+                              width: `${duration * 100}px`,
+                              minWidth: '100px'
+                            }}
+                          >
+                            <div 
+                              className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${
+                                isReview ? 'bg-amber-500/40' :
+                                categoryColor === 'amber' ? 'bg-amber-500/40' :
+                                categoryColor === 'blue' ? 'bg-blue-500/40' :
+                                categoryColor === 'emerald' ? 'bg-emerald-500/40' :
+                                categoryColor === 'indigo' ? 'bg-indigo-500/40' :
+                                categoryColor === 'purple' ? 'bg-purple-500/40' :
+                                categoryColor === 'rose' ? 'bg-rose-500/40' :
+                                isLate ? 'bg-rose-500/40' :
+                                'bg-blue-500/40'
+                              }`}
+                              style={{ width: `${overlayWidth}%` }}
+                              title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
+                            />
+                            <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${
+                              isReview ? 'text-amber-700' :
+                              categoryColor === 'amber' ? 'text-amber-700' :
+                              categoryColor === 'blue' ? 'text-blue-700' :
+                              categoryColor === 'emerald' ? 'text-emerald-700' :
+                              categoryColor === 'indigo' ? 'text-indigo-700' :
+                              categoryColor === 'purple' ? 'text-purple-700' :
+                              categoryColor === 'rose' ? 'text-rose-700' :
+                              isLate ? 'text-rose-700' :
+                              'text-blue-700'
+                            }`}>
+                              {getStatusLabel(project)}
+                            </span>
+                            {isReview && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
+                            {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
+                          </div>
+                        );
+                      })()}
 
                       {/* Marcadores de Manutenção e Relatório (para Recorrência) */}
                       {maintenanceCol !== -1 && (
@@ -792,10 +920,6 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             </div>
           )}
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-blue-500"></span>
-              <span>Projetos ativos</span>
-            </div>
             <div className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-xs">build</span>
               <span>Manutenção</span>

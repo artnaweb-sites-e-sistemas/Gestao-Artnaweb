@@ -21,16 +21,36 @@ import {
   deleteProjectFile,
   getUniqueClients,
   uploadProjectAvatar,
+  uploadProjectImage,
   deleteProject,
   subscribeToInvoices,
   addInvoice,
-  updateInvoice
+  updateInvoice,
+  updateClientAvatarInAllProjects,
+  getCurrentUser
 } from '../firebase/services';
 
 interface ProjectDetailsProps {
   project: Project;
   onClose: () => void;
 }
+
+// Etapas fixas para projetos normais
+const fixedStages: Stage[] = [
+  { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
+  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
+  { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
+];
+
+// Etapas fixas para projetos recorrentes
+const fixedStagesRecurring: Stage[] = [
+  { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 75, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+];
 
 export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose }) => {
   const [currentProject, setCurrentProject] = useState<Project>(project);
@@ -39,18 +59,34 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showAllMembers, setShowAllMembers] = useState(false);
-  const [showEditProject, setShowEditProject] = useState(false);
   const [showShareProject, setShowShareProject] = useState(false);
+  
+  // Estados para edição inline
+  const [editingClient, setEditingClient] = useState(false);
+  const [editingNameSidebar, setEditingNameSidebar] = useState(false);
+  const [editingNameHeader, setEditingNameHeader] = useState(false);
+  const [tempClient, setTempClient] = useState('');
+  const [tempNameSidebar, setTempNameSidebar] = useState('');
+  const [tempNameHeader, setTempNameHeader] = useState('');
+  const [tempDescription, setTempDescription] = useState('');
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesRef = useRef<Category[]>([]);
   const [stageTasks, setStageTasks] = useState<{ [stageId: string]: StageTask[] }>({});
   const [projectStageTasks, setProjectStageTasks] = useState<ProjectStageTask[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const projectImageInputRef = useRef<HTMLInputElement>(null);
+  const datePickerButtonRef = useRef<HTMLButtonElement>(null);
+  const maintenanceDatePickerButtonRef = useRef<HTMLButtonElement>(null);
+  const reportDatePickerButtonRef = useRef<HTMLButtonElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingProjectImage, setUploadingProjectImage] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [fileToDelete, setFileToDelete] = useState<ProjectFile | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
@@ -77,9 +113,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Sincroniza o estado local quando o projeto prop mudar
   useEffect(() => {
     setCurrentProject(project);
-  }, [project]);
+    setTempDescription(project.description || '');
+    // Sincronizar estados temporários apenas se não estiver editando
+    if (!editingNameSidebar) {
+      setTempNameSidebar(project.name);
+    }
+    if (!editingNameHeader) {
+      setTempNameHeader(project.name);
+    }
+    if (!editingClient) {
+      setTempClient(project.client);
+    }
+  }, [project, editingNameSidebar, editingNameHeader, editingClient]);
 
-  // Fechar calendários ao clicar fora
+  // Fechar calendários e dropdowns ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
@@ -92,12 +139,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       if (showReportDatePicker && !target.closest('.date-picker-container')) {
         setShowReportDatePicker(false);
       }
+      if (showTypeDropdown && typeDropdownRef.current && !typeDropdownRef.current.contains(target)) {
+        setShowTypeDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDatePicker, showMaintenanceDatePicker, showReportDatePicker]);
+  }, [showDatePicker, showMaintenanceDatePicker, showReportDatePicker, showTypeDropdown]);
 
   useEffect(() => {
     if (!currentProject.id) {
@@ -112,6 +162,17 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       if (updatedProject) {
         console.log("Project updated:", updatedProject);
         setCurrentProject(updatedProject);
+        // Sincronizar estados temporários apenas se não estiver editando
+        if (!editingNameSidebar) {
+          setTempNameSidebar(updatedProject.name);
+        }
+        if (!editingNameHeader) {
+          setTempNameHeader(updatedProject.name);
+        }
+        if (!editingClient) {
+          setTempClient(updatedProject.client);
+        }
+        setTempDescription(updatedProject.description || '');
       }
     });
 
@@ -126,16 +187,31 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     });
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
-      setStages(firebaseStages);
-      // Carregar tarefas de cada etapa
-      firebaseStages.forEach(async (stage) => {
-        const tasks = await getStageTasks(stage.id);
-        setStageTasks(prev => ({ ...prev, [stage.id]: tasks }));
-      });
-    });
+      // Filtrar etapas pelo workspaceId do projeto
+      const filteredStages = currentProject.workspaceId 
+        ? firebaseStages.filter(stage => (stage as any).workspaceId === currentProject.workspaceId)
+        : firebaseStages;
+      
+      // Verificar se o projeto é recorrente usando o ref para evitar loop (considerando múltiplos tipos)
+      const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+      const isRecurring = currentTypes.some(typeName => 
+        categoriesRef.current.find(cat => cat.name === typeName && cat.isRecurring)
+      );
+      
+      // Se for recorrente, não usar etapas do Firebase, usar as fixas (definidas no useEffect separado)
+      if (!isRecurring) {
+        setStages(filteredStages);
+        // Carregar tarefas de cada etapa
+        filteredStages.forEach(async (stage) => {
+          const tasks = await getStageTasks(stage.id);
+          setStageTasks(prev => ({ ...prev, [stage.id]: tasks }));
+        });
+      }
+    }, currentProject.workspaceId);
 
     const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
       setCategories(firebaseCategories);
+      categoriesRef.current = firebaseCategories; // Atualizar ref para uso em outros callbacks
     }, currentProject.workspaceId);
 
     const unsubscribeProjectStageTasks = subscribeToProjectStageTasks(currentProject.id, (data) => {
@@ -165,10 +241,35 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     };
   }, [currentProject.id, currentProject.workspaceId, currentProject.status]);
 
-  // Verificar se o projeto é recorrente
+  // Recalcular etapas quando categorias ou tipo do projeto mudarem
+  useEffect(() => {
+    // Só processar se tivermos categorias carregadas
+    if (categories.length === 0) return;
+    
+    // Verificar se o projeto é recorrente (considerando múltiplos tipos)
+    const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+    const isRecurring = projTypes.some(typeName => 
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
+    );
+    
+    // Se for recorrente, usar etapas fixas recorrentes
+    if (isRecurring) {
+      setStages(fixedStagesRecurring);
+      // Carregar tarefas de cada etapa
+      fixedStagesRecurring.forEach(async (stage) => {
+        const tasks = await getStageTasks(stage.id);
+        setStageTasks(prev => ({ ...prev, [stage.id]: tasks }));
+      });
+    }
+    // Para projetos normais, as etapas já são carregadas pelo subscribeToStages
+  }, [categories, currentProject.type, currentProject.types]);
+
+  // Verificar se o projeto é recorrente (considerando múltiplos tipos)
   const isProjectRecurring = () => {
-    const projectCategory = categories.find(cat => cat.name === currentProject.type);
-    return projectCategory?.isRecurring || false;
+    const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+    return projTypes.some(typeName => 
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
+    );
   };
 
   // Criar nova fatura recorrente (+30 dias)
@@ -349,10 +450,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 ) : (
                   <button
                     onClick={() => avatarInputRef.current?.click()}
-                    className="size-12 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
-                    title="Adicionar foto de perfil"
+                    className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                    title="Adicionar foto do cliente"
                   >
-                    <span className="material-symbols-outlined text-slate-500 dark:text-slate-400">add</span>
+                    <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
                   </button>
                 )}
                 <input
@@ -367,8 +468,17 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     setUploadingAvatar(true);
                     try {
                       const avatarUrl = await uploadProjectAvatar(currentProject.id, file);
-                      await updateProject(currentProject.id, { avatar: avatarUrl });
-                      setToast({ message: "Foto de perfil atualizada com sucesso!", type: 'success' });
+                      const user = getCurrentUser();
+                      
+                      // Atualizar avatar em todos os projetos do mesmo cliente
+                      await updateClientAvatarInAllProjects(
+                        currentProject.client,
+                        avatarUrl,
+                        currentProject.workspaceId,
+                        user?.uid || null
+                      );
+                      
+                      setToast({ message: "Foto do cliente atualizada em todos os projetos!", type: 'success' });
                       setTimeout(() => setToast(null), 3000);
                     } catch (error) {
                       console.error("Error uploading avatar:", error);
@@ -388,53 +498,114 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   </div>
                 )}
               </div>
-              <div>
-                <h1 className="text-lg font-bold leading-tight">{currentProject.name}</h1>
-                <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{currentProject.client}</p>
+              <div className="flex-1 min-w-0">
+                {/* Cliente - Edição Inline */}
+                {editingClient ? (
+                  <input
+                    type="text"
+                    value={tempClient}
+                    onChange={(e) => setTempClient(e.target.value)}
+                    onBlur={async () => {
+                      if (tempClient.trim() && tempClient !== currentProject.client) {
+                        try {
+                          await updateProject(currentProject.id, { client: tempClient.trim() });
+                          setToast({ message: "Cliente atualizado", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error updating client:", error);
+                          setToast({ message: "Erro ao atualizar cliente", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }
+                      setEditingClient(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        setEditingClient(false);
+                      }
+                    }}
+                    className="text-lg font-bold leading-tight uppercase bg-transparent border-b-2 border-primary outline-none w-full"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex items-center gap-1 group/client">
+                    <h1 className="text-lg font-bold leading-tight uppercase truncate">{currentProject.client}</h1>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTempClient(currentProject.client);
+                        setEditingClient(true);
+                      }}
+                      className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                      title="Editar cliente"
+                    >
+                      <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
+                    </button>
+                  </div>
+                )}
+                
+                {/* Nome do Projeto - Edição Inline */}
+                {editingNameSidebar ? (
+                  <input
+                    type="text"
+                    value={tempNameSidebar}
+                    onChange={(e) => setTempNameSidebar(e.target.value)}
+                    onBlur={async () => {
+                      if (tempNameSidebar.trim() && tempNameSidebar !== currentProject.name) {
+                        try {
+                          await updateProject(currentProject.id, { name: tempNameSidebar.trim() });
+                          setToast({ message: "Nome atualizado", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error updating name:", error);
+                          setToast({ message: "Erro ao atualizar nome", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }
+                      setEditingNameSidebar(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        setEditingNameSidebar(false);
+                      }
+                    }}
+                    className="text-slate-500 text-xs font-medium capitalize tracking-wider bg-transparent border-b-2 border-primary outline-none w-full"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex items-center gap-1 group/name">
+                    <p className="text-slate-500 text-xs font-medium capitalize tracking-wider truncate">{currentProject.name}</p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTempNameSidebar(currentProject.name);
+                        setEditingNameSidebar(true);
+                      }}
+                      className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                      title="Editar nome"
+                    >
+                      <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
-                currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700' :
-                currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
-                currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
-                'bg-indigo-100 text-indigo-700'
-              }`}>
-                {(() => {
-                  // Verificar se é um serviço recorrente
-                  const isRecurringService = categories.find(cat => 
-                    cat.name === currentProject.type && cat.isRecurring
-                  );
-                  
-                  // Se for serviço recorrente e status Completed, mostrar "Gestão"
-                  if (isRecurringService && currentProject.status === 'Completed') {
-                    return 'Gestão';
-                  }
-                  
-                  // Caso contrário, usar a lógica padrão
-                  return currentProject.status === 'Lead' ? 'On-boarding' : 
-                         currentProject.status === 'Active' ? 'Em Desenvolvimento' :
-                         currentProject.status === 'Completed' ? 'Concluído' : 
-                         currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
-                })()}
-              </span>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${getCategoryBadgeClasses(currentProject.type)}`}>
-                {currentProject.type}
-              </span>
             </div>
           </div>
 
           <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
             <div className="flex flex-col gap-1">
-              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Informações</p>
-            <ContactInfo label="Cliente" value={currentProject.client} />
-            <ContactInfo label="Projeto" value={currentProject.name} />
             <div className="py-2">
               <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
               <div className="flex items-center gap-2">
                 <div className="relative date-picker-container flex-1">
                   <button
+                    ref={datePickerButtonRef}
                     onClick={() => setShowDatePicker(!showDatePicker)}
                     className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                   >
@@ -463,6 +634,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         }
                       }}
                       onClose={() => setShowDatePicker(false)}
+                      buttonRef={datePickerButtonRef}
                     />
                   )}
                 </div>
@@ -503,8 +675,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               
               {/* Campos de data para projetos recorrentes em Manutenção */}
               {(() => {
-                const isRecurringService = categories.find(cat => 
-                  cat.name === currentProject.type && cat.isRecurring
+                const pTypesForMaint = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                const isRecurringService = pTypesForMaint.some(typeName => 
+                  categories.find(cat => cat.name === typeName && cat.isRecurring)
                 );
                 const isInMaintenance = isRecurringService && currentProject.status === 'Completed';
                 
@@ -517,6 +690,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       <div className="flex items-center gap-2">
                         <div className="relative date-picker-container flex-1">
                           <button
+                            ref={maintenanceDatePickerButtonRef}
                             onClick={() => setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
                             className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                           >
@@ -545,6 +719,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 }
                               }}
                               onClose={() => setShowMaintenanceDatePicker(false)}
+                              buttonRef={maintenanceDatePickerButtonRef}
                             />
                           )}
                         </div>
@@ -556,6 +731,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       <div className="flex items-center gap-2">
                         <div className="relative date-picker-container flex-1">
                           <button
+                            ref={reportDatePickerButtonRef}
                             onClick={() => setShowReportDatePicker(!showReportDatePicker)}
                             className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                           >
@@ -584,6 +760,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 }
                               }}
                               onClose={() => setShowReportDatePicker(false)}
+                              buttonRef={reportDatePickerButtonRef}
                             />
                           )}
                         </div>
@@ -967,17 +1144,17 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             />
           </nav>
         </div>
-        <div className="border-t border-slate-200 dark:border-slate-800 pt-8 mt-auto">
-          <button 
-            onClick={() => setShowEditProject(true)}
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-8 mt-auto space-y-3">
+          <button
+            onClick={onClose}
             className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
           >
-            <span className="material-symbols-outlined text-lg">edit</span>
-            Editar Projeto
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Voltar ao Painel
           </button>
           <button
             onClick={() => setShowDeleteProjectConfirm(true)}
-            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg text-sm font-semibold hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20 mt-3"
+            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
           >
             <span className="material-symbols-outlined text-lg">delete</span>
             Excluir Projeto
@@ -1002,9 +1179,229 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
               </div>
               <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6">
-                <div className="flex flex-col gap-1">
-                  <p className="text-3xl font-black leading-tight tracking-tight">Detalhes do Projeto</p>
-                  <p className="text-slate-500 text-sm">Gerencie informações, tarefas, atividades e arquivos do projeto.</p>
+                <div className="flex items-center gap-4">
+                  {/* Foto do Projeto */}
+                  <div className="relative group">
+                    {currentProject.projectImage ? (
+                      <div 
+                        className="size-16 rounded-xl bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity shadow-md" 
+                        style={{ backgroundImage: `url(${currentProject.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                        onClick={() => projectImageInputRef.current?.click()}
+                        title="Alterar foto do projeto"
+                      ></div>
+                    ) : (
+                      <button
+                        onClick={() => projectImageInputRef.current?.click()}
+                        className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                        title="Adicionar foto do projeto"
+                      >
+                        <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
+                      </button>
+                    )}
+                    <input
+                      ref={projectImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        
+                        setUploadingProjectImage(true);
+                        try {
+                          const imageUrl = await uploadProjectImage(currentProject.id, file);
+                          await updateProject(currentProject.id, { projectImage: imageUrl });
+                          setToast({ message: "Foto do projeto atualizada com sucesso!", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error uploading project image:", error);
+                          setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        } finally {
+                          setUploadingProjectImage(false);
+                          if (projectImageInputRef.current) {
+                            projectImageInputRef.current.value = '';
+                          }
+                        }
+                      }}
+                    />
+                    {uploadingProjectImage && (
+                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white animate-spin">sync</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {/* Nome do Projeto - Edição Inline */}
+                    {editingNameHeader ? (
+                      <input
+                        type="text"
+                        value={tempNameHeader}
+                        onChange={(e) => setTempNameHeader(e.target.value)}
+                        onBlur={async () => {
+                          if (tempNameHeader.trim() && tempNameHeader !== currentProject.name) {
+                            try {
+                              await updateProject(currentProject.id, { name: tempNameHeader.trim() });
+                              setToast({ message: "Nome atualizado", type: 'success' });
+                              setTimeout(() => setToast(null), 3000);
+                            } catch (error) {
+                              console.error("Error updating name:", error);
+                              setToast({ message: "Erro ao atualizar nome", type: 'error' });
+                              setTimeout(() => setToast(null), 3000);
+                            }
+                          }
+                          setEditingNameHeader(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                          } else if (e.key === 'Escape') {
+                            setEditingNameHeader(false);
+                          }
+                        }}
+                        className="text-3xl font-black leading-tight tracking-tight bg-transparent border-b-2 border-primary outline-none"
+                        autoFocus
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 group/header-name">
+                        <p className="text-3xl font-black leading-tight tracking-tight">{currentProject.name}</p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempNameHeader(currentProject.name);
+                            setEditingNameHeader(true);
+                          }}
+                          className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                          title="Editar nome"
+                        >
+                          <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap items-center">
+                      {/* Tipo/Serviço - Dropdown para múltiplos serviços */}
+                      <div className="relative" ref={typeDropdownRef}>
+                        {/* Exibir badges dos serviços selecionados */}
+                        {(currentProject.types && currentProject.types.length > 0 ? currentProject.types : (currentProject.type ? [currentProject.type] : [])).map((typeName, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mr-1 mb-1 ${getCategoryBadgeClasses(typeName)}`}
+                            title="Alterar serviços"
+                          >
+                            {typeName || 'Sem categoria'}
+                          </button>
+                        ))}
+                        {/* Botão para adicionar serviço se não tiver nenhum */}
+                        {(!currentProject.types || currentProject.types.length === 0) && !currentProject.type && (
+                          <button
+                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 text-slate-500 dark:bg-slate-800"
+                            title="Adicionar serviços"
+                          >
+                            Sem categoria
+                            <span className="material-symbols-outlined text-[10px] ml-1 align-middle">expand_more</span>
+                          </button>
+                        )}
+                        {/* Botão de adicionar mais serviços */}
+                        <button
+                          onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                          className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
+                          title="Adicionar/remover serviços"
+                        >
+                          <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
+                        </button>
+                        {showTypeDropdown && (
+                          <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
+                            <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">Selecione os serviços</span>
+                            </div>
+                            {categories.map((cat) => {
+                              const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                              const isSelected = projectTypes.includes(cat.name);
+                              return (
+                                <label
+                                  key={cat.id}
+                                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors border-b border-slate-50 dark:border-slate-800 last:border-b-0 ${
+                                    isSelected ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={async () => {
+                                      try {
+                                        const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                                        let newTypes: string[];
+                                        
+                                        if (isSelected) {
+                                          // Removendo o serviço
+                                          newTypes = currentTypes.filter(t => t !== cat.name && t !== 'Sem categoria');
+                                          // Se não sobrar nenhum serviço, adicionar "Sem categoria"
+                                          if (newTypes.length === 0) {
+                                            newTypes = ['Sem categoria'];
+                                          }
+                                        } else {
+                                          // Adicionando o serviço - remover "Sem categoria" se existir
+                                          newTypes = [...currentTypes.filter(t => t !== 'Sem categoria'), cat.name];
+                                        }
+                                        
+                                        await updateProject(currentProject.id, { 
+                                          types: newTypes,
+                                          type: newTypes[0] || '' // Manter compatibilidade
+                                        });
+                                        setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
+                                        setTimeout(() => setToast(null), 3000);
+                                      } catch (error) {
+                                        console.error("Error updating types:", error);
+                                      }
+                                    }}
+                                    className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                  />
+                                  <span className="text-xs flex-1">{cat.name}</span>
+                                  {cat.isRecurring && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 rounded font-bold">Recorrente</span>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
+                        currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700' :
+                        currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                        currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
+                        currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
+                        'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {(() => {
+                          // Verificar se algum dos serviços é recorrente
+                          const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                          const isRecurringService = projectTypes.some(typeName => 
+                            categories.find(cat => cat.name === typeName && cat.isRecurring)
+                          );
+                          
+                          // Se for serviço recorrente e status Completed, mostrar "Manutenção"
+                          if (isRecurringService && currentProject.status === 'Completed') {
+                            return 'Manutenção';
+                          }
+                          
+                          // Se for serviço recorrente e status Lead, mostrar "On-boarding"
+                          if (isRecurringService && currentProject.status === 'Lead') {
+                            return 'On-boarding';
+                          }
+                          
+                          // Caso contrário, usar a lógica padrão
+                          return currentProject.status === 'Lead' ? 'On-boarding' : 
+                                 currentProject.status === 'Active' ? 'Em Desenvolvimento' :
+                                 currentProject.status === 'Completed' ? 'Concluído' : 
+                                 currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
+                        })()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   <button 
@@ -1013,6 +1410,104 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   >
                     <span className="material-symbols-outlined text-[18px] mr-2">share</span> Compartilhar
                   </button>
+                </div>
+              </div>
+
+              {/* Etapas do Projeto - Timeline */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Etapa do Projeto</h3>
+                  <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
+                    currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                    currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                    currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                    currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                  }`}>
+                    {(() => {
+                      const currentStage = stages.find(s => s.status === currentProject.status);
+                      return currentStage?.title || currentProject.status;
+                    })()}
+                  </span>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-500">Progresso Geral</span>
+                    <span className="text-xs font-bold text-primary">{currentProject.progress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-primary to-blue-400 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${currentProject.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Etapas Timeline */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-2">
+                  {stages.map((stage, index) => {
+                    const currentStage = stages.find(s => s.status === currentProject.status);
+                    const currentStageOrder = currentStage?.order ?? -1;
+                    const isPast = stage.order < currentStageOrder;
+                    const isCurrent = stage.status === currentProject.status;
+                    const isFuture = stage.order > currentStageOrder;
+                    
+                    return (
+                      <React.Fragment key={stage.id}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await updateProject(currentProject.id, { 
+                                status: stage.status as Project['status'],
+                                stageId: stage.id,
+                                progress: stage.progress
+                              });
+                              setToast({ message: `Projeto movido para: ${stage.title}`, type: 'success' });
+                              setTimeout(() => setToast(null), 3000);
+                            } catch (error) {
+                              console.error("Error updating project stage:", error);
+                              setToast({ message: "Erro ao atualizar etapa", type: 'error' });
+                              setTimeout(() => setToast(null), 3000);
+                            }
+                          }}
+                          className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all min-w-[80px] ${
+                            isCurrent 
+                              ? 'bg-primary/10 border-2 border-primary' 
+                              : isPast 
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30' 
+                                : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                          title={`Mover para: ${stage.title}`}
+                        >
+                          <div className={`size-6 rounded-full flex items-center justify-center ${
+                            isCurrent 
+                              ? 'bg-primary text-white' 
+                              : isPast 
+                                ? 'bg-emerald-500 text-white' 
+                                : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
+                          }`}>
+                            {isPast ? (
+                              <span className="material-symbols-outlined text-xs">check</span>
+                            ) : (
+                              <span className="text-[10px] font-bold">{index + 1}</span>
+                            )}
+                          </div>
+                          <span className={`text-[10px] font-semibold text-center leading-tight ${
+                            isCurrent ? 'text-primary' : isPast ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+                          }`}>
+                            {stage.title}
+                          </span>
+                        </button>
+                        {index < stages.length - 1 && (
+                          <div className={`h-[2px] w-4 flex-shrink-0 ${
+                            isPast ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700'
+                          }`}></div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1063,9 +1558,26 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 {activeTab === 'description' && (
                   <div>
                     <h3 className="text-lg font-bold mb-4">Descrição do Projeto</h3>
-                    <p className="text-slate-600 dark:text-slate-400 break-words whitespace-pre-wrap overflow-wrap-anywhere leading-relaxed">
-                      {currentProject.description || 'Nenhuma descrição adicionada ainda.'}
-                    </p>
+                    <textarea
+                      value={tempDescription}
+                      onChange={(e) => setTempDescription(e.target.value)}
+                      onBlur={async () => {
+                        if (tempDescription !== (currentProject.description || '')) {
+                          try {
+                            await updateProject(currentProject.id, { description: tempDescription });
+                            setToast({ message: "Descrição atualizada", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating description:", error);
+                            setToast({ message: "Erro ao atualizar descrição", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }
+                      }}
+                      placeholder="Adicione uma descrição para o projeto..."
+                      className="w-full min-h-[150px] p-4 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg resize-y focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all leading-relaxed"
+                    />
+                    <p className="text-xs text-slate-400 mt-2">As alterações são salvas automaticamente ao clicar fora do campo.</p>
                   </div>
                 )}
 
@@ -1710,27 +2222,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         />
       )}
 
-      {/* Modal Editar Projeto */}
-      {showEditProject && (
-        <EditProjectModal
-          project={currentProject}
-          onClose={() => setShowEditProject(false)}
-          onSave={async (updatedData) => {
-            try {
-              await updateProject(currentProject.id, updatedData);
-              // Atualiza o estado local imediatamente para refletir as mudanças
-              setCurrentProject(prev => ({ ...prev, ...updatedData }));
-              setToast({ message: "Projeto atualizado com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
-            } catch (error: any) {
-              console.error("Error updating project:", error);
-              setToast({ message: "Erro ao atualizar projeto. Tente novamente.", type: 'error' });
-              setTimeout(() => setToast(null), 3000);
-            }
-          }}
-        />
-      )}
-
       {/* Modal Compartilhar Projeto */}
       {showShareProject && (
         <ShareProjectModal
@@ -2040,8 +2531,19 @@ const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value 
   </div>
 );
 
-const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
+const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void; buttonRef?: React.RefObject<HTMLButtonElement> }> = ({ selectedDate, onSelectDate, onClose, buttonRef }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  
+  useEffect(() => {
+    if (buttonRef?.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [buttonRef]);
   const today = new Date();
   
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -2094,65 +2596,72 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
   };
   
   return (
-    <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg z-[60] p-4 w-72">
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={prevMonth}
-          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_left</span>
-        </button>
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-          {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-        </h3>
-        <button
-          onClick={nextMonth}
-          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
-        </button>
-      </div>
-      
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {weekDays.map((day) => (
-          <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
-            {day}
-          </div>
-        ))}
-      </div>
-      
-      <div className="grid grid-cols-7 gap-1">
-        {days.map((date, index) => (
+    <>
+      {/* Overlay para fechar ao clicar fora */}
+      <div className="fixed inset-0 z-[59]" onClick={onClose} />
+      <div 
+        className="fixed bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl z-[60] p-3 w-64"
+        style={{ top: position.top, left: position.left }}
+      >
+        <div className="flex items-center justify-between mb-3">
           <button
-            key={index}
-            onClick={() => handleDateClick(date)}
-            disabled={!date}
-            className={`
-              aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
-              ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
-              ${date && isToday(date) ? 'ring-2 ring-primary' : ''}
-              ${date && isSelected(date) 
-                ? 'bg-primary text-white hover:bg-primary/90' 
-                : date 
-                  ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
-                  : 'text-transparent'
-              }
-            `}
+            onClick={prevMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
-            {date ? date.getDate() : ''}
+            <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_left</span>
           </button>
-        ))}
+          <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+            {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </h3>
+          <button
+            onClick={nextMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_right</span>
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-7 gap-0.5 mb-1">
+          {weekDays.map((day) => (
+            <div key={day} className="text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 py-0.5">
+              {day.substring(0, 1)}
+            </div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-0.5">
+          {days.map((date, index) => (
+            <button
+              key={index}
+              onClick={() => handleDateClick(date)}
+              disabled={!date}
+              className={`
+                aspect-square flex items-center justify-center text-[10px] font-medium rounded transition-all
+                ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
+                ${date && isToday(date) ? 'ring-1 ring-primary' : ''}
+                ${date && isSelected(date) 
+                  ? 'bg-primary text-white hover:bg-primary/90' 
+                  : date 
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
+                    : 'text-transparent'
+                }
+              `}
+            >
+              {date ? date.getDate() : ''}
+            </button>
+          ))}
+        </div>
+        
+        <div className="flex items-center justify-start mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <button
+            onClick={clearDate}
+            className="text-[10px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            Limpar data
+          </button>
+        </div>
       </div>
-      
-      <div className="flex items-center justify-start mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-        <button
-          onClick={clearDate}
-          className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-        >
-          Limpar
-        </button>
-      </div>
-    </div>
+    </>
   );
 };
 
@@ -2937,305 +3446,6 @@ const AllMembersModal: React.FC<{ members: TeamMember[]; onClose: () => void; on
               <p className="text-slate-500">Nenhum membro adicionado ainda</p>
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onSave: (data: Partial<Project>) => void }> = ({ project, onClose, onSave }) => {
-  const [formData, setFormData] = useState({
-    name: project.name,
-    client: project.client,
-    description: project.description,
-    type: project.type,
-    status: project.status,
-    progress: project.progress,
-  });
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const initialFormDataRef = useRef(formData);
-  const hasUserInteracted = useRef(false);
-  const [availableClients, setAvailableClients] = useState<string[]>([]);
-  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
-  const [filteredClients, setFilteredClients] = useState<string[]>([]);
-  const clientInputRef = useRef<HTMLInputElement>(null);
-
-  // Usar workspaceId do projeto para filtrar categorias e clientes
-  const workspaceId = project.workspaceId;
-
-  useEffect(() => {
-    const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
-      // Filtrar categorias pelo workspaceId do projeto
-      // Se temos workspaceId, incluir APENAS categorias com esse workspaceId (excluir sem workspaceId)
-      let filteredCategories = workspaceId 
-        ? firebaseCategories.filter(cat => cat.workspaceId === workspaceId && cat.workspaceId !== undefined)
-        : firebaseCategories;
-      
-      // Remover duplicatas baseado no nome (caso existam categorias duplicadas)
-      const uniqueCategories = filteredCategories.reduce((acc, cat) => {
-        if (!acc.find(c => c.name === cat.name)) {
-          acc.push(cat);
-        }
-        return acc;
-      }, [] as Category[]);
-      
-      // Ordenar por nome
-      uniqueCategories.sort((a, b) => a.name.localeCompare(b.name));
-      
-      setCategories(uniqueCategories);
-    }, workspaceId);
-
-    const unsubscribeStages = subscribeToStages((firebaseStages) => {
-      // Filtrar etapas pelo workspaceId do projeto
-      const filteredStages = workspaceId
-        ? firebaseStages.filter(stage => (stage as any).workspaceId === workspaceId)
-        : firebaseStages;
-      setStages(filteredStages);
-    }, workspaceId);
-
-    // Load available clients filtrados por workspaceId
-    getUniqueClients(workspaceId).then(clients => {
-      setAvailableClients(clients);
-    });
-
-    return () => {
-      unsubscribeCategories();
-      unsubscribeStages();
-    };
-  }, [workspaceId]);
-
-  // Filter clients based on input
-  useEffect(() => {
-    if (formData.client.trim()) {
-      const filtered = availableClients.filter(client =>
-        client.toLowerCase().includes(formData.client.toLowerCase())
-      );
-      setFilteredClients(filtered);
-      setShowClientSuggestions(filtered.length > 0);
-    } else {
-      setFilteredClients([]);
-      setShowClientSuggestions(false);
-    }
-  }, [formData.client, availableClients]);
-
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (clientInputRef.current && !clientInputRef.current.contains(event.target as Node)) {
-        setShowClientSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  // Auto-save quando formData mudar (apenas se o usuário interagiu)
-  useEffect(() => {
-    // Só salva se o usuário já interagiu com o formulário
-    if (!hasUserInteracted.current) {
-      return;
-    }
-
-    // Verifica se realmente houve mudança comparando com os dados iniciais
-    const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormDataRef.current);
-    if (!hasChanged) {
-      return;
-    }
-
-    // Limpa o timeout anterior se houver
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Define um novo timeout para salvar após 800ms de inatividade
-    saveTimeoutRef.current = setTimeout(async () => {
-      setIsSaving(true);
-      try {
-        const selectedStage = stages.find(s => s.status === formData.status);
-        const dataToSave = selectedStage 
-          ? { ...formData, progress: selectedStage.progress }
-          : formData;
-        
-        await onSave(dataToSave);
-        setLastSaved(new Date());
-        // Atualiza os dados iniciais após salvar
-        initialFormDataRef.current = { ...formData };
-        // Esconde a mensagem de "Salvo automaticamente" após 2 segundos
-        setTimeout(() => {
-          setLastSaved(null);
-        }, 2000);
-      } catch (error) {
-        console.error("Error auto-saving project:", error);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 800);
-
-    // Limpa o timeout quando o componente desmontar
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, stages, onSave]);
-
-  // Auto-save implementado via useEffect acima
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-          <h3 className="text-xl font-bold">Editar Projeto</h3>
-          <button onClick={onClose} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          {(isSaving || lastSaved) && (
-            <div className={`mb-4 flex items-center gap-2 text-sm ${
-              isSaving ? 'text-primary' : 'text-emerald-600 dark:text-emerald-400'
-            }`}>
-              <span className={`material-symbols-outlined text-base ${isSaving ? 'animate-spin' : ''}`}>
-                {isSaving ? 'sync' : 'check_circle'}
-              </span>
-              <span>{isSaving ? 'Salvando...' : 'Salvo automaticamente'}</span>
-            </div>
-          )}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome do Projeto</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => {
-                hasUserInteracted.current = true;
-                setFormData({ ...formData, name: e.target.value });
-              }}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Cliente</label>
-            <div className="relative" ref={clientInputRef}>
-              <input
-                type="text"
-                value={formData.client}
-                onChange={(e) => {
-                  hasUserInteracted.current = true;
-                  setFormData({ ...formData, client: e.target.value });
-                }}
-                onFocus={() => {
-                  if (formData.client.trim() && filteredClients.length > 0) {
-                    setShowClientSuggestions(true);
-                  }
-                }}
-                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-                required
-              />
-              {showClientSuggestions && filteredClients.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                  {filteredClients.map((client, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => {
-                        hasUserInteracted.current = true;
-                        setFormData({ ...formData, client });
-                        setShowClientSuggestions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0"
-                    >
-                      {client}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Descrição</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => {
-                hasUserInteracted.current = true;
-                setFormData({ ...formData, description: e.target.value });
-              }}
-              rows={3}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary resize-none"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Tipo (Serviço)</label>
-              <div className="relative">
-                <select
-                  value={formData.type}
-                  onChange={(e) => {
-                    hasUserInteracted.current = true;
-                    setFormData({ ...formData, type: e.target.value });
-                  }}
-                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
-                >
-                  <option value="">Selecione um serviço</option>
-                  {categories
-                    .filter((cat, index, self) => 
-                      // Remover duplicatas baseado no nome
-                      index === self.findIndex(c => c.name === cat.name)
-                    )
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((category) => (
-                      <option key={category.id || category.name} value={category.name}>
-                        {category.name}
-                      </option>
-                    ))}
-                </select>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <span className="material-symbols-outlined text-lg">expand_more</span>
-                </span>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Etapa</label>
-              <div className="relative">
-                <select
-                  value={formData.status}
-                  onChange={(e) => {
-                    hasUserInteracted.current = true;
-                    const selectedStatus = e.target.value as Project['status'];
-                    const selectedStage = stages.find(s => s.status === selectedStatus);
-                    setFormData({ 
-                      ...formData, 
-                      status: selectedStatus,
-                      progress: selectedStage ? selectedStage.progress : formData.progress
-                    });
-                  }}
-                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
-                >
-                  <option value="">Selecione uma etapa</option>
-                  {stages.map((stage) => (
-                    <option key={stage.id} value={stage.status}>
-                      {stage.title}
-                    </option>
-                  ))}
-                </select>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <span className="material-symbols-outlined text-lg">expand_more</span>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button type="button" onClick={onClose} className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all">
-              Fechar
-            </button>
-          </div>
         </div>
       </div>
     </div>

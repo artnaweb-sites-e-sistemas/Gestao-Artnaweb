@@ -12,6 +12,7 @@ interface SidebarProps {
   workspaces: Workspace[];
   onWorkspaceChange: (workspace: Workspace | null) => void;
   onWorkspacesChange: (workspaces: Workspace[]) => void;
+  userId?: string | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -22,7 +23,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentWorkspace,
   workspaces,
   onWorkspaceChange,
-  onWorkspacesChange
+  onWorkspacesChange,
+  userId
 }) => {
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
@@ -38,6 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Carregar workspaces do Firebase
   useEffect(() => {
+    if (!userId) return; // Não carregar se não houver userId
+    
     console.log('🔵 [Sidebar] Iniciando subscription de workspaces...');
     let isCreatingDefault = false;
     
@@ -55,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         isCreatingDefault = true;
         isInitialLoadRef.current = false;
         console.log('⚠️ [Sidebar] Nenhum workspace encontrado, criando padrão...');
-        addWorkspace({ name: 'Workspace da Agência' }).then((id) => {
+        addWorkspace({ name: 'Workspace da Agência' }, userId).then((id) => {
           console.log('✅ [Sidebar] Workspace padrão criado com ID:', id);
           isCreatingDefault = false;
           // A subscription irá atualizar automaticamente e selecionar o workspace
@@ -95,13 +99,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onWorkspaceChange(updatedWorkspace);
         }
       }
-    });
+    }, userId);
 
     return () => {
       console.log('🔴 [Sidebar] Desinscrevendo de workspaces...');
       unsubscribe();
     };
-  }, []); // Sem dependências - usar refs para valores atuais
+  }, [userId]); // Incluir userId nas dependências
 
   const handleAddWorkspace = async () => {
     if (!newWorkspaceName.trim()) return;
@@ -114,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     
     try {
       console.log('Criando workspace com nome:', workspaceName);
-      const id = await addWorkspace({ name: workspaceName });
+      const id = await addWorkspace({ name: workspaceName }, userId);
       console.log('Workspace criado com sucesso, ID:', id);
       
       // Criar objeto temporário enquanto a subscription atualiza

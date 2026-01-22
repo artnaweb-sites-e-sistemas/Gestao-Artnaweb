@@ -46,14 +46,18 @@ export const ProjectRoadmap: React.FC<ProjectRoadmapProps> = ({ project, onNavig
                  project.status === 'Active' ? 'Em Desenvolvimento' :
                  project.status === 'Completed' ? 'Concluído' : 'Em Revisão'}
               </span>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
-                project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-              }`}>
-                {project.type}
-              </span>
+              <div className="flex flex-wrap gap-1">
+                {(project.types && project.types.length > 0 ? project.types : (project.type ? [project.type] : ['Sem categoria'])).map((typeName, idx) => (
+                  <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
+                    project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
+                    project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
+                    project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+                    'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                  }`}>
+                    {typeName}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
           <nav className="flex flex-col gap-1">

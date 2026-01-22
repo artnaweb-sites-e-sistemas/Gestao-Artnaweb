@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Project, Workspace } from '../types';
-import { subscribeToProjects } from '../firebase/services';
+import { Project, Workspace, Category } from '../types';
+import { subscribeToProjects, subscribeToCategories } from '../firebase/services';
 
 interface ClientProfileProps {
   currentWorkspace?: Workspace | null;
@@ -9,9 +9,22 @@ interface ClientProfileProps {
 
 export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, onProjectClick }) => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
+
+  // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
+  const getProjectTypes = (project: Project): string[] => {
+    const types = project.types || (project.type ? [project.type] : []);
+    // Se houver outros tipos além de "Sem categoria", remover "Sem categoria"
+    const hasOtherTypes = types.some(t => t !== 'Sem categoria');
+    if (hasOtherTypes) {
+      return types.filter(t => t !== 'Sem categoria');
+    }
+    // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
+    return types.length > 0 ? types : ['Sem categoria'];
+  };
 
   // Gerar URL de avatar do cliente baseado no nome
   const getClientAvatar = (clientName: string) => {
@@ -36,6 +49,19 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
       const workspaceProjects = fetchedProjects.filter(p => p.workspaceId === currentWorkspace.id);
       setProjects(workspaceProjects);
       setLoading(false);
+    }, currentWorkspace.id);
+
+    return () => unsubscribe();
+  }, [currentWorkspace?.id]);
+
+  useEffect(() => {
+    if (!currentWorkspace?.id) {
+      setCategories([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToCategories((fetchedCategories) => {
+      setCategories(fetchedCategories);
     }, currentWorkspace.id);
 
     return () => unsubscribe();
@@ -180,13 +206,13 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
           <p className="text-sm">Crie projetos para começar a ver clientes aqui</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="columns-1 lg:columns-2 gap-6">
           {groupedClients.map(({ client, projects: clientProjects }) => {
             // Pegar a foto do cliente do primeiro projeto que tiver avatar
             const clientAvatar = clientProjects.find(p => p.avatar)?.avatar || getClientAvatar(client);
             
             return (
-            <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+            <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   {/* Avatar do Cliente */}
@@ -238,12 +264,12 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
                           <span className="material-symbols-outlined text-xs">
                             {project.status === 'Completed' || project.status === 'Finished' ? 'check_circle' : 'progress_activity'}
                           </span>
-                          <span>{project.type}</span>
+                          <span>{getProjectTypes(project).join(', ')}</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusBadge status={project.status} />
+                      <StatusBadge project={project} categories={categories} />
                       <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">
                         chevron_right
                       </span>
@@ -260,7 +286,20 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
   );
 };
 
-const StatusBadge: React.FC<{ status: Project['status'] }> = ({ status }) => {
+const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ project, categories }) => {
+  const status = project.status;
+  
+  // Verificar se é um projeto recorrente (considerando múltiplos tipos)
+  const projectTypes = project.types || (project.type ? [project.type] : []);
+  const isRecurring = projectTypes.some(typeName => 
+    categories.find(cat => cat.name === typeName && cat.isRecurring)
+  );
+  
+  // Verificar etapa baseado no stageId
+  const isOnboardingStage = project.stageId?.includes('onboarding') || false;
+  const isDevelopmentStage = project.stageId?.includes('development') || false;
+  const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
+
   const styles: Record<Project['status'], string> = {
     Lead: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     Active: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -269,17 +308,29 @@ const StatusBadge: React.FC<{ status: Project['status'] }> = ({ status }) => {
     Finished: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
   };
 
-  const labels: Record<Project['status'], string> = {
-    Lead: 'Lead',
-    Active: 'Ativo',
-    Review: 'Revisão',
-    Completed: 'Concluído',
-    Finished: 'Finalizado',
-  };
+  // Determinar o label a ser exibido baseado na etapa (stageId)
+  let displayLabel: string;
+  
+  if (status === 'Lead' && isOnboardingStage) {
+    displayLabel = 'On-boarding';
+  } else if (status === 'Active' && isDevelopmentStage) {
+    displayLabel = 'Desenvolvimento';
+  } else if (status === 'Completed' && isMaintenanceStage && isRecurring) {
+    displayLabel = 'Manutenção';
+  } else if (status === 'Review') {
+    displayLabel = 'Revisão';
+  } else if (status === 'Completed') {
+    displayLabel = 'Concluído';
+  } else if (status === 'Finished') {
+    displayLabel = 'Finalizado';
+  } else {
+    // Fallback para os labels padrão
+    displayLabel = status === 'Lead' ? 'Lead' : status === 'Active' ? 'Ativo' : status;
+  }
 
   return (
     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}>
-      {labels[status]}
+      {displayLabel}
     </span>
   );
 };

@@ -31,9 +31,13 @@ interface DashboardProps {
   highlightedProjectId?: string;
   openAddProjectModal?: boolean;
   onAddProjectModalClose?: () => void;
+  userId?: string | null;
 }
 
 type ViewMode = 'board' | 'list';
+
+// Imagem padrão para avatar do cliente e imagem do projeto
+const DEFAULT_PROJECT_IMAGE = 'https://picsum.photos/seed/default-project/200/200';
 
 const pipelineProjects: Project[] = [
   {
@@ -143,8 +147,8 @@ const fixedStagesRecurring: Stage[] = [
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
 ];
 
-export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('board');
+export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId }) => {
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedFilter, setSelectedFilter] = useState<string>(initialFilter || 'all');
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAddProject, setShowAddProject] = useState(false);
@@ -160,6 +164,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const categoryTabsRef = useRef<HTMLDivElement>(null); // Ref para container das abas de categorias
+  const categoryPanStartRef = useRef({ x: 0, scrollLeft: 0 });
+  const isCategoryPanningRef = useRef(false);
+  const categoryHasMovedRef = useRef(false);
   const [stageMenuOpen, setStageMenuOpen] = useState<string | null>(null);
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
   const [stageToEditTasks, setStageToEditTasks] = useState<Stage | null>(null);
@@ -206,8 +214,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       const isRecurringStage = targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado';
       
       // Para serviços recorrentes, não atualizar stageId (usar apenas status)
-      const isProjectRecurring = categories.find(cat => 
-        cat.name === project.type && cat.isRecurring
+      // Verificar se ALGUM dos tipos do projeto é recorrente
+      const projectTypesArray = project.types || (project.type ? [project.type] : []);
+      const isProjectRecurring = projectTypesArray.some(typeName => 
+        categories.find(cat => cat.name === typeName && cat.isRecurring)
       );
       
       // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
@@ -362,12 +372,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       console.log('📦 [Dashboard] Projetos recebidos:', firebaseProjects.length);
       setProjects(firebaseProjects);
       setLoading(false);
-    }, currentWorkspace.id);
+    }, currentWorkspace.id, userId);
 
     const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
       console.log('📁 [Dashboard] Categorias recebidas:', firebaseCategories.length);
       setCategories(firebaseCategories);
-    }, currentWorkspace.id);
+    }, currentWorkspace.id, userId);
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
       console.log('🏷️ [Dashboard] Etapas recebidas:', firebaseStages.length, 'isAdding:', isAddingFixedStages.current, 'isDeleting:', isDeletingStage.current);
@@ -400,7 +410,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         setStages(fixedStagesRecalculated);
         
         // Salvar etapas fixas no Firebase para este workspace
-        saveStages(fixedStagesRecalculated, currentWorkspace.id).then(() => {
+        saveStages(fixedStagesRecalculated, currentWorkspace.id, userId).then(() => {
           console.log('✅ [Dashboard] Etapas fixas salvas com sucesso');
           setTimeout(() => {
             isAddingFixedStages.current = false;
@@ -410,7 +420,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           isAddingFixedStages.current = false;
         });
       }
-    }, currentWorkspace.id);
+    }, currentWorkspace.id, userId);
 
     return () => {
       unsubscribeProjects();
@@ -630,16 +640,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           <div className="flex items-center gap-3">
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
               <button 
-                onClick={() => setViewMode('board')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'board' 
-                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Quadro
-              </button>
-              <button 
                 onClick={() => setViewMode('list')}
                 className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   viewMode === 'list' 
@@ -648,6 +648,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 }`}
               >
                 Lista
+              </button>
+              <button 
+                onClick={() => setViewMode('board')}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  viewMode === 'board' 
+                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Quadro
               </button>
           </div>
             <button 
@@ -660,11 +670,89 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         </div>
         </div>
         <div 
+          ref={categoryTabsRef}
           className="flex border-b border-slate-200 dark:border-slate-800 gap-2 items-center overflow-x-auto no-scrollbar"
           onDragOver={(e) => e.preventDefault()}
+          onMouseDown={(e: React.MouseEvent) => {
+            // Não ativa se for botão direito do mouse
+            if (e.button !== 0) return;
+            
+            const target = e.target as HTMLElement;
+            
+            // Não ativa se clicar no ícone drag_indicator (deixa o drag and drop funcionar)
+            if (target.closest('.drag-indicator-handle')) {
+              return;
+            }
+            
+            // Não ativa em elementos interativos
+            if (
+              target.closest('input') ||
+              target.closest('select') ||
+              target.closest('textarea') ||
+              target.closest('a[href]')
+            ) {
+              return;
+            }
+            
+            // Resetar flags
+            categoryHasMovedRef.current = false;
+            isCategoryPanningRef.current = false;
+            
+            // Ativa pan horizontal
+            if (categoryTabsRef.current) {
+              isCategoryPanningRef.current = true;
+              categoryPanStartRef.current = {
+                x: e.pageX,
+                scrollLeft: categoryTabsRef.current.scrollLeft
+              };
+              e.preventDefault();
+            }
+          }}
+          onMouseMove={(e: React.MouseEvent) => {
+            if (!isCategoryPanningRef.current || !categoryTabsRef.current) return;
+            
+            const deltaX = Math.abs(e.pageX - categoryPanStartRef.current.x);
+            const threshold = 5; // Threshold de 5px para considerar movimento
+            
+            // Se moveu mais que o threshold, considera arrasto
+            if (deltaX > threshold) {
+              categoryHasMovedRef.current = true;
+            }
+            
+            e.preventDefault();
+            const x = e.pageX;
+            const walk = (x - categoryPanStartRef.current.x) * 1.5;
+            categoryTabsRef.current.scrollLeft = categoryPanStartRef.current.scrollLeft - walk;
+          }}
+          onMouseUp={() => {
+            isCategoryPanningRef.current = false;
+            // Resetar após um pequeno delay
+            setTimeout(() => {
+              categoryHasMovedRef.current = false;
+            }, 100);
+          }}
+          onMouseLeave={() => {
+            isCategoryPanningRef.current = false;
+            categoryHasMovedRef.current = false;
+          }}
+          style={{ 
+            cursor: isCategoryPanningRef.current ? 'grabbing' : 'grab'
+          }}
+          onDragOver={(e) => {
+            // Permitir drop no container (os divs individuais vão lidar com o drop)
+            if (draggedCategoryId) {
+              e.preventDefault();
+            }
+          }}
         >
           <button 
-            onClick={() => {
+            onClick={(e) => {
+              // Prevenir clique se houve pan
+              if (categoryHasMovedRef.current || isCategoryPanningRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
               setSelectedFilter('all');
             }}
             className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
@@ -688,7 +776,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           {categories.map((category, index) => {
             const filterKey = category.name.toLowerCase().replace(/\s+/g, '-');
             const isActive = selectedFilter === filterKey;
-            const projectCount = projects.filter(p => p.type === category.name).length;
+            // Contar projetos que têm este serviço (considerando múltiplos tipos)
+            const projectCount = projects.filter(p => {
+              const types = p.types || (p.type ? [p.type] : []);
+              return types.includes(category.name);
+            }).length;
             const isDragging = draggedCategoryId === category.id;
             const isDragOver = dragOverIndex === index && draggedCategoryId !== category.id;
             
@@ -698,22 +790,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 className={`flex items-center group relative whitespace-nowrap transition-all ${
                   isDragging ? 'opacity-30 scale-95' : ''
                 }`}
-                draggable
-                onDragStart={(e) => {
-                  setDraggedCategoryId(category.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', category.id);
-                }}
                 onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = 'move';
                   if (draggedCategoryId && draggedCategoryId !== category.id) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
                     setDragOverIndex(index);
                   }
                 }}
                 onDragLeave={(e) => {
-                  // Só limpar se realmente saiu do elemento (não apenas de um filho)
+                  // Só limpar se realmente saiu do elemento
                   const rect = e.currentTarget.getBoundingClientRect();
                   const x = e.clientX;
                   const y = e.clientY;
@@ -723,7 +809,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 }}
                 onDrop={async (e) => {
                   e.preventDefault();
-                  const draggedId = e.dataTransfer.getData('text/plain');
+                  e.stopPropagation();
+                  const draggedId = draggedCategoryId;
                   
                   if (draggedId && draggedId !== category.id) {
                     const draggedIndex = categories.findIndex(c => c.id === draggedId);
@@ -749,10 +836,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   setDraggedCategoryId(null);
                   setDragOverIndex(null);
                 }}
-                onDragEnd={() => {
-                  setDraggedCategoryId(null);
-                  setDragOverIndex(null);
-                }}
               >
                 {/* Indicador visual de drop */}
                 {isDragOver && (
@@ -760,14 +843,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 )}
                 
                 <button 
-                  onClick={() => setSelectedFilter(filterKey)}
-                  className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative cursor-grab active:cursor-grabbing ${
+                  onClick={(e) => {
+                    // Prevenir clique se houve pan
+                    if (categoryHasMovedRef.current || isCategoryPanningRef.current) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    setSelectedFilter(filterKey);
+                  }}
+                  className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative ${
                     isActive 
                       ? 'text-primary' 
                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
-                  <span className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity ${isDragging ? 'opacity-100' : ''}`} style={{ fontSize: '16px' }}>
+                  <span 
+                    className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity drag-indicator-handle cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-100' : ''}`} 
+                    style={{ fontSize: '16px' }}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedCategoryId(category.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', category.id);
+                      e.stopPropagation(); // Prevenir que o pan seja ativado
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCategoryId(null);
+                      setDragOverIndex(null);
+                    }}
+                  >
                     drag_indicator
                   </span>
                   {category.isRecurring ? (
@@ -802,7 +907,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             );
           })}
 
-          {projects.some(p => p.type === 'Sem categoria') && (
+          {projects.some(p => {
+            const types = p.types || (p.type ? [p.type] : []);
+            return types.length === 0 || types.includes('Sem categoria');
+          }) && (
             <button 
               onClick={() => setSelectedFilter('sem-categoria')}
               className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
@@ -883,10 +991,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         }}
       >
         {(() => {
+          // Helper para obter os tipos de um projeto (compatibilidade com projetos antigos)
+          const getProjectTypesLocal = (project: Project): string[] => {
+            if (project.types && project.types.length > 0) {
+              return project.types;
+            }
+            return project.type ? [project.type] : [];
+          };
+          
           const filteredProjects = selectedFilter === 'all' 
             ? projects 
             : selectedFilter === 'sem-categoria'
-            ? projects.filter(p => p.type === 'Sem categoria') // Mantendo valor interno como 'Sem categoria' para compatibilidade
+            ? projects.filter(p => {
+                const types = getProjectTypesLocal(p);
+                return types.length === 0 || types.includes('Sem categoria');
+              })
             : projects.filter(p => {
                 const selectedCategory = categories.find(cat => cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter);
                 if (selectedCategory) {
@@ -900,26 +1019,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   };
                   
                   const categoryNameNormalized = normalizeString(selectedCategory.name);
-                  const projectTypeNormalized = normalizeString(p.type);
                   
-                  // Comparação exata primeiro (mais precisa)
-                  if (projectTypeNormalized === categoryNameNormalized) {
-                    return true;
-                  }
-                  
-                  // Comparação sem acentos também
-                  const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                  const projectTypeNoAccent = p.type.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                  if (projectTypeNoAccent === categoryNameNoAccent || 
-                      projectTypeNoAccent.includes(categoryNameNoAccent) ||
-                      categoryNameNoAccent.includes(projectTypeNoAccent)) {
-                    return true;
-                  }
-                  
-                  // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
-                  return projectTypeNormalized.includes(categoryNameNormalized) || 
-                         categoryNameNormalized.includes(projectTypeNormalized) ||
-                         projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
+                  // Verificar se ALGUM dos tipos do projeto corresponde à categoria selecionada
+                  const projectTypes = getProjectTypesLocal(p);
+                  return projectTypes.some(typeName => {
+                    const projectTypeNormalized = normalizeString(typeName);
+                    
+                    // Comparação exata primeiro (mais precisa)
+                    if (projectTypeNormalized === categoryNameNormalized) {
+                      return true;
+                    }
+                    
+                    // Comparação sem acentos também
+                    const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    const projectTypeNoAccent = typeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    if (projectTypeNoAccent === categoryNameNoAccent || 
+                        projectTypeNoAccent.includes(categoryNameNoAccent) ||
+                        categoryNameNoAccent.includes(projectTypeNoAccent)) {
+                      return true;
+                    }
+                    
+                    // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
+                    return projectTypeNormalized.includes(categoryNameNormalized) || 
+                           categoryNameNormalized.includes(projectTypeNormalized) ||
+                           projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
+                  });
                 }
                 return true;
               });
@@ -948,8 +1072,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           };
           
           const projectsForBoard = filteredProjects.map(p => {
-            const isProjectRecurring = categories.find(cat => 
-              cat.name === p.type && cat.isRecurring
+            // Verificar se ALGUM dos tipos do projeto é recorrente
+            const projectTypes = getProjectTypesLocal(p);
+            const isProjectRecurring = projectTypes.some(typeName => 
+              categories.find(cat => cat.name === typeName && cat.isRecurring)
             );
             
             if (isProjectRecurring) {
@@ -1072,9 +1198,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   };
                   
                   const stageProjects = projectsForBoard.filter(p => {
-                    // Verificar se o projeto é de um serviço recorrente
-                    const isProjectRecurring = categories.find(cat => 
-                      cat.name === p.type && cat.isRecurring
+                    // Verificar se ALGUM dos tipos do projeto é recorrente
+                    const pTypes = p.types || (p.type ? [p.type] : []);
+                    const isProjectRecurring = pTypes.some(typeName => 
+                      categories.find(cat => cat.name === typeName && cat.isRecurring)
                     );
                     
                     if (selectedFilter === 'all') {
@@ -1207,7 +1334,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           }
           
           if (viewMode === 'list') {
-            return <ListView projects={filteredProjects} onProjectClick={onProjectClick} />;
+            return <ListView 
+              projects={filteredProjects} 
+              onProjectClick={onProjectClick}
+              stages={isSelectedCategoryRecurring 
+                ? recalculateStageProgress(currentFixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })))
+                : stages}
+              categories={categories}
+            />;
           }
         })()}
       </div>
@@ -1222,11 +1356,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           workspaceId={currentWorkspace?.id}
           selectedFilter={selectedFilter}
           existingProjects={projects}
+          userId={userId}
           onClose={handleCloseAddProject}
           onSave={async (projectData) => {
-            // Fechar modal ANTES de iniciar operação assíncrona
-            handleCloseAddProject();
-            
             try {
               // Usar as etapas corretas baseado no tipo de serviço
               const stagesForProject = isSelectedCategoryRecurring 
@@ -1248,11 +1380,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 stageId: isSelectedCategoryRecurring ? undefined : (selectedStage?.id || stages[0]?.id),
                 progress: selectedStage?.progress || 0,
                 tagColor: 'blue',
-                avatar: `https://picsum.photos/seed/${projectData.name}/40/40`,
+                // Usar avatar do cliente se existir, senão deixar vazio para mostrar placeholder
+                avatar: (projectData as any).avatar || '',
+                // projectImage sempre vazio ao criar - será exibido placeholder com bordas tracejadas
+                projectImage: '',
                 budget: projectData.budget || 0,
                 isPaid: projectData.isPaid || false,
               };
-              const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id);
+              const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id, userId);
               
               // Verificar se é um projeto recorrente
               const selectedCategory = categories.find(cat => cat.name === projectData.type);
@@ -1265,6 +1400,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const implementationBudget = projectData.budget || 0; // Valor da implementação
                 const parcelas = (projectData as any).parcelas || 1; // Número de parcelas da implementação
                 const year = new Date().getFullYear();
+                
+                console.log('🔄 [Dashboard] Criando faturas para projeto recorrente:', {
+                  projectId,
+                  recurringAmount,
+                  recurringFirstDate,
+                  implementationBudget,
+                  parcelas
+                });
                 
                 // 1. Criar faturas de implementação parceladas (se valor > 0)
                 if (implementationBudget > 0) {
@@ -1284,11 +1427,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       amount: valorParcela,
                       date: invoiceDate,
                       status: 'Pending'
-                    });
+                    }, userId);
                   }
                 }
                 
                 // 2. Criar fatura de mensalidade (se valor e data definidos) - SEM numeração de parcelas
+                console.log('🔄 [Dashboard] Verificando condição para criar fatura de mensalidade:', {
+                  recurringAmount,
+                  recurringFirstDate,
+                  condicaoAtendida: recurringAmount > 0 && recurringFirstDate
+                });
+                
                 if (recurringAmount > 0 && recurringFirstDate) {
                   const [rYear, rMonth, rDay] = recurringFirstDate.split('-').map(Number);
                   const recurringDate = new Date(rYear, rMonth - 1, rDay);
@@ -1301,7 +1450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     amount: recurringAmount,
                     date: recurringDate,
                     status: 'Pending'
-                  });
+                  }, userId);
                 }
                 
                 // Restaurar o budget original (implementação) e salvar o recurringAmount (mensalidade)
@@ -1331,13 +1480,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     amount: valorParcela,
                     date: invoiceDate,
                     status: 'Pending'
-                  });
+                  }, userId);
                 }
               }
+              
+              // Fechar modal DEPOIS de todas as operações assíncronas serem concluídas
+              handleCloseAddProject();
+              
             } catch (error) {
               console.error("Error adding project:", error);
               setToast({ message: "Erro ao adicionar projeto. Tente novamente.", type: 'error' });
               setTimeout(() => setToast(null), 3000);
+              // Fechar modal mesmo em caso de erro
+              handleCloseAddProject();
             }
           }}
         />
@@ -1350,7 +1505,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           onSave={async (categoryData) => {
             try {
               if (categoryData.name && !categories.some(c => c.name === categoryData.name)) {
-                await addCategoryToFirebase(categoryData.name, currentWorkspace?.id, categoryData.isRecurring);
+                await addCategoryToFirebase(categoryData.name, currentWorkspace?.id, categoryData.isRecurring, userId);
               }
               console.log('✅ [Dashboard] Categoria adicionada, fechando modal...');
               setShowAddCategory(false);
@@ -1417,17 +1572,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           onClose={() => setCategoryToDelete(null)}
           onConfirm={async () => {
             try {
-              // Atualizar projetos que usam esse serviço
+              // Atualizar projetos que usam esse serviço (considerando múltiplos tipos)
               const projectsToUpdate = projects.filter(p => {
-                const projectTypeLower = p.type.toLowerCase();
-                const categoryLower = categoryToDelete.toLowerCase();
-                return projectTypeLower.includes(categoryLower) || 
-                       projectTypeLower.includes(categoryToDelete.split(' ')[0].toLowerCase());
+                const pTypes = p.types || (p.type ? [p.type] : []);
+                return pTypes.some(typeName => {
+                  const projectTypeLower = typeName.toLowerCase();
+                  const categoryLower = categoryToDelete.toLowerCase();
+                  return projectTypeLower.includes(categoryLower) || 
+                         projectTypeLower.includes(categoryToDelete.split(' ')[0].toLowerCase());
+                });
               });
 
-              // Atualizar cada projeto no Firebase
+              // Atualizar cada projeto no Firebase (remover o serviço do array de tipos)
               for (const project of projectsToUpdate) {
-                await updateProjectInFirebase(project.id, { type: 'Sem categoria' }); // Mantendo valor interno como 'Sem categoria' para compatibilidade
+                const currentTypes = project.types || (project.type ? [project.type] : []);
+                const newTypes = currentTypes.filter(t => 
+                  t.toLowerCase() !== categoryToDelete.toLowerCase()
+                );
+                await updateProjectInFirebase(project.id, { 
+                  types: newTypes.length > 0 ? newTypes : ['Sem categoria'],
+                  type: newTypes[0] || 'Sem categoria' // Compatibilidade
+                });
               }
               
               // Remove o serviço do Firebase
@@ -1872,6 +2037,18 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
   
+  // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
+  const getProjectTypes = (project: Project): string[] => {
+    const types = project.types || (project.type ? [project.type] : []);
+    // Se houver outros tipos além de "Sem categoria", remover "Sem categoria"
+    const hasOtherTypes = types.some(t => t !== 'Sem categoria');
+    if (hasOtherTypes) {
+      return types.filter(t => t !== 'Sem categoria');
+    }
+    // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
+    return types.length > 0 ? types : ['Sem categoria'];
+  };
+  
   // Função auxiliar para determinar a cor da data baseada na proximidade
   const getDateColor = (dateString: string | undefined): string => {
     if (!dateString) return 'text-slate-500 dark:text-slate-400';
@@ -1955,14 +2132,23 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       className={`bg-white dark:bg-slate-900 p-4 rounded-xl border ${project.status === 'Active' ? 'border-l-4 border-l-primary' : ''} ${isHighlighted ? 'ring-2 ring-primary shadow-lg' : 'border-slate-200 dark:border-slate-800 shadow-sm'} hover:shadow-md transition-all group ${isDragging ? 'opacity-50' : ''} ${isMouseDown ? 'cursor-grabbing' : 'cursor-pointer'}`}
     >
     <div className="flex justify-between items-start mb-3">
-      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
-        project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-        project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-        project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-        'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-      }`}>
-        {project.type}
-      </span>
+      <div className="flex flex-wrap gap-1">
+        {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
+          <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
+            project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
+            project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
+            project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+            'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+          }`}>
+            {typeName}
+          </span>
+        ))}
+        {(getProjectTypes(project).length > 2) && (
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
+            +{getProjectTypes(project).length - 2}
+          </span>
+        )}
+      </div>
       {onDelete && (
         <button
           onClick={(e) => {
@@ -1981,13 +2167,30 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
         </button>
       )}
     </div>
-    <h4 className="font-bold text-slate-900 dark:text-white text-base mb-1">{project.name}</h4>
-    <p className="text-xs text-slate-500 mb-3 line-clamp-2">{project.description}</p>
+    <div className="flex items-start gap-3 mb-3">
+      {project.projectImage ? (
+        <div 
+          className="flex-shrink-0 size-10 rounded-lg bg-slate-200" 
+          style={{ backgroundImage: `url(${project.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        ></div>
+      ) : (
+        <div className="flex-shrink-0 size-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
+          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-lg">add_photo_alternate</span>
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <h4 className="font-bold text-slate-900 dark:text-white text-base mb-1">{project.name}</h4>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mb-1">{project.client}</p>
+        <p className="text-xs text-slate-500 line-clamp-2">{project.description}</p>
+      </div>
+    </div>
     
-    {/* Verificar se é projeto recorrente */}
+    {/* Verificar se é projeto recorrente (considerando múltiplos tipos) */}
     {(() => {
-      const projectCategory = categories.find(cat => cat.name === project.type);
-      const isRecurring = projectCategory?.isRecurring || false;
+      const pTypes = project.types || (project.type ? [project.type] : []);
+      const isRecurring = pTypes.some(typeName => 
+        categories.find(cat => cat.name === typeName && cat.isRecurring)
+      );
       
       // Projeto recorrente: mostrar implementação e mensalidade separados
       if (isRecurring && (project.budget > 0 || project.recurringAmount > 0)) {
@@ -2126,8 +2329,9 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
     
     {/* Datas de Manutenção e Relatório para projetos recorrentes em Manutenção */}
     {(() => {
-      const isRecurringService = categories.find(cat => 
-        cat.name === project.type && cat.isRecurring
+      const pTypesForMaint = project.types || (project.type ? [project.type] : []);
+      const isRecurringService = pTypesForMaint.some(typeName => 
+        categories.find(cat => cat.name === typeName && cat.isRecurring)
       );
       const isInMaintenance = isRecurringService && project.status === 'Completed';
       
@@ -2158,72 +2362,152 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
   );
 };
 
-const ListView: React.FC<{ projects: Project[]; onProjectClick?: (project: Project) => void }> = ({ projects, onProjectClick }) => (
-  <div className="max-w-6xl mx-auto">
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left table-fixed">
-          <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[15%]" />
-            <col className="w-[12%]" />
-            <col className="w-[15%]" />
-            <col className="w-[15%]" />
-            <col className="w-[15%]" />
-          </colgroup>
-          <thead className="bg-slate-50 dark:bg-slate-800/50">
-            <tr>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Projeto</th>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Cliente</th>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Progresso</th>
-              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Prazo</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {projects.map((project) => (
-              <tr 
-                key={project.id} 
-                onClick={() => onProjectClick?.(project)}
-                className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
-              >
-                <td className="px-6 py-4 overflow-hidden">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex-shrink-0 size-10 rounded-lg bg-slate-200" style={{ backgroundImage: `url(${project.avatar})`, backgroundSize: 'cover' }}></div>
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <p className="text-sm font-bold truncate">{project.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{project.description}</p>
+const ListView: React.FC<{ 
+  projects: Project[]; 
+  onProjectClick?: (project: Project) => void;
+  stages: Stage[];
+  categories: Category[];
+}> = ({ projects, onProjectClick, stages, categories }) => {
+  // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
+  const getProjectTypes = (project: Project): string[] => {
+    const types = project.types || (project.type ? [project.type] : []);
+    // Se houver outros tipos além de "Sem categoria", remover "Sem categoria"
+    const hasOtherTypes = types.some(t => t !== 'Sem categoria');
+    if (hasOtherTypes) {
+      return types.filter(t => t !== 'Sem categoria');
+    }
+    // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
+    return types.length > 0 ? types : ['Sem categoria'];
+  };
+  
+  // Obter label do status - usar título da etapa se disponível
+  const getStatusLabel = (project: Project) => {
+    // Verificar etapa baseado no stageId
+    const isOnboardingStage = project.stageId?.includes('onboarding') || false;
+    const isDevelopmentStage = project.stageId?.includes('development') || false;
+    const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
+    
+    // Verificar se é projeto recorrente
+    const pTypes = project.types || (project.type ? [project.type] : []);
+    const isRecurring = pTypes.some(typeName => 
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
+    );
+    
+    // Buscar a etapa correspondente ao status do projeto
+    const currentStage = stages.find(stage => stage.status === project.status);
+    
+    if (currentStage) {
+      // Se for serviço recorrente e status Completed, mostrar "Manutenção"
+      if (isRecurring && project.status === 'Completed' && isMaintenanceStage) {
+        return 'Manutenção';
+      }
+      // Retornar o título da etapa
+      return currentStage.title;
+    }
+    
+    // Fallback baseado no stageId e status
+    if (project.status === 'Lead' && isOnboardingStage) {
+      return 'On-boarding';
+    } else if (project.status === 'Active' && isDevelopmentStage) {
+      return 'Desenvolvimento';
+    } else if (project.status === 'Completed' && isMaintenanceStage && isRecurring) {
+      return 'Manutenção';
+    } else if (project.status === 'Review') {
+      return 'Revisão';
+    } else if (project.status === 'Completed') {
+      return 'Concluído';
+    } else if (project.status === 'Finished') {
+      return 'Finalizado';
+    }
+    
+    // Fallback para labels padrão
+    const progress = project.progress || 0;
+    if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
+    if (project.status === 'Lead') return 'On-boarding';
+    if (project.status === 'Completed') return 'Concluído';
+    if (project.status === 'Finished') return 'Finalizado';
+    return `Em Revisão (${progress}%)`;
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left table-fixed">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[15%]" />
+              <col className="w-[18%]" />
+              <col className="w-[15%]" />
+              <col className="w-[15%]" />
+              <col className="w-[15%]" />
+            </colgroup>
+            <thead className="bg-slate-50 dark:bg-slate-800/50">
+              <tr>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Projeto</th>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Cliente</th>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Serviço</th>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Progresso</th>
+                <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Prazo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {projects.map((project) => (
+                <tr 
+                  key={project.id} 
+                  onClick={() => onProjectClick?.(project)}
+                  className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                >
+                  <td className="px-6 py-4 overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {project.projectImage ? (
+                        <div className="flex-shrink-0 size-10 rounded-lg bg-slate-200" style={{ backgroundImage: `url(${project.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+                      ) : (
+                        <div className="flex-shrink-0 size-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
+                          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-lg">add_photo_alternate</span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="text-sm font-bold truncate">{project.name}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{project.client}</p>
+                        <p className="text-xs text-slate-500 truncate">{project.description}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  <span className="text-sm truncate block">{project.client}</span>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded inline-block truncate max-w-full ${
-                    project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                    project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                    project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                    'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-                  }`}>
-                    {project.type}
-                  </span>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${
-                    project.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
-                    project.status === 'Active' ? 'bg-primary/10 text-primary' :
-                    project.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                    project.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
-                    'bg-indigo-100 text-indigo-700'
-                  }`}>
-                    {project.status === 'Lead' ? 'Proposta Enviada' : 
-                     project.status === 'Active' ? 'Em Desenvolvimento' :
-                     project.status === 'Completed' ? 'Concluído' : 
-                     project.status === 'Finished' ? 'Finalizado' : 'Em Revisão'}
-                  </span>
-                </td>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <span className="text-sm truncate block">{project.client}</span>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <div className="flex flex-wrap gap-1 whitespace-nowrap">
+                      {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
+                        <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded inline-block ${
+                          project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
+                          project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
+                          project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+                          'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                        }`}>
+                          {typeName}
+                        </span>
+                      ))}
+                      {(getProjectTypes(project).length > 2) && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1 py-1 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
+                          +{getProjectTypes(project).length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${
+                      project.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
+                      project.status === 'Active' ? 'bg-primary/10 text-primary' :
+                      project.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                      project.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
+                      'bg-indigo-100 text-indigo-700'
+                    }`}>
+                      {getStatusLabel(project)}
+                    </span>
+                  </td>
                 <td className="px-6 py-4 overflow-hidden">
                   {project.progress > 0 ? (
                     <div className="flex items-center gap-2 min-w-0">
@@ -2282,9 +2566,22 @@ const ListView: React.FC<{ projects: Project[]; onProjectClick?: (project: Proje
         </div>
     </div>
   </div>
-);
+  );
+};
 
 const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: Project) => void }> = ({ projects, onProjectClick }) => {
+  // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
+  const getProjectTypes = (project: Project): string[] => {
+    const types = project.types || (project.type ? [project.type] : []);
+    // Se houver outros tipos além de "Sem categoria", remover "Sem categoria"
+    const hasOtherTypes = types.some(t => t !== 'Sem categoria');
+    if (hasOtherTypes) {
+      return types.filter(t => t !== 'Sem categoria');
+    }
+    // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
+    return types.length > 0 ? types : ['Sem categoria'];
+  };
+  
   // Calcular a data inicial do cronograma (deadline mais antiga de projetos não concluídos)
   const calculateStartDate = () => {
     const today = new Date();
@@ -2520,11 +2817,28 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     return 'blue';
   };
 
-  // Obter label do status
+  // Obter label do status - usar título da etapa se disponível
   const getStatusLabel = (project: Project) => {
+    // Buscar a etapa correspondente ao status do projeto
+    const currentStage = stages.find(stage => stage.status === project.status);
+    
+    if (currentStage) {
+      // Se for serviço recorrente e status Completed, mostrar "Manutenção"
+      const pTypesForLabel = project.types || (project.type ? [project.type] : []);
+      const isRecurringService = pTypesForLabel.some(typeName => 
+        categories.find(cat => cat.name === typeName && cat.isRecurring)
+      );
+      if (isRecurringService && project.status === 'Completed') {
+        return 'Manutenção';
+      }
+      // Retornar o título da etapa
+      return currentStage.title;
+    }
+    
+    // Fallback para labels padrão se não encontrar etapa
     const progress = project.progress || 0;
     if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
-    if (project.status === 'Lead') return 'Proposta Enviada';
+    if (project.status === 'Lead') return 'On-boarding';
     if (project.status === 'Completed') return 'Concluído';
     if (project.status === 'Finished') return 'Finalizado';
     return `Em Revisão (${progress}%)`;
@@ -2652,15 +2966,24 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
               >
                 <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 flex flex-col gap-1">
                   <h4 className="text-sm font-bold">{project.name}</h4>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${
-                    project.tagColor === 'amber' ? 'bg-amber-50 text-amber-600' :
-                    project.tagColor === 'blue' ? 'bg-blue-50 text-blue-600' :
-                    project.tagColor === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
-                    project.tagColor === 'indigo' ? 'bg-indigo-50 text-indigo-600' :
-                    'bg-blue-50 text-blue-600'
-                  }`}>
-                    {project.type}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
+                      <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${
+                        project.tagColor === 'amber' ? 'bg-amber-50 text-amber-600' :
+                        project.tagColor === 'blue' ? 'bg-blue-50 text-blue-600' :
+                        project.tagColor === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
+                        project.tagColor === 'indigo' ? 'bg-indigo-50 text-indigo-600' :
+                        'bg-blue-50 text-blue-600'
+                      }`}>
+                        {typeName}
+                      </span>
+                    ))}
+                    {(getProjectTypes(project).length > 2) && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1 py-0.5 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
+                        +{getProjectTypes(project).length - 2}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 relative flex items-center h-20">
                   {/* Grid de colunas de fundo */}
@@ -2887,9 +3210,10 @@ const AddProjectModal: React.FC<{
   workspaceId?: string | null; 
   selectedFilter?: string;
   existingProjects?: Project[];
+  userId?: string | null;
   onClose: () => void; 
   onSave: (project: Partial<Project>) => Promise<void> 
-}> = ({ categories, stages, workspaceId, selectedFilter, existingProjects = [], onClose, onSave }) => {
+}> = ({ categories, stages, workspaceId, selectedFilter, existingProjects = [], userId, onClose, onSave }) => {
   // Determinar o tipo/serviço inicial baseado no filtro selecionado
   const getInitialType = () => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria') {
@@ -2901,11 +3225,23 @@ const AddProjectModal: React.FC<{
     return '';
   };
 
+  // Determinar os tipos iniciais baseado no filtro selecionado
+  const getInitialTypes = (): string[] => {
+    if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria') {
+      const selectedCategory = categories.find(cat => 
+        cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
+      );
+      return selectedCategory?.name ? [selectedCategory.name] : [];
+    }
+    return [];
+  };
+
   const [formData, setFormData] = useState({
     name: '',
     client: '',
     description: '',
-    type: getInitialType(),
+    types: getInitialTypes(), // Array de serviços selecionados
+    type: getInitialType(), // Mantido para compatibilidade
     stageId: stages.length > 0 ? stages[0].id : '', // Usar stageId em vez de status
     status: stages.length > 0 ? stages[0].status : 'Lead' as Project['status'],
     budget: 0,
@@ -2919,17 +3255,46 @@ const AddProjectModal: React.FC<{
   const [recurringAmountDisplay, setRecurringAmountDisplay] = useState<string>('0,00');
   const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
   const recurringDatePickerRef = useRef<HTMLDivElement>(null);
+  const [showTypesDropdown, setShowTypesDropdown] = useState(false);
+  const typesDropdownRef = useRef<HTMLDivElement>(null);
+  const typesButtonRef = useRef<HTMLButtonElement>(null);
+  const [typesDropdownPosition, setTypesDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   
-  // Verificar se o serviço selecionado é recorrente
+  // Verificar se algum dos serviços selecionados é recorrente
   const isSelectedTypeRecurring = () => {
-    const selectedCategory = categories.find(cat => cat.name === formData.type);
-    return selectedCategory?.isRecurring || false;
+    return formData.types.some(typeName => {
+      const category = categories.find(cat => cat.name === typeName);
+      return category?.isRecurring || false;
+    });
+  };
+  
+  // Toggle de seleção de tipo
+  const toggleTypeSelection = (typeName: string) => {
+    setFormData(prev => {
+      let newTypes: string[];
+      
+      if (prev.types.includes(typeName)) {
+        // Removendo o serviço
+        newTypes = prev.types.filter(t => t !== typeName && t !== 'Sem categoria');
+        // Se não sobrar nenhum serviço, adicionar "Sem categoria"
+        if (newTypes.length === 0) {
+          newTypes = ['Sem categoria'];
+        }
+      } else {
+        // Adicionando o serviço - remover "Sem categoria" se existir
+        newTypes = [...prev.types.filter(t => t !== 'Sem categoria'), typeName];
+      }
+      
+      // Atualizar type para compatibilidade (primeiro tipo selecionado)
+      return { ...prev, types: newTypes, type: newTypes[0] || '' };
+    });
   };
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const clientInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [clientAvatar, setClientAvatar] = useState<string>(''); // Avatar do cliente selecionado
   
   // Estados para autocomplete de projetos
   const [availableProjectNames, setAvailableProjectNames] = useState<string[]>([]);
@@ -2949,17 +3314,55 @@ const AddProjectModal: React.FC<{
     setAvailableProjectNames([...new Set(projectNames)]);
   }, [existingProjects]);
 
-  // Atualizar tipo quando categorias forem carregadas e selectedFilter estiver definido
+  // Buscar avatar do cliente quando o cliente for selecionado
+  useEffect(() => {
+    if (formData.client.trim()) {
+      // Buscar o primeiro projeto desse cliente que tenha avatar
+      const clientProject = existingProjects.find(p => 
+        p.client === formData.client && p.avatar && p.avatar.trim() !== ''
+      );
+      if (clientProject) {
+        setClientAvatar(clientProject.avatar);
+      } else {
+        setClientAvatar(''); // Limpar avatar se não encontrar
+      }
+    } else {
+      setClientAvatar(''); // Limpar avatar se cliente estiver vazio
+    }
+  }, [formData.client, existingProjects]);
+
+  // Atualizar tipos quando categorias forem carregadas e selectedFilter estiver definido
   useEffect(() => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria' && categories.length > 0) {
       const selectedCategory = categories.find(cat => 
         cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
       );
-      if (selectedCategory && formData.type !== selectedCategory.name) {
-        setFormData(prev => ({ ...prev, type: selectedCategory.name }));
+      if (selectedCategory && !formData.types.includes(selectedCategory.name)) {
+        setFormData(prev => ({ 
+          ...prev, 
+          types: [selectedCategory.name],
+          type: selectedCategory.name 
+        }));
       }
     }
   }, [categories, selectedFilter]);
+  
+  // Fechar dropdown de tipos ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      // Verificar se clicou fora do botão E fora do dropdown
+      const clickedOutsideButton = typesDropdownRef.current && !typesDropdownRef.current.contains(target);
+      const clickedInsideDropdown = (target as HTMLElement).closest?.('[data-types-dropdown]');
+      
+      if (clickedOutsideButton && !clickedInsideDropdown) {
+        setShowTypesDropdown(false);
+        setTypesDropdownPosition(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Atualizar stageId quando stages mudarem
   useEffect(() => {
@@ -3063,7 +3466,22 @@ const AddProjectModal: React.FC<{
     if (formData.name && formData.client && !isSubmitting) {
       setIsSubmitting(true);
       try {
-        await onSave(formData);
+        // Incluir avatar do cliente se existir e o array de tipos
+        // Se não houver tipos selecionados, usar array vazio (não adicionar "Sem categoria" automaticamente)
+        const finalTypes = formData.types.length > 0 
+          ? formData.types.filter(t => t !== 'Sem categoria') // Remover "Sem categoria" se houver outros tipos
+          : (formData.type && formData.type !== 'Sem categoria' ? [formData.type] : []);
+        
+        // Se realmente não houver nenhum tipo, adicionar "Sem categoria"
+        const projectTypes = finalTypes.length > 0 ? finalTypes : ['Sem categoria'];
+        
+        const projectData = {
+          ...formData,
+          avatar: clientAvatar,
+          types: projectTypes,
+          type: projectTypes[0] || '', // Primeiro tipo para compatibilidade
+        };
+        await onSave(projectData);
         // Modal será fechado pelo onSave
       } catch (error) {
         console.error("Error in handleSubmit:", error);
@@ -3085,41 +3503,6 @@ const AddProjectModal: React.FC<{
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome do Projeto</label>
-            <div className="relative" ref={projectInputRef}>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                onFocus={() => {
-                  if (formData.name.trim() && filteredProjects.length > 0) {
-                    setShowProjectSuggestions(true);
-                  }
-                }}
-                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-                placeholder="Ex: Redesign de Site"
-                required
-              />
-              {showProjectSuggestions && filteredProjects.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                  {filteredProjects.map((projectName, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => {
-                        setFormData({ ...formData, name: projectName });
-                        setShowProjectSuggestions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      {projectName}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Cliente</label>
             <div className="relative" ref={clientInputRef}>
@@ -3156,6 +3539,41 @@ const AddProjectModal: React.FC<{
             </div>
           </div>
           <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome da Empresa/Projeto</label>
+            <div className="relative" ref={projectInputRef}>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onFocus={() => {
+                  if (formData.name.trim() && filteredProjects.length > 0) {
+                    setShowProjectSuggestions(true);
+                  }
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                placeholder="Ex: Nome da Empresa ou Projeto"
+                required
+              />
+              {showProjectSuggestions && filteredProjects.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {filteredProjects.map((projectName, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, name: projectName });
+                        setShowProjectSuggestions(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      {projectName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Descrição</label>
             <textarea
               value={formData.description}
@@ -3167,22 +3585,127 @@ const AddProjectModal: React.FC<{
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Tipo</label>
-              <div className="relative">
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition-all hover:border-primary/50"
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Serviços</label>
+              <div className="relative" ref={typesDropdownRef}>
+                <button
+                  ref={typesButtonRef}
+                  type="button"
+                  onClick={() => {
+                    if (!showTypesDropdown && typesButtonRef.current) {
+                      const rect = typesButtonRef.current.getBoundingClientRect();
+                      const viewportHeight = window.innerHeight;
+                      const spaceBelow = viewportHeight - rect.bottom;
+                      const dropdownHeight = Math.min(320, (categories.length + 1) * 44); // Altura estimada
+                      
+                      // Se não houver espaço suficiente abaixo, abrir para cima
+                      const shouldOpenUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+                      
+                      setTypesDropdownPosition({
+                        top: shouldOpenUp ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setShowTypesDropdown(!showTypesDropdown);
+                  }}
+                  className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-left text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary cursor-pointer transition-all hover:border-primary/50"
                 >
-                  <option value="">Selecione um serviço</option>
-                  {categories.map((category, index) => (
-                    <option key={category.id || index} value={category.name}>{category.name}</option>
-                  ))}
-                  <option value="Sem categoria">Sem serviço</option>
-                </select>
+                  {formData.types.length > 0 
+                    ? (formData.types.length === 1 
+                        ? formData.types[0] 
+                        : `${formData.types.length} serviços selecionados`)
+                    : 'Selecione os serviços'}
+                </button>
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <span className="material-symbols-outlined text-lg">expand_more</span>
+                  <span className="material-symbols-outlined text-lg">{showTypesDropdown ? 'expand_less' : 'expand_more'}</span>
                 </span>
+                
+                {/* Dropdown de seleção múltipla - Posição fixa para não ser cortado */}
+                {showTypesDropdown && typesDropdownPosition && (
+                  <div 
+                    data-types-dropdown
+                    className="fixed bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden"
+                    style={{
+                      top: typesDropdownPosition.top,
+                      left: typesDropdownPosition.left,
+                      width: typesDropdownPosition.width,
+                      zIndex: 9999,
+                      maxHeight: '320px'
+                    }}
+                  >
+                    <div className="max-h-[320px] overflow-y-auto">
+                      {categories.map((category, index) => (
+                        <label
+                          key={category.id || index}
+                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${
+                            formData.types.includes(category.name) 
+                              ? 'bg-primary/10' 
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.types.includes(category.name)}
+                            onChange={() => toggleTypeSelection(category.name)}
+                            className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                          />
+                          <span className="text-sm flex-1">{category.name}</span>
+                          {category.isRecurring && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded font-bold">
+                              RECORRENTE
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                      <label
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                          formData.types.includes('Sem categoria') 
+                            ? 'bg-primary/10' 
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.types.includes('Sem categoria')}
+                          onChange={() => toggleTypeSelection('Sem categoria')}
+                          className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                        />
+                        <span className="text-sm text-slate-500">Sem serviço</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Chips dos serviços selecionados */}
+                {formData.types.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {formData.types.map((typeName, index) => {
+                      const category = categories.find(c => c.name === typeName);
+                      return (
+                        <span
+                          key={index}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+                            category?.isRecurring 
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          }`}
+                        >
+                          {typeName}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleTypeSelection(typeName);
+                            }}
+                            className="hover:opacity-70"
+                          >
+                            <span className="material-symbols-outlined text-xs">close</span>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
             <div>
