@@ -1,11 +1,10 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { User } from 'firebase/auth';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { Dashboard } from './views/Dashboard';
-import { Tasks } from './views/Tasks';
 import { Financial } from './views/Financial';
-import { Documents } from './views/Documents';
 import { Timeline } from './views/Timeline';
 import { Settings } from './views/Settings';
 import { ClientProfile } from './views/ClientProfile';
@@ -17,10 +16,13 @@ import { ClientRoadmap } from './views/ClientRoadmap';
 import { ClientActivityLog } from './views/ClientActivityLog';
 import { ProjectBilling } from './views/ProjectBilling';
 import { ProjectRoadmap } from './views/ProjectRoadmap';
+import { Login } from './views/Login';
 import { ViewState, Project, Workspace } from './types';
-import { getProjects } from './firebase/services';
+import { getProjects, onAuthStateChange, signOut } from './firebase/services';
 
 const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [currentView, setCurrentView] = useState<ViewState>('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -29,6 +31,25 @@ const App: React.FC = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [dashboardInitialFilter, setDashboardInitialFilter] = useState<string | undefined>(undefined);
   const [dashboardHighlightedProjectId, setDashboardHighlightedProjectId] = useState<string | undefined>(undefined);
+  const [openAddProjectModal, setOpenAddProjectModal] = useState(false);
+
+  // Observar estado de autenticação
+  useEffect(() => {
+    const unsubscribe = onAuthStateChange((currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+  }, []);
 
   const handleWorkspaceChange = useCallback((workspace: Workspace | null) => {
     console.log('Mudando workspace para:', workspace);
@@ -110,6 +131,11 @@ const App: React.FC = () => {
     }
   }, [currentWorkspace, currentView]);
 
+  const handleCreateProject = useCallback(() => {
+    setOpenAddProjectModal(true);
+    setCurrentView('Dashboard');
+  }, []);
+
   const renderView = () => {
     switch (currentView) {
       case 'Dashboard': return <Dashboard 
@@ -117,19 +143,29 @@ const App: React.FC = () => {
         currentWorkspace={currentWorkspace}
         initialFilter={dashboardInitialFilter}
         highlightedProjectId={dashboardHighlightedProjectId}
+        openAddProjectModal={openAddProjectModal}
+        onAddProjectModalClose={() => setOpenAddProjectModal(false)}
       />;
-      case 'Tasks': return <Tasks onCreateTask={() => navigateToView('CreateTask')} />;
-      case 'Financial': return <Financial onCreateInvoice={() => navigateToView('CreateInvoice')} />;
-      case 'Documents': return <Documents />;
+      case 'Financial': return <Financial currentWorkspace={currentWorkspace} onCreateInvoice={() => navigateToView('CreateInvoice')} />;
       case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
-      case 'Settings': return <Settings />;
+      case 'Settings': return <Settings 
+        currentWorkspace={currentWorkspace}
+        onWorkspaceUpdate={(updatedWorkspace) => {
+          setWorkspaces(prev => prev.map(w => w.id === updatedWorkspace.id ? updatedWorkspace : w));
+          if (currentWorkspace?.id === updatedWorkspace.id) {
+            setCurrentWorkspace(updatedWorkspace);
+          }
+        }}
+      />;
       case 'Clients': return <ClientProfile 
-        onNavigate={(view) => navigateToView(view as ViewState)}
+        currentWorkspace={currentWorkspace}
+        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
       />;
       case 'ProjectDetails': return selectedProject ? (
         <ProjectDetails 
           project={selectedProject} 
           onClose={goBack}
+          onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
         />
       ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'ProjectBilling': return selectedProject ? (
@@ -155,13 +191,32 @@ const App: React.FC = () => {
     }
   };
 
+  // Tela de carregamento
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="bg-primary size-16 rounded-2xl flex items-center justify-center text-white animate-pulse">
+            <span className="material-symbols-outlined text-3xl">auto_awesome</span>
+          </div>
+          <div className="size-8 border-2 border-slate-700 border-t-primary rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Tela de login
+  if (!user) {
+    return <Login onLoginSuccess={() => {}} />;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
       <Sidebar 
         currentView={currentView} 
         setView={(view) => navigateToView(view)} 
         isOpen={isSidebarOpen}
-        onCreateProject={() => navigateToView('Settings')}
+        onCreateProject={handleCreateProject}
         currentWorkspace={currentWorkspace}
         workspaces={workspaces}
         onWorkspaceChange={handleWorkspaceChange}
@@ -169,7 +224,13 @@ const App: React.FC = () => {
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header onToggleSidebar={toggleSidebar} onSearch={handleSearch} />
+        <Header 
+          onToggleSidebar={toggleSidebar} 
+          onSearch={handleSearch} 
+          currentWorkspace={currentWorkspace}
+          user={user}
+          onLogout={handleLogout}
+        />
         <main className="flex-1 overflow-y-auto">
           {renderView()}
         </main>

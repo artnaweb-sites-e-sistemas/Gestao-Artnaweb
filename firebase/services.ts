@@ -21,7 +21,14 @@ import {
   deleteObject,
   StorageReference 
 } from "firebase/storage";
-import { db, storage } from "./config";
+import { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User
+} from "firebase/auth";
+import { db, storage, auth } from "./config";
 import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice } from "../types";
 
 // Habilitar persistência offline (opcional)
@@ -395,6 +402,18 @@ export const updateCategoriesOrder = async (categoryOrders: { id: string; order:
     await Promise.all(updates);
   } catch (error) {
     console.error("Error updating categories order:", error);
+    throw error;
+  }
+};
+
+export const deleteCategoryById = async (categoryId: string): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+    await deleteDoc(doc(db, CATEGORIES_COLLECTION, categoryId));
+  } catch (error) {
+    console.error("Error deleting category by ID:", error);
     throw error;
   }
 };
@@ -1197,6 +1216,28 @@ export const uploadProjectAvatar = async (projectId: string, file: File): Promis
   }
 };
 
+export const uploadProjectImage = async (projectId: string, file: File): Promise<string> => {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage não está inicializado");
+    }
+    
+    // Criar referência no Storage para a imagem do projeto
+    const fileRef = ref(storage, `projects/${projectId}/project-image/${Date.now()}_${file.name}`);
+    
+    // Fazer upload do arquivo
+    const snapshot = await uploadBytes(fileRef, file);
+    
+    // Obter URL de download
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    
+    return downloadURL;
+  } catch (error) {
+    console.error("Error uploading project image:", error);
+    throw error;
+  }
+};
+
 // Workspaces
 export const getWorkspaces = async (): Promise<Workspace[]> => {
   try {
@@ -1344,6 +1385,28 @@ export const updateWorkspace = async (workspaceId: string, updates: Partial<Work
   }
 };
 
+export const uploadWorkspaceAvatar = async (workspaceId: string, file: File): Promise<string> => {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage não está inicializado");
+    }
+    
+    // Criar referência no Storage para o avatar do workspace
+    const fileRef = ref(storage, `workspaces/${workspaceId}/avatar/${Date.now()}_${file.name}`);
+    
+    // Fazer upload do arquivo
+    const snapshot = await uploadBytes(fileRef, file);
+    
+    // Obter URL de download
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    
+    return downloadURL;
+  } catch (error) {
+    console.error("Error uploading workspace avatar:", error);
+    throw error;
+  }
+};
+
 export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
   try {
     if (!db) {
@@ -1357,17 +1420,19 @@ export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
 };
 
 // Invoices
-export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId: string) => {
+export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId?: string) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
     return () => {};
   }
   
-  // Remover orderBy para evitar necessidade de índice composto - ordenar no cliente
-  const q = query(
-    collection(db, INVOICES_COLLECTION),
-    where("projectId", "==", projectId)
-  );
+  // Se projectId for fornecido, filtrar por projeto; caso contrário, buscar todas
+  const q = projectId 
+    ? query(
+        collection(db, INVOICES_COLLECTION),
+        where("projectId", "==", projectId)
+      )
+    : query(collection(db, INVOICES_COLLECTION));
   
   return onSnapshot(q, (querySnapshot) => {
     const invoices = querySnapshot.docs.map(doc => ({
@@ -1535,3 +1600,37 @@ export const deleteInvoice = async (invoiceId: string): Promise<void> => {
   }
 };
 
+// ==================== AUTENTICAÇÃO ====================
+
+const googleProvider = new GoogleAuthProvider();
+
+// Login com Google
+export const signInWithGoogle = async (): Promise<User> => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error) {
+    console.error("Error signing in with Google:", error);
+    throw error;
+  }
+};
+
+// Logout
+export const signOut = async (): Promise<void> => {
+  try {
+    await firebaseSignOut(auth);
+  } catch (error) {
+    console.error("Error signing out:", error);
+    throw error;
+  }
+};
+
+// Observar mudanças no estado de autenticação
+export const onAuthStateChange = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
+
+// Obter usuário atual
+export const getCurrentUser = (): User | null => {
+  return auth.currentUser;
+};

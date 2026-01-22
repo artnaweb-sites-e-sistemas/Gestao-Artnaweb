@@ -29,6 +29,8 @@ interface DashboardProps {
   currentWorkspace?: Workspace | null;
   initialFilter?: string;
   highlightedProjectId?: string;
+  openAddProjectModal?: boolean;
+  onAddProjectModalClose?: () => void;
 }
 
 type ViewMode = 'board' | 'list';
@@ -141,7 +143,7 @@ const fixedStagesRecurring: Stage[] = [
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
 ];
 
-export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('board');
   const [selectedFilter, setSelectedFilter] = useState<string>(initialFilter || 'all');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -166,6 +168,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const isInitialStagesLoad = useRef(true);
   const isDeletingStage = useRef(false);
   const isAddingFixedStages = useRef(false);
+
+  // Abrir modal de adicionar projeto quando solicitado externamente
+  useEffect(() => {
+    if (openAddProjectModal) {
+      setShowAddProject(true);
+    }
+  }, [openAddProjectModal]);
+
+  // Notificar quando o modal fechar
+  const handleCloseAddProject = () => {
+    setShowAddProject(false);
+    onAddProjectModalClose?.();
+  };
 
   // Verificar se o serviço selecionado é recorrente
   const isSelectedCategoryRecurring = React.useMemo(() => {
@@ -783,7 +798,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 >
                   <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>
-              </div>
+      </div>
             );
           })}
 
@@ -1187,8 +1202,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   <span className="material-symbols-outlined">add</span>
                   <span className="text-xs font-bold uppercase tracking-wider">Nova Etapa</span>
                 </button>
-        </div>
-            );
+    </div>
+  );
           }
           
           if (viewMode === 'list') {
@@ -1207,10 +1222,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           workspaceId={currentWorkspace?.id}
           selectedFilter={selectedFilter}
           existingProjects={projects}
-          onClose={() => setShowAddProject(false)}
+          onClose={handleCloseAddProject}
           onSave={async (projectData) => {
             // Fechar modal ANTES de iniciar operação assíncrona
-            setShowAddProject(false);
+            handleCloseAddProject();
             
             try {
               // Usar as etapas corretas baseado no tipo de serviço
@@ -1355,11 +1370,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               <div className="flex items-center gap-4 mb-4">
                 <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
                   <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-                </div>
+      </div>
                 <div>
                   <h3 className="text-xl font-bold">Excluir Projeto</h3>
                   <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                </div>
+    </div>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 Tem certeza que deseja excluir o projeto <span className="font-bold">"{projectToDelete.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
@@ -1371,7 +1386,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
               >
                 Cancelar
-              </button>
+        </button>
               <button 
                 onClick={async () => {
                   const projectId = projectToDelete.id;
@@ -1628,7 +1643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               }`}>
                 {toast.type === 'success' ? 'check_circle' : 'warning'}
               </span>
-            </div>
+    </div>
             <p className={`text-sm font-semibold flex-1 leading-relaxed ${
               toast.type === 'success' 
                 ? 'text-emerald-900 dark:text-emerald-100' 
@@ -1646,8 +1661,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           </div>
         </div>
       )}
-    </div>
-  );
+  </div>
+);
 };
 
 const StageColumn: React.FC<{ 

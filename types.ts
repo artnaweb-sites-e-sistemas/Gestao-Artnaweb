@@ -1,9 +1,7 @@
 
 export type ViewState = 
   | 'Dashboard' 
-  | 'Tasks' 
   | 'Financial' 
-  | 'Documents' 
   | 'Clients' 
   | 'Settings' 
   | 'Timeline'
@@ -26,7 +24,8 @@ export interface Project {
   stageId?: string; // ID da etapa para filtragem correta
   progress: number;
   tagColor: string;
-  avatar: string;
+  avatar: string; // Foto do cliente
+  projectImage?: string; // Foto do projeto
   deadline?: string;
   maintenanceDate?: string; // Data da Manutenção (para projetos recorrentes em Manutenção)
   reportDate?: string; // Data do Relatório (para projetos recorrentes em Manutenção)
@@ -115,6 +114,9 @@ export interface ProjectFile {
 export interface Workspace {
   id: string;
   name: string;
+  avatar?: string; // Foto do workspace
+  description?: string; // Descrição do workspace
+  color?: string; // Cor tema do workspace
   createdAt: Date | any;
   updatedAt?: Date | any;
 }

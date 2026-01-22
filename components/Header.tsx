@@ -1,14 +1,19 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { Workspace } from '../types';
+import { User } from 'firebase/auth';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
   onSearch?: (query: string) => void;
+  currentWorkspace?: Workspace | null;
+  user?: User | null;
+  onLogout?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch }) => {
-  const [showNotifications, setShowNotifications] = useState(false);
+export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, currentWorkspace, user, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -62,56 +67,73 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch }) => 
         </div>
       </div>
       <div className="flex items-center gap-4 relative">
-        <button 
-          onClick={() => setShowNotifications(!showNotifications)}
-          className="size-10 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors relative"
-        >
-          <span className="material-symbols-outlined">notifications</span>
-          <span className="absolute top-1 right-1 size-2 bg-primary rounded-full"></span>
-        </button>
-        {showNotifications && (
-          <div className="absolute top-14 right-0 w-80 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg z-50">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-              <h3 className="font-bold text-sm">Notificações</h3>
-              <button 
-                onClick={() => setShowNotifications(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                <p className="text-sm font-semibold mb-1">Nova tarefa atribuída</p>
-                <p className="text-xs text-slate-500">Você foi atribuído à tarefa "Wireframing - Home & Serviços"</p>
-                <p className="text-[10px] text-slate-400 mt-1">há 2 horas</p>
-              </div>
-              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                <p className="text-sm font-semibold mb-1">Comentário novo</p>
-                <p className="text-xs text-slate-500">João Silva comentou no projeto "TechStart Inc."</p>
-                <p className="text-[10px] text-slate-400 mt-1">há 5 horas</p>
-              </div>
-              <div className="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
-                <p className="text-sm font-semibold mb-1">Projeto atualizado</p>
-                <p className="text-xs text-slate-500">O status do projeto "Solar Solutions" foi alterado</p>
-                <p className="text-[10px] text-slate-400 mt-1">ontem</p>
-              </div>
-            </div>
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 text-center">
-              <button className="text-xs font-semibold text-primary hover:underline">Ver todas as notificações</button>
-            </div>
-          </div>
-        )}
         <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 mx-2"></div>
         <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-bold">Alex Sterling</p>
-            <p className="text-[10px] text-slate-500">Diretor Criativo</p>
+          <div className="text-right hidden sm:block max-w-[150px]">
+            <p className="text-xs font-bold truncate">{currentWorkspace?.name || 'Meu Workspace'}</p>
+            <p className="text-[10px] text-slate-500 truncate">{currentWorkspace?.description || 'Workspace'}</p>
           </div>
-          <div 
-            className="size-10 rounded-full bg-cover bg-center ring-2 ring-primary/20" 
-            style={{ backgroundImage: `url('https://picsum.photos/seed/alex/100/100')` }}
-          ></div>
+          
+          {/* User Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <div 
+                className="size-10 rounded-full bg-cover bg-center ring-2 ring-primary/20" 
+                style={{ 
+                  backgroundImage: user?.photoURL 
+                    ? `url('${user.photoURL}')` 
+                    : currentWorkspace?.avatar 
+                      ? `url('${currentWorkspace.avatar}')` 
+                      : `url('https://picsum.photos/seed/${(currentWorkspace?.name || 'workspace').toLowerCase().replace(/\s+/g, '')}/100/100')` 
+                }}
+              ></div>
+            </button>
+            
+            {showUserMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowUserMenu(false)}
+                />
+                <div className="absolute top-12 right-0 w-64 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg z-50 overflow-hidden">
+                  {/* User Info */}
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="size-12 rounded-full bg-cover bg-center ring-2 ring-primary/20 flex-shrink-0" 
+                        style={{ 
+                          backgroundImage: user?.photoURL 
+                            ? `url('${user.photoURL}')` 
+                            : `url('https://picsum.photos/seed/user/100/100')` 
+                        }}
+                      ></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate">{user?.displayName || 'Usuário'}</p>
+                        <p className="text-xs text-slate-500 truncate">{user?.email || ''}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Menu Options */}
+                  <div className="p-2">
+                    <button
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onLogout?.();
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-xl">logout</span>
+                      <span>Sair da conta</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </header>
