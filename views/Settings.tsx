@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Workspace, Category } from '../types';
-import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById } from '../firebase/services';
+import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase, Stage } from '../firebase/services';
 
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
@@ -17,6 +17,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Cores predefinidas para o workspace
@@ -51,6 +53,23 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
     return () => unsubscribe();
   }, [currentWorkspace?.id]);
+
+  useEffect(() => {
+    if (!currentWorkspace?.id) return;
+    
+    const unsubscribe = subscribeToStages((fetchedStages) => {
+      const workspaceStages = fetchedStages.filter(s => (s as any).workspaceId === currentWorkspace.id);
+      // Ordenar por order
+      const sortedStages = workspaceStages.sort((a, b) => (a.order || 0) - (b.order || 0));
+      console.log('🔍 [Settings] Etapas carregadas:', sortedStages.length);
+      console.log('🔍 [Settings] Todas as etapas:', sortedStages.map(s => ({ id: s.id, title: s.title, isFixed: s.isFixed, workspaceId: (s as any).workspaceId })));
+      const customStages = sortedStages.filter(s => s.isFixed !== true);
+      console.log('🔍 [Settings] Etapas customizadas:', customStages.length, customStages.map(s => ({ id: s.id, title: s.title })));
+      setStages(sortedStages);
+    }, currentWorkspace.id, userId);
+
+    return () => unsubscribe();
+  }, [currentWorkspace?.id, userId]);
 
   const handleSaveGeneral = async () => {
     if (!currentWorkspace?.id) return;
@@ -149,6 +168,22 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     } catch (error) {
       console.error('Error deleting category:', error);
       setToast({ message: 'Erro ao excluir serviço.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  const handleDeleteStage = async (stageId: string, stageTitle: string) => {
+    if (!confirm(`Tem certeza que deseja excluir a etapa "${stageTitle}"? Os projetos nesta etapa serão movidos para a primeira etapa disponível.`)) {
+      return;
+    }
+    
+    try {
+      await deleteStageFromFirebase(stageId);
+      setToast({ message: 'Etapa excluída com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error('Error deleting stage:', error);
+      setToast({ message: 'Erro ao excluir etapa.', type: 'error' });
       setTimeout(() => setToast(null), 3000);
     }
   };
@@ -378,38 +413,120 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {categories.map((category) => (
-                      <div 
-                        key={category.id}
-                        className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`size-10 rounded-xl flex items-center justify-center ${
-                            category.isRecurring 
-                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                              : 'bg-primary/10 text-primary'
-                          }`}>
-                            <span className="material-symbols-outlined">
-                              {category.isRecurring ? 'autorenew' : 'inventory_2'}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{category.name}</p>
-                            <p className="text-xs text-slate-500">
-                              {category.isRecurring ? 'Serviço Recorrente' : 'Serviço Normal'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleDeleteCategory(category.id)}
-                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    {categories.map((category) => {
+                      const isExpanded = expandedServiceId === category.id;
+                      
+                      return (
+                        <div key={category.id} className="space-y-2">
+                          <div 
+                            className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            onClick={() => setExpandedServiceId(isExpanded ? null : category.id)}
                           >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
+                            <div className="flex items-center gap-4 flex-1">
+                              <div className={`size-10 rounded-xl flex items-center justify-center ${
+                                category.isRecurring 
+                                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                                  : 'bg-primary/10 text-primary'
+                              }`}>
+                                <span className="material-symbols-outlined">
+                                  {category.isRecurring ? 'autorenew' : 'inventory_2'}
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{category.name}</p>
+                                <p className="text-xs text-slate-500">
+                                  {category.isRecurring ? 'Serviço Recorrente' : 'Serviço Normal'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`material-symbols-outlined text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                expand_more
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteCategory(category.id);
+                                }}
+                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-lg">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Etapas expandidas */}
+                          {isExpanded && (
+                            <div className="ml-4 pl-4 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
+                              {(() => {
+                                // Filtrar etapas customizadas: isFixed !== true (inclui false e undefined)
+                                const customStages = stages.filter(s => s.isFixed !== true);
+                                console.log(`🔍 [Settings] Serviço "${category.name}": ${customStages.length} etapas customizadas`, customStages.map(s => s.title));
+                                
+                                return customStages.length === 0 ? (
+                                  <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                    <p className="text-xs text-slate-500 text-center">
+                                      Nenhuma etapa customizada encontrada. Apenas as etapas fixas estão disponíveis.
+                                    </p>
+                                    <p className="text-xs text-slate-400 text-center mt-2">
+                                      Total de etapas no workspace: {stages.length} ({stages.filter(s => s.isFixed === true).length} fixas, {stages.filter(s => s.isFixed !== true).length} customizadas)
+                                    </p>
+                                  </div>
+                                ) : (
+                                  customStages.map((stage) => {
+                                    const statusColors: Record<string, string> = {
+                                      'Lead': 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
+                                      'Active': 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+                                      'Review': 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+                                      'Completed': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
+                                      'Finished': 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400',
+                                    };
+                                    const statusColor = statusColors[stage.status] || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+
+                                    return (
+                                      <div 
+                                        key={stage.id}
+                                        className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700"
+                                      >
+                                        <div className="flex items-center gap-3 flex-1">
+                                          <div className={`size-8 rounded-lg flex items-center justify-center ${statusColor}`}>
+                                            <span className="material-symbols-outlined text-sm">
+                                              {stage.status === 'Lead' ? 'play_arrow' :
+                                               stage.status === 'Active' ? 'progress_activity' :
+                                               stage.status === 'Review' ? 'rate_review' :
+                                               stage.status === 'Completed' ? 'check_circle' :
+                                               'done_all'}
+                                            </span>
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{stage.title}</p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                              <span className="text-[10px] text-slate-500">
+                                                {stage.status} • {stage.progress}%
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteStage(stage.id, stage.title);
+                                          }}
+                                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                          title="Excluir etapa"
+                                        >
+                                          <span className="material-symbols-outlined text-base">delete</span>
+                                        </button>
+                                      </div>
+                                    );
+                                  })
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -426,6 +543,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   </div>
                 </div>
               </div>
+
             </div>
           )}
 

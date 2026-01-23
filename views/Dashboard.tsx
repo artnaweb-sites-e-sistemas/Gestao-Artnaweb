@@ -10,7 +10,6 @@ import {
   updateProject as updateProjectInFirebase,
   subscribeToStages,
   saveStages,
-  addStage,
   deleteStage as deleteStageFromFirebase,
   updateStage,
   getStages,
@@ -158,7 +157,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAddProject, setShowAddProject] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [showAddStage, setShowAddStage] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
@@ -606,6 +604,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
     console.log('   - window.clearAllStages() - Exclui todas as etapas não-fixas');
     console.log('   - window.resetStagesToFixed() - Reseta as etapas para as fixas padrão (com "Em Revisão")');
     
+    // Garantir que a função está disponível globalmente
+    (window as any).clearAllStages = async () => {
+      try {
+        const allStages = await getStages();
+        const nonFixedStages = allStages.filter(s => !s.isFixed && s.workspaceId === currentWorkspace?.id);
+        
+        console.log(`Encontradas ${allStages.length} etapas no total`);
+        console.log(`${nonFixedStages.length} etapas não-fixas para excluir no workspace atual`);
+        
+        if (nonFixedStages.length === 0) {
+          console.log('✅ Nenhuma etapa não-fixa encontrada.');
+          alert('✅ Nenhuma etapa não-fixa encontrada. Apenas as etapas fixas permanecem.');
+          return;
+        }
+        
+        const confirm = window.confirm(`Tem certeza que deseja excluir TODAS as ${nonFixedStages.length} etapas não-fixas? Esta ação não pode ser desfeita!`);
+        if (!confirm) {
+          console.log('Operação cancelada.');
+          return;
+        }
+        
+        console.log('Excluindo etapas não-fixas...');
+        await Promise.all(nonFixedStages.map(stage => {
+          console.log(`Excluindo etapa: ${stage.id} - ${stage.title}`);
+          return deleteStageFromFirebase(stage.id);
+        }));
+        
+        console.log(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
+        alert(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
+      } catch (error) {
+        console.error('❌ Erro ao excluir etapas:', error);
+        alert('Erro ao excluir etapas. Verifique o console.');
+      }
+    };
+    
     return () => {
       delete (window as any).clearFirestoreCache;
       delete (window as any).clearAllStages;
@@ -613,49 +646,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
     };
   }, [currentWorkspace]);
 
-  // Função utilitária para limpar todas as etapas (pode ser chamada via console)
-  const clearAllStagesFunction = React.useCallback(async () => {
-    try {
-      const allStages = await getStages();
-      console.log(`Encontradas ${allStages.length} etapas para excluir`);
-      
-      if (allStages.length === 0) {
-        console.log('Nenhuma etapa encontrada.');
-        alert('Nenhuma etapa encontrada.');
-        return;
-      }
-      
-      const confirm = window.confirm(`Tem certeza que deseja excluir TODAS as ${allStages.length} etapas? Esta ação não pode ser desfeita!`);
-      if (!confirm) {
-        console.log('Operação cancelada.');
-        return;
-      }
-      
-      console.log('Excluindo todas as etapas...');
-      await Promise.all(allStages.map(stage => {
-        console.log(`Excluindo etapa: ${stage.id} - ${stage.title}`);
-        return deleteStageFromFirebase(stage.id);
-      }));
-      
-      console.log('✅ Todas as etapas foram excluídas com sucesso!');
-      alert(`✅ ${allStages.length} etapas foram excluídas com sucesso!`);
-      
-      // Limpar estado local
-      setStages([]);
-    } catch (error) {
-      console.error('❌ Erro ao excluir etapas:', error);
-      alert('Erro ao excluir etapas. Verifique o console para mais detalhes.');
-    }
-  }, [setStages]);
-
-  useEffect(() => {
-    (window as any).clearAllStages = clearAllStagesFunction;
-    console.log('💡 Para limpar todas as etapas, execute: clearAllStages() no console');
-    
-    return () => {
-      delete (window as any).clearAllStages;
-    };
-  }, [clearAllStagesFunction]);
 
   // Fechar menu ao clicar fora
   useEffect(() => {
@@ -1417,13 +1407,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     />
                   );
                 })}
-                <button
-                  onClick={() => setShowAddStage(true)}
-                  className="w-80 flex-shrink-0 py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center gap-2 text-slate-400 hover:border-primary hover:text-primary transition-all h-fit"
-                >
-                  <span className="material-symbols-outlined">add</span>
-                  <span className="text-xs font-bold uppercase tracking-wider">Nova Etapa</span>
-                </button>
     </div>
   );
           }
@@ -1779,58 +1762,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       )}
 
       {/* Modal Adicionar Nova Etapa */}
-      {showAddStage && (
-        <AddStageModal
-          onClose={() => setShowAddStage(false)}
-          onSave={async (stageData) => {
-            // Fechar o modal imediatamente para melhor UX
-            setShowAddStage(false);
-            
-            try {
-              if (!currentWorkspace) {
-                alert("Nenhum workspace selecionado.");
-                return;
-              }
-              
-              // Calcular progresso antes de criar
-              const totalStages = stages.length + 1;
-              const newOrder = stages.filter(s => !s.isFixed).length + fixedStages.length;
-              const newProgress = Math.round((newOrder / (totalStages)) * 100);
-              
-              // Adicionar a nova etapa com progresso calculado
-              const newStageData: Omit<Stage, "id"> = {
-                title: stageData.title,
-                status: 'Active', // Novas etapas customizadas são 'Active'
-                order: newOrder,
-                progress: newProgress,
-                workspaceId: currentWorkspace.id,
-                isFixed: false
-              };
-              
-              // Adicionar a nova etapa no Firebase
-              const newStageId = await addStage(newStageData, currentWorkspace.id);
-              console.log('✅ [Dashboard] Nova etapa adicionada:', newStageId);
-              
-              // Recalcular progresso de todas as etapas existentes em background
-              const allExistingStages = stages.filter(s => s.id !== newStageId);
-              const recalculatedStages = recalculateStageProgress([...allExistingStages, { id: newStageId, ...newStageData }]);
-              
-              // Atualizar etapas existentes com novo progresso
-              const updatePromises = recalculatedStages
-                .filter(s => s.id !== newStageId && !s.isFixed)
-                .map(stage => {
-                  return updateStage(stage.id, { progress: stage.progress, order: stage.order });
-                });
-              
-              await Promise.all(updatePromises);
-              console.log('✅ [Dashboard] Progresso de todas as etapas atualizado');
-            } catch (error) {
-              console.error("Error saving stage:", error);
-              alert("Erro ao salvar etapa. Tente novamente.");
-            }
-          }}
-        />
-      )}
 
       {/* Modal Confirmar Exclusão de Etapa */}
       {stageToDelete && (
@@ -4666,74 +4597,3 @@ const DefineStageTasksModal: React.FC<{
   );
 };
 
-const AddStageModal: React.FC<{ onClose: () => void; onSave: (stage: { title: string }) => Promise<void> }> = ({ onClose, onSave }) => {
-  const [formData, setFormData] = useState({
-    title: ''
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (formData.title.trim() && !isSubmitting) {
-      setIsSubmitting(true);
-      console.log('📝 [AddStageModal] Salvando etapa:', formData.title);
-      try {
-        await onSave(formData);
-        setFormData({ title: '' });
-        // Modal será fechado pelo onSave
-      } catch (error) {
-        console.error("Error in handleSubmit:", error);
-        setIsSubmitting(false);
-      }
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-          <h3 className="text-xl font-bold">Adicionar Nova Etapa</h3>
-          <button 
-            onClick={onClose}
-            className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome da Etapa</label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-              placeholder="Ex: Em Revisão"
-              required
-              autoFocus
-            />
-          </div>
-          <p className="text-xs text-slate-400">
-            A porcentagem de progresso será calculada automaticamente baseado na quantidade de etapas. Você pode reordenar as etapas arrastando o cabeçalho de cada coluna.
-          </p>
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button 
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit"
-              className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-            >
-              Adicionar Etapa
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
