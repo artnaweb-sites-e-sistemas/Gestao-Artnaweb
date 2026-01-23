@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Invoice, Project, Workspace } from '../types';
-import { subscribeToInvoices, subscribeToProjects, updateInvoice } from '../firebase/services';
+import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects } from '../firebase/services';
 
 interface FinancialProps {
   currentWorkspace?: Workspace | null;
@@ -54,7 +54,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   }, [currentWorkspace?.id]);
 
   // Função helper para obter data de uma fatura (retorna timestamp para comparação)
-  const getInvoiceDate = (date: Date | any): Date => {
+  const getInvoiceDate = useCallback((date: Date | any): Date => {
     if (!date) return new Date(0);
     
     // Se for um Firestore Timestamp
@@ -86,20 +86,30 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       return new Date(date);
     }
     
+    // Se for um objeto com propriedades de data (Firebase Timestamp serializado)
+    if (date && typeof date === 'object' && ('seconds' in date || 'nanoseconds' in date)) {
+      // Firebase Timestamp serializado
+      if ('seconds' in date) {
+        return new Date(date.seconds * 1000);
+      }
+    }
+    
     return new Date(0);
-  };
+  }, []);
 
   // Filtrar faturas por período selecionado
-  const filteredByPeriod = invoices.filter(inv => {
-    if (selectedMonth === 'all') {
-      // Filtrar apenas pelo ano
+  const filteredByPeriod = useMemo(() => {
+    return invoices.filter(inv => {
+      if (selectedMonth === 'all') {
+        // Filtrar apenas pelo ano
+        const invDate = getInvoiceDate(inv.date);
+        return invDate.getFullYear() === selectedYear;
+      }
+      // Filtrar por mês e ano
       const invDate = getInvoiceDate(inv.date);
-      return invDate.getFullYear() === selectedYear;
-    }
-    // Filtrar por mês e ano
-    const invDate = getInvoiceDate(inv.date);
-    return invDate.getMonth() === selectedMonth && invDate.getFullYear() === selectedYear;
-  });
+      return invDate.getMonth() === selectedMonth && invDate.getFullYear() === selectedYear;
+    });
+  }, [invoices, selectedMonth, selectedYear, getInvoiceDate]);
 
   // Calcular métricas (usando faturas filtradas por período)
   const metrics = {
@@ -153,21 +163,67 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const monthlyData = generateMonthlyData();
 
   // Filtrar faturas (usando faturas já filtradas por período)
-  const filteredInvoices = filteredByPeriod.filter(inv => {
-    switch (selectedFilter) {
-      case 'paid': return inv.status === 'Paid';
-      case 'pending': return inv.status === 'Pending';
-      case 'implementation': return inv.number.startsWith('IMP-');
-      case 'recurring': return inv.number.startsWith('REC-');
-      case 'normal': return inv.number.startsWith('INV-');
-      default: return true;
+  const filteredInvoices = useMemo(() => {
+    const filtered = filteredByPeriod.filter(inv => {
+      switch (selectedFilter) {
+        case 'paid': return inv.status === 'Paid';
+        case 'pending': return inv.status === 'Pending';
+        case 'implementation': return inv.number.startsWith('IMP-');
+        case 'recurring': return inv.number.startsWith('REC-');
+        case 'normal': return inv.number.startsWith('INV-');
+        default: return true;
+      }
+    });
+    
+    // Criar uma cópia do array antes de ordenar (sort modifica o array original)
+    const sorted = [...filtered].sort((a, b) => {
+      const dateA = getInvoiceDate(a.date);
+      const dateB = getInvoiceDate(b.date);
+      const timeA = dateA.getTime();
+      const timeB = dateB.getTime();
+      
+      // Se as datas forem iguais, ordenar por número da fatura
+      if (timeA === timeB) {
+        return a.number.localeCompare(b.number);
+      }
+      
+      // Ordenar por data: mais antiga primeiro (menor timestamp primeiro)
+      return timeA - timeB;
+    });
+    
+    return sorted;
+  }, [filteredByPeriod, selectedFilter, getInvoiceDate]);
+  
+  // Identificar faturas órfãs (sem projeto associado)
+  const orphanInvoices = useMemo(() => {
+    return filteredInvoices.filter(inv => {
+      const project = projects.find(p => p.id === inv.projectId);
+      return !project;
+    });
+  }, [filteredInvoices, projects]);
+  
+  // Função para excluir faturas órfãs
+  const deleteOrphanInvoices = async () => {
+    if (orphanInvoices.length === 0) {
+      setToast({ message: 'Nenhuma fatura órfã encontrada', type: 'success' });
+      return;
     }
-  }).sort((a, b) => {
-    // Ordenar da mais recente para a mais antiga (30 jan → 23 jan → 22 jan)
-    const dateA = getInvoiceDate(a.date);
-    const dateB = getInvoiceDate(b.date);
-    return dateB.getTime() - dateA.getTime();
-  });
+    
+    if (!confirm(`Tem certeza que deseja excluir ${orphanInvoices.length} fatura(s) órfã(s) (projetos não encontrados)?`)) {
+      return;
+    }
+    
+    try {
+      const deletePromises = orphanInvoices.map(inv => deleteInvoice(inv.id));
+      await Promise.all(deletePromises);
+      setToast({ message: `${orphanInvoices.length} fatura(s) órfã(s) excluída(s) com sucesso`, type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error('Error deleting orphan invoices:', error);
+      setToast({ message: 'Erro ao excluir faturas órfãs', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   // Obter nome do projeto
   const getProjectName = (projectId: string) => {
@@ -485,7 +541,19 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       {/* Tabela de Faturas */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center gap-4">
-          <h3 className="text-lg font-bold">Todas as Faturas</h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-bold">Todas as Faturas</h3>
+            {orphanInvoices.length > 0 && (
+              <button
+                onClick={deleteOrphanInvoices}
+                className="flex items-center gap-2 px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 rounded-lg text-xs font-bold hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors"
+                title={`Excluir ${orphanInvoices.length} fatura(s) órfã(s)`}
+              >
+                <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                Limpar órfãs ({orphanInvoices.length})
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <FilterButton label="Todas" active={selectedFilter === 'all'} onClick={() => setSelectedFilter('all')} count={filteredByPeriod.length} />
             <FilterButton label="Pagas" active={selectedFilter === 'paid'} onClick={() => setSelectedFilter('paid')} count={filteredByPeriod.filter(i => i.status === 'Paid').length} color="emerald" />

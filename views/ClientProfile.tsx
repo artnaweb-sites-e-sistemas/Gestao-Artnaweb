@@ -213,31 +213,34 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
             
             return (
             <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  {/* Avatar do Cliente */}
-                  <div 
-                    className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
-                    style={{ 
-                      backgroundImage: `url('${clientAvatar}')`, 
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center'
-                    }}
-                  />
-                  <div>
-                    <h3 className="text-lg font-bold">{client}</h3>
-                    <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {/* Avatar do Cliente */}
+                    <div 
+                      className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
+                      style={{ 
+                        backgroundImage: `url('${clientAvatar}')`, 
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }}
+                    />
+                    <div>
+                      <h3 className="text-lg font-bold">{client}</h3>
+                      <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Indicador de projetos ativos/concluídos */}
+                    {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
+                      <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                        {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {/* Indicador de projetos ativos/concluídos */}
-                  {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
-                    <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                      {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
               </div>
+
 
               <div className="space-y-2">
                 {clientProjects.map(project => (
@@ -303,33 +306,42 @@ const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ p
   const styles: Record<Project['status'], string> = {
     Lead: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     Active: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    Review: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    Review: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     Completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
     Finished: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
   };
 
   // Determinar o label a ser exibido baseado na etapa (stageId)
   let displayLabel: string;
+  let badgeStyle: string;
   
-  if (status === 'Lead' && isOnboardingStage) {
+  // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão" em azul
+  if (status === 'Completed' && isMaintenanceStage && isRecurring) {
+    displayLabel = 'Gestão';
+    badgeStyle = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  } else if (status === 'Lead' && isOnboardingStage) {
     displayLabel = 'On-boarding';
+    badgeStyle = styles[status];
   } else if (status === 'Active' && isDevelopmentStage) {
     displayLabel = 'Desenvolvimento';
-  } else if (status === 'Completed' && isMaintenanceStage && isRecurring) {
-    displayLabel = 'Manutenção';
+    badgeStyle = styles[status];
   } else if (status === 'Review') {
     displayLabel = 'Revisão';
+    badgeStyle = styles[status];
   } else if (status === 'Completed') {
     displayLabel = 'Concluído';
+    badgeStyle = styles[status];
   } else if (status === 'Finished') {
     displayLabel = 'Finalizado';
+    badgeStyle = styles[status];
   } else {
     // Fallback para os labels padrão
     displayLabel = status === 'Lead' ? 'Lead' : status === 'Active' ? 'Ativo' : status;
+    badgeStyle = styles[status];
   }
 
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}>
+    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${badgeStyle}`}>
       {displayLabel}
     </span>
   );

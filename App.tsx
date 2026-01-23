@@ -98,7 +98,10 @@ const App: React.FC = () => {
   }, [previousView, currentView]);
 
   const handleSearch = useCallback(async (query: string) => {
+    // Se a query estiver vazia, resetar os filtros e voltar ao estado original
     if (!query.trim()) {
+      setDashboardInitialFilter(undefined);
+      setDashboardHighlightedProjectId(undefined);
       return;
     }
 

@@ -37,7 +37,7 @@ interface ProjectDetailsProps {
 
 // Etapas fixas para projetos normais
 const fixedStages: Stage[] = [
-  { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
   { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
   { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
@@ -45,10 +45,10 @@ const fixedStages: Stage[] = [
 
 // Etapas fixas para projetos recorrentes
 const fixedStagesRecurring: Stage[] = [
-  { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 0, isFixed: true },
+  { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
   { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 75, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
 ];
 
@@ -1370,11 +1370,25 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         )}
                       </div>
                       <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
-                        currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700' :
-                        currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                        currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
-                        currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700' :
-                        'bg-indigo-100 text-indigo-700'
+                        (() => {
+                          const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                          const isRecurringService = projectTypes.some(typeName => 
+                            categories.find(cat => cat.name === typeName && cat.isRecurring)
+                          );
+                          const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
+                          
+                          // Se for serviço recorrente na etapa Manutenção, usar azul para "Gestão"
+                          if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
+                            return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+                          }
+                          
+                          // Caso contrário, usar as cores padrão
+                          return currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                 currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                 currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                 currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
+                        })()
                       }`}>
                         {(() => {
                           // Verificar se algum dos serviços é recorrente
@@ -1383,9 +1397,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             categories.find(cat => cat.name === typeName && cat.isRecurring)
                           );
                           
-                          // Se for serviço recorrente e status Completed, mostrar "Manutenção"
-                          if (isRecurringService && currentProject.status === 'Completed') {
-                            return 'Manutenção';
+                          // Verificar se está na etapa Manutenção
+                          const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
+                          
+                          // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
+                          if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
+                            return 'Gestão';
                           }
                           
                           // Se for serviço recorrente e status Lead, mostrar "On-boarding"
@@ -1415,22 +1432,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
               {/* Etapas do Projeto - Timeline */}
               <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Etapa do Projeto</h3>
-                  <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
-                    currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                    currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                    currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                    currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                  }`}>
-                    {(() => {
-                      const currentStage = stages.find(s => s.status === currentProject.status);
-                      return currentStage?.title || currentProject.status;
-                    })()}
-                  </span>
-                </div>
-                
                 {/* Progress Bar */}
                 <div className="mb-4">
                   <div className="flex justify-between items-center mb-2">

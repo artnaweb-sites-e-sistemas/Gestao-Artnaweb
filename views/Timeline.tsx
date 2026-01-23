@@ -748,13 +748,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             +{pTypes.length - 2}
                           </span>
                         )}
-                        {isRecurring && project.status === 'Completed' && (
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-1.5 rounded border border-emerald-100">Manutenção</span>
-                        )}
                       </div>
           </div>
                     {/* Colunas - mesma estrutura flex do header */}
-                    <div className="flex-1 flex relative bg-white dark:bg-slate-900">
+                    <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20">
                       {/* Grid de colunas de fundo */}
                       {days.map((day, i) => {
                         const today = isToday(day.date);
@@ -879,27 +876,35 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       {/* Marcadores de Manutenção e Relatório (para Recorrência) */}
                       {maintenanceCol !== -1 && (
                         <div 
-                          className={`absolute top-1/2 -translate-y-1/2 -ml-5 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
-                          style={{ left: `${maintenanceCol * 100 + 50}px` }}
-                          title={`Manutenção: ${new Date(project.maintenanceDate!).toLocaleDateString('pt-BR')}`}
+                          className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                          style={{ 
+                            left: `${maintenanceCol * 100 + 50}px`, 
+                            transform: 'translate(-50%, -50%)' 
+                          }}
                         >
                           <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.maintenanceDate)}`}>
                             <span className="material-symbols-outlined text-xl">build</span>
                           </div>
-                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">Manutenção</span>
+                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
+                            Manutenção: {new Date(project.maintenanceDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                          </span>
                         </div>
                       )}
 
                       {reportCol !== -1 && (
                         <div 
-                          className={`absolute top-1/2 -translate-y-1/2 -ml-5 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
-                          style={{ left: `${reportCol * 100 + 50}px` }}
-                          title={`Relatório: ${new Date(project.reportDate!).toLocaleDateString('pt-BR')}`}
+                          className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                          style={{ 
+                            left: `${reportCol * 100 + 50}px`, 
+                            transform: 'translate(-50%, -50%)' 
+                          }}
                         >
                           <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.reportDate)}`}>
                             <span className="material-symbols-outlined text-xl">description</span>
                           </div>
-                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">Relatório</span>
+                          <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
+                            Relatório: {new Date(project.reportDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                          </span>
                         </div>
                       )}
                     </div>
