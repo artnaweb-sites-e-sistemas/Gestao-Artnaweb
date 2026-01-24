@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, Stage, Workspace, Category } from '../types';
-import { 
-  subscribeToProjects, 
-  subscribeToCategories, 
+import {
+  subscribeToProjects,
+  subscribeToCategories,
   addProject as addProjectToFirebase,
   addCategory as addCategoryToFirebase,
   deleteCategory as deleteCategoryFromFirebase,
@@ -87,20 +87,20 @@ const pipelineProjects: Project[] = [
   }
 ];
 
-interface Stage {
+interface DashboardStage {
   id: string;
   title: string;
   status: Project['status'];
   order: number;
   progress: number;
-  isFixed?: boolean; // Etapas fixas não podem ser excluídas
+  isFixed?: boolean;
 }
 
 // Função para recalcular progresso de todas as etapas
-const recalculateStageProgress = (stages: Stage[]): Stage[] => {
+const recalculateStageProgress = (stages: DashboardStage[]): DashboardStage[] => {
   const totalStages = stages.length;
   if (totalStages === 0) return stages;
-  
+
   return stages.map((stage, index) => {
     // Para etapas fixas, preservar o progresso original
     if (stage.isFixed) {
@@ -110,17 +110,17 @@ const recalculateStageProgress = (stages: Stage[]): Stage[] => {
         status: stage.status // Preservar status original
       };
     }
-    
+
     // Para etapas personalizadas, calcular progresso baseado na posição
     const progress = totalStages === 1 ? 100 : Math.round((index / (totalStages - 1)) * 100);
-    
+
     // Determinar status automaticamente para etapas personalizadas baseado na posição
     let status: Project['status'];
-      if (index === 0) status = 'Lead';
-      else if (index === totalStages - 1) status = 'Completed';
-      else if (index < totalStages / 2) status = 'Active';
-      else status = 'Review';
-    
+    if (index === 0) status = 'Lead';
+    else if (index === totalStages - 1) status = 'Completed';
+    else if (index < totalStages / 2) status = 'Active';
+    else status = 'Review';
+
     return {
       ...stage,
       progress,
@@ -130,7 +130,7 @@ const recalculateStageProgress = (stages: Stage[]): Stage[] => {
 };
 
 // Etapas fixas para serviços normais (sob demanda)
-const fixedStages: Stage[] = [
+const fixedStages: DashboardStage[] = [
   { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
   { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
@@ -138,12 +138,12 @@ const fixedStages: Stage[] = [
 ];
 
 // Etapas fixas para serviços recorrentes
-const fixedStagesRecurring: Stage[] = [
+const fixedStagesRecurring: DashboardStage[] = [
   { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
   { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
   { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
-  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished' as any, order: 4, progress: 100, isFixed: true }
 ];
 
 export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId }) => {
@@ -161,9 +161,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [stages, setStages] = useState<Stage[]>(recalculateStageProgress(fixedStages));
+  const [stages, setStages] = useState<DashboardStage[]>(recalculateStageProgress(fixedStages));
   const [loading, setLoading] = useState(true);
-  const [draggedStage, setDraggedStage] = useState<Stage | null>(null);
+  const [draggedStage, setDraggedStage] = useState<DashboardStage | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -172,8 +172,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   const isCategoryPanningRef = useRef(false);
   const categoryHasMovedRef = useRef(false);
   const [stageMenuOpen, setStageMenuOpen] = useState<string | null>(null);
-  const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
-  const [stageToEditTasks, setStageToEditTasks] = useState<Stage | null>(null);
+  const [stageToDelete, setStageToDelete] = useState<DashboardStage | null>(null);
+  const [stageToEditTasks, setStageToEditTasks] = useState<DashboardStage | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const isInitialStagesLoad = useRef(true);
@@ -207,7 +207,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   // Verificar se o serviço selecionado é recorrente
   const isSelectedCategoryRecurring = React.useMemo(() => {
     if (selectedFilter === 'all' || selectedFilter === 'sem-categoria') return false;
-    const selectedCategory = categories.find(cat => 
+    const selectedCategory = categories.find(cat =>
       cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
     );
     return selectedCategory?.isRecurring || false;
@@ -219,47 +219,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   }, [isSelectedCategoryRecurring]);
 
   // Função para lidar com o drop de projeto
-  const handleProjectDrop = async (project: Project, targetStage: Stage) => {
+  const handleProjectDrop = async (project: Project, targetStage: DashboardStage) => {
     try {
       // IDs fixos conhecidos para etapas normais
       const fixedStageIds = ['onboarding', 'development', 'review', 'completed'];
-      
+
       // Verificar se é uma etapa recorrente (Manutenção ou Finalizado)
       const isRecurringStage = targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado';
-      
+
       // Para serviços recorrentes, não atualizar stageId (usar apenas status)
       // Verificar se ALGUM dos tipos do projeto é recorrente
       const projectTypesArray = project.types || (project.type ? [project.type] : []);
-      const isProjectRecurring = projectTypesArray.some(typeName => 
+      const isProjectRecurring = projectTypesArray.some(typeName =>
         categories.find(cat => cat.name === typeName && cat.isRecurring)
       );
-      
+
       // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
       const hasFixedStageId = (projectStageId: string | undefined): boolean => {
         if (!projectStageId) return false;
         const projectIdBase = projectStageId.split('-')[0];
         return fixedStageIds.includes(projectIdBase) || fixedStageIds.includes(projectStageId);
       };
-      
+
       // Função para obter o ID base da etapa (originalId ou ID sem sufixo de workspace)
-      const getStageBaseId = (stage: Stage): string => {
+      const getStageBaseId = (stage: DashboardStage): string => {
         const originalId = (stage as any).originalId;
         if (originalId) return originalId;
         // Se não tem originalId, extrair o ID base (antes do primeiro '-')
         const baseId = stage.id.split('-')[0];
         return fixedStageIds.includes(baseId) ? baseId : stage.id;
       };
-      
+
       // Validar: projetos normais não podem ir para etapas recorrentes
       if (isRecurringStage && !isProjectRecurring) {
-        setToast({ 
-          message: "Apenas projetos de serviços recorrentes podem ser movidos para esta etapa.", 
-          type: 'error' 
+        setToast({
+          message: "Apenas projetos de serviços recorrentes podem ser movidos para esta etapa.",
+          type: 'error'
         });
         setTimeout(() => setToast(null), 5000);
         return;
       }
-      
+
       // Validar: projetos recorrentes não podem ir para etapas normais (quando não está em "Todos os Projetos")
       if (!isRecurringStage && isProjectRecurring && selectedFilter !== 'all') {
         // Permitir apenas se for um serviço recorrente selecionado
@@ -267,11 +267,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           return;
         }
       }
-      
+
       // Obter o ID base da etapa alvo para comparação
       const targetStageBaseId = getStageBaseId(targetStage);
       const projectStageBaseId = project.stageId ? project.stageId.split('-')[0] : null;
-      
+
       // Verificar se o projeto já está na etapa de destino (usando ID base ou status)
       if (selectedFilter === 'all' && !isRecurringStage) {
         // Em "Todos os Projetos" com etapa normal:
@@ -297,17 +297,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         // Para projetos normais: verificar por stageId base
         if (projectStageBaseId === targetStageBaseId) return;
       }
-      
+
       // Definir progresso: 100% para Manutenção e Finalizado, senão usar o progresso da etapa
-      const progress = (targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado') 
-        ? 100 
+      const progress = (targetStage.title === 'Manutenção' || targetStage.title === 'Finalizado')
+        ? 100
         : targetStage.progress;
-      
+
       const updates: Partial<Project> = {
         status: targetStage.status,
         progress: progress
       };
-      
+
       if (selectedFilter === 'all') {
         // Em "Todos os Projetos":
         if (isRecurringStage) {
@@ -330,13 +330,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         // Em serviço normal específico: usar o ID base da etapa para consistência
         updates.stageId = targetStageBaseId;
       }
-      
+
       await updateProjectInFirebase(project.id, updates);
     } catch (error) {
       console.error("Error updating project status:", error);
-      setToast({ 
-        message: "Erro ao mover projeto. Tente novamente.", 
-        type: 'error' 
+      setToast({
+        message: "Erro ao mover projeto. Tente novamente.",
+        type: 'error'
       });
       setTimeout(() => setToast(null), 5000);
     }
@@ -373,31 +373,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       setStages([]);
       return;
     }
-    
+
     console.log('📊 [Dashboard] Carregando dados para workspace:', currentWorkspace.id, currentWorkspace.name);
-    
+
     // Resetar flags quando o workspace muda
     isInitialStagesLoad.current = true;
     isAddingFixedStages.current = false;
     isDeletingStage.current = false;
     hasUpdatedOnboardingProgress.current = false; // Resetar flag ao mudar workspace
-    
+
     setLoading(true);
     setStages([]); // Limpar etapas anteriores
 
     // Subscribe to real-time updates filtrados por workspace
     const unsubscribeProjects = subscribeToProjects((firebaseProjects) => {
       console.log('📦 [Dashboard] Projetos recebidos:', firebaseProjects.length);
-      
+
       // Atualizar automaticamente projetos em On-boarding com progress: 0 para progress: 10
       // Fazer isso apenas uma vez por workspace para evitar atualizações repetidas
       if (!hasUpdatedOnboardingProgress.current) {
         const projectsToUpdate = firebaseProjects.filter(p => {
-          const isOnboarding = p.status === 'Lead' && 
+          const isOnboarding = p.status === 'Lead' &&
             (p.stageId?.includes('onboarding') || !p.stageId);
           return isOnboarding && (p.progress === 0 || !p.progress);
         });
-        
+
         if (projectsToUpdate.length > 0) {
           console.log(`🔄 [Dashboard] Atualizando ${projectsToUpdate.length} projeto(s) em On-boarding para progress: 10`);
           hasUpdatedOnboardingProgress.current = true;
@@ -410,7 +410,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           });
         }
       }
-      
+
       setProjects(firebaseProjects);
       setLoading(false);
     }, currentWorkspace.id, userId);
@@ -422,13 +422,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
       console.log('🏷️ [Dashboard] Etapas recebidas:', firebaseStages.length, 'isAdding:', isAddingFixedStages.current, 'isDeleting:', isDeletingStage.current);
-      
+
       // Ignorar atualizações do subscribe durante exclusão ou adição de etapas fixas
       if (isDeletingStage.current || isAddingFixedStages.current) {
         console.log('⏭️ [Dashboard] Ignorando atualização de etapas (operação em andamento)');
         return;
       }
-      
+
       if (firebaseStages.length > 0) {
         // Apenas recalcular progresso sem adicionar etapas fixas
         // As etapas fixas devem vir do Firebase
@@ -440,18 +440,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         console.log('🆕 [Dashboard] Criando etapas fixas para novo workspace');
         isInitialStagesLoad.current = false;
         isAddingFixedStages.current = true;
-        
+
         // Criar cópias das etapas fixas com workspaceId
         const fixedStagesForWorkspace = fixedStages.map(stage => ({
           ...stage,
           workspaceId: currentWorkspace.id
         }));
-        
+
         const fixedStagesRecalculated = recalculateStageProgress(fixedStagesForWorkspace);
         setStages(fixedStagesRecalculated);
-        
+
         // Salvar etapas fixas no Firebase para este workspace
-        saveStages(fixedStagesRecalculated, currentWorkspace.id, userId).then(() => {
+        saveStages(fixedStagesRecalculated as any, currentWorkspace.id, userId).then(() => {
           console.log('✅ [Dashboard] Etapas fixas salvas com sucesso');
           setTimeout(() => {
             isAddingFixedStages.current = false;
@@ -481,7 +481,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           'firebaseLocalStorageDb',
           'firebase-heap-js-*'
         ];
-        
+
         let cleared = false;
         for (const dbName of dbNames) {
           try {
@@ -497,7 +497,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             console.log(`⚠️ Erro ao tentar limpar ${dbName}:`, e);
           }
         }
-        
+
         if (cleared) {
           console.log('✅ Cache do Firestore limpo com sucesso!');
           console.log('🔄 Recarregue a página para ver os dados atualizados.');
@@ -511,34 +511,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         alert('Erro ao limpar cache. Verifique o console.');
       }
     };
-    
+
     // Função para limpar todas as etapas não-fixas
     (window as any).clearAllStages = async () => {
       try {
         const allStages = await getStages();
         const nonFixedStages = allStages.filter(s => !s.isFixed);
-        
+
         console.log(`Encontradas ${allStages.length} etapas no total`);
         console.log(`${nonFixedStages.length} etapas não-fixas para excluir`);
-        
+
         if (nonFixedStages.length === 0) {
           console.log('✅ Nenhuma etapa não-fixa encontrada.');
           alert('✅ Nenhuma etapa não-fixa encontrada. Apenas as etapas fixas permanecem.');
           return;
         }
-        
+
         const confirm = window.confirm(`Tem certeza que deseja excluir TODAS as ${nonFixedStages.length} etapas não-fixas? Esta ação não pode ser desfeita!`);
         if (!confirm) {
           console.log('Operação cancelada.');
           return;
         }
-        
+
         console.log('Excluindo etapas não-fixas...');
         await Promise.all(nonFixedStages.map(stage => {
           console.log(`Excluindo etapa: ${stage.id} - ${stage.title}`);
           return deleteStageFromFirebase(stage.id);
         }));
-        
+
         console.log(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
         alert(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
       } catch (error) {
@@ -546,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         alert('Erro ao excluir etapas. Verifique o console.');
       }
     };
-    
+
     // Função para resetar etapas para as fixas atualizadas (incluindo "Em Revisão")
     (window as any).resetStagesToFixed = async () => {
       try {
@@ -554,21 +554,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           alert('Nenhum workspace selecionado!');
           return;
         }
-        
+
         const confirm = window.confirm('Isso vai excluir TODAS as etapas do workspace atual e recriar as etapas padrão (On boarding, Em desenvolvimento, Em Revisão, Concluído). Deseja continuar?');
         if (!confirm) {
           console.log('Operação cancelada.');
           return;
         }
-        
+
         console.log('🔄 Resetando etapas do workspace:', currentWorkspace.id);
-        
+
         // Buscar todas as etapas do workspace atual
         const allStages = await getStages();
         const workspaceStages = allStages.filter(s => s.workspaceId === currentWorkspace.id);
-        
+
         console.log(`Encontradas ${workspaceStages.length} etapas para excluir`);
-        
+
         // Excluir todas as etapas do workspace
         if (workspaceStages.length > 0) {
           await Promise.all(workspaceStages.map(stage => {
@@ -576,19 +576,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             return deleteStageFromFirebase(stage.id);
           }));
         }
-        
+
         console.log('✅ Etapas antigas excluídas');
-        
+
         // Criar novas etapas fixas
         const fixedStagesForWorkspace = fixedStages.map(stage => ({
           ...stage,
           workspaceId: currentWorkspace.id
         }));
-        
+
         const fixedStagesRecalculated = recalculateStageProgress(fixedStagesForWorkspace);
-        
-        await saveStages(fixedStagesRecalculated, currentWorkspace.id);
-        
+
+        await saveStages(fixedStagesRecalculated as any, currentWorkspace.id);
+
         console.log('✅ Novas etapas criadas com sucesso!');
         alert('✅ Etapas resetadas com sucesso! A página será recarregada.');
         window.location.reload();
@@ -597,40 +597,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         alert('Erro ao resetar etapas. Verifique o console.');
       }
     };
-    
+
     // Log para facilitar o uso
     console.log('💡 Funções disponíveis no console:');
     console.log('   - window.clearFirestoreCache() - Limpa o cache do IndexedDB');
     console.log('   - window.clearAllStages() - Exclui todas as etapas não-fixas');
     console.log('   - window.resetStagesToFixed() - Reseta as etapas para as fixas padrão (com "Em Revisão")');
-    
+
     // Garantir que a função está disponível globalmente
     (window as any).clearAllStages = async () => {
       try {
         const allStages = await getStages();
         const nonFixedStages = allStages.filter(s => !s.isFixed && s.workspaceId === currentWorkspace?.id);
-        
+
         console.log(`Encontradas ${allStages.length} etapas no total`);
         console.log(`${nonFixedStages.length} etapas não-fixas para excluir no workspace atual`);
-        
+
         if (nonFixedStages.length === 0) {
           console.log('✅ Nenhuma etapa não-fixa encontrada.');
           alert('✅ Nenhuma etapa não-fixa encontrada. Apenas as etapas fixas permanecem.');
           return;
         }
-        
+
         const confirm = window.confirm(`Tem certeza que deseja excluir TODAS as ${nonFixedStages.length} etapas não-fixas? Esta ação não pode ser desfeita!`);
         if (!confirm) {
           console.log('Operação cancelada.');
           return;
         }
-        
+
         console.log('Excluindo etapas não-fixas...');
         await Promise.all(nonFixedStages.map(stage => {
           console.log(`Excluindo etapa: ${stage.id} - ${stage.title}`);
           return deleteStageFromFirebase(stage.id);
         }));
-        
+
         console.log(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
         alert(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
       } catch (error) {
@@ -638,7 +638,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         alert('Erro ao excluir etapas. Verifique o console.');
       }
     };
-    
+
     return () => {
       delete (window as any).clearFirestoreCache;
       delete (window as any).clearAllStages;
@@ -663,89 +663,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   }, [stageMenuOpen]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-8 py-6 bg-white dark:bg-slate-900/50">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Pipeline de Clientes</h2>
-            <p className="text-sm text-slate-500">Gerencie seu fluxo de trabalho criativo</p>
+    <div className="flex flex-col h-full bg-background-light dark:bg-background-dark">
+      <div className="px-8 py-10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-white/20 dark:border-slate-800/50">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div className="animate-fade-in">
+            <h2 className="text-4xl font-black tracking-tight font-display text-slate-900 dark:text-white mb-2">
+              Pipeline de <span className="text-primary">Projetos</span>
+            </h2>
+            <p className="text-base text-slate-500 font-medium">Gerencie seu fluxo de trabalho criativo com precisão</p>
           </div>
-          <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-              <button 
+          <div className="flex flex-wrap items-center gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
+            <div className="flex bg-slate-200/50 dark:bg-slate-800/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/20 dark:border-slate-700/30 shadow-inner">
+              <button
                 onClick={() => setViewMode('list')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'list' 
-                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className={`flex items-center gap-2 px-6 py-2 text-xs font-black rounded-xl transition-all ${viewMode === 'list'
+                  ? 'bg-white dark:bg-slate-700 shadow-xl text-primary scale-105'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
               >
-                Lista
+                <span className="material-symbols-outlined text-[18px]">format_list_bulleted</span>
+                LISTA
               </button>
-              <button 
+              <button
                 onClick={() => setViewMode('board')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'board' 
-                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className={`flex items-center gap-2 px-6 py-2 text-xs font-black rounded-xl transition-all ${viewMode === 'board'
+                  ? 'bg-white dark:bg-slate-700 shadow-xl text-primary scale-105'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
               >
-                Quadro
+                <span className="material-symbols-outlined text-[18px]">dashboard_customize</span>
+                QUADRO
               </button>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Mostrar concluídos
-              </span>
-              <div className="relative inline-flex items-center">
-                <input
-                  type="checkbox"
-                  checked={showCompletedProjects}
-                  onChange={(e) => {
-                    const newValue = e.target.checked;
-                    setShowCompletedProjects(newValue);
-                    // Salvar preferência no localStorage
-                    localStorage.setItem(`showCompletedProjects_${currentWorkspace?.id || 'default'}`, String(newValue));
-                  }}
-                  className="sr-only peer"
-                />
-                <div className={`relative w-11 h-6 rounded-full transition-all duration-200 ease-in-out ${
-                  showCompletedProjects 
-                    ? 'bg-primary' 
-                    : 'bg-slate-300 dark:bg-slate-600'
-                }`}>
-                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${
-                    showCompletedProjects ? 'translate-x-5' : 'translate-x-0'
-                  }`}></div>
-                </div>
-              </div>
-            </label>
-          </div>
-            <button 
+            </div>
+
+            <button
               onClick={() => setShowAddProject(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+              className="group flex items-center gap-3 px-8 py-3.5 bg-primary text-white rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-primary/30"
             >
-              <span className="material-symbols-outlined text-lg">add</span>
-              <span>Novo Projeto</span>
+              <span className="material-symbols-outlined text-[20px] group-hover:rotate-90 transition-transform">add</span>
+              <span>NOVO PROJETO</span>
             </button>
+          </div>
         </div>
-        </div>
-        <div 
+        <div
           ref={categoryTabsRef}
           className="flex border-b border-slate-200 dark:border-slate-800 gap-2 items-center overflow-x-auto no-scrollbar"
           onDragOver={(e) => e.preventDefault()}
           onMouseDown={(e: React.MouseEvent) => {
             // Não ativa se for botão direito do mouse
             if (e.button !== 0) return;
-            
+
             const target = e.target as HTMLElement;
-            
+
             // Não ativa se clicar no ícone drag_indicator (deixa o drag and drop funcionar)
             if (target.closest('.drag-indicator-handle')) {
               return;
             }
-            
+
             // Não ativa em elementos interativos
             if (
               target.closest('input') ||
@@ -755,11 +729,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             ) {
               return;
             }
-            
+
             // Resetar flags
             categoryHasMovedRef.current = false;
             isCategoryPanningRef.current = false;
-            
+
             // Ativa pan horizontal
             if (categoryTabsRef.current) {
               isCategoryPanningRef.current = true;
@@ -772,15 +746,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           }}
           onMouseMove={(e: React.MouseEvent) => {
             if (!isCategoryPanningRef.current || !categoryTabsRef.current) return;
-            
+
             const deltaX = Math.abs(e.pageX - categoryPanStartRef.current.x);
             const threshold = 5; // Threshold de 5px para considerar movimento
-            
+
             // Se moveu mais que o threshold, considera arrasto
             if (deltaX > threshold) {
               categoryHasMovedRef.current = true;
             }
-            
+
             e.preventDefault();
             const x = e.pageX;
             const walk = (x - categoryPanStartRef.current.x) * 1.5;
@@ -797,8 +771,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             isCategoryPanningRef.current = false;
             categoryHasMovedRef.current = false;
           }}
-          style={{ 
-            cursor: isCategoryPanningRef.current ? 'grabbing' : 'grab'
+          style={{
+            cursor: isCategoryPanningRef.current ? 'grabbing' : 'grab',
+            userSelect: 'none',
+            msOverflowStyle: 'none',
+            scrollbarWidth: 'none'
           }}
           onDragOver={(e) => {
             // Permitir drop no container (os divs individuais vão lidar com o drop)
@@ -807,7 +784,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             }
           }}
         >
-          <button 
+          <button
             onClick={(e) => {
               // Prevenir clique se houve pan
               if (categoryHasMovedRef.current || isCategoryPanningRef.current) {
@@ -817,17 +794,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               }
               setSelectedFilter('all');
             }}
-            className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
-              selectedFilter === 'all' 
-                ? 'text-primary' 
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
+            className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${selectedFilter === 'all'
+              ? 'text-primary'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
           >
             <span className="material-symbols-outlined text-lg">grid_view</span>
             <span>Todos os Projetos</span>
-            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
-              selectedFilter === 'all' ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-            }`}>
+            <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${selectedFilter === 'all' ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+              }`}>
               {projects.length}
             </span>
             {selectedFilter === 'all' && (
@@ -845,18 +820,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             }).length;
             const isDragging = draggedCategoryId === category.id;
             const isDragOver = dragOverIndex === index && draggedCategoryId !== category.id;
-            
+
             return (
-              <div 
-                key={category.id || index} 
-                className={`flex items-center group relative whitespace-nowrap transition-all ${
-                  isDragging ? 'opacity-30 scale-95' : ''
-                }`}
+              <div
+                key={category.id || index}
+                className={`flex items-center group relative whitespace-nowrap transition-all ${isDragging ? 'opacity-30 scale-95' : ''
+                  }`}
                 onDragOver={(e) => {
                   if (draggedCategoryId && draggedCategoryId !== category.id) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = 'move';
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
                     setDragOverIndex(index);
                   }
                 }}
@@ -873,20 +847,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   e.preventDefault();
                   e.stopPropagation();
                   const draggedId = draggedCategoryId;
-                  
+
                   if (draggedId && draggedId !== category.id) {
                     const draggedIndex = categories.findIndex(c => c.id === draggedId);
                     if (draggedIndex !== -1) {
                       const newCategories = [...categories];
                       const [removed] = newCategories.splice(draggedIndex, 1);
                       newCategories.splice(index, 0, removed);
-                      
+
                       // Atualizar ordem no Firebase
                       const categoryOrders = newCategories.map((cat, idx) => ({
                         id: cat.id,
                         order: idx + 1
                       }));
-                      
+
                       try {
                         await updateCategoriesOrder(categoryOrders);
                       } catch (error) {
@@ -894,7 +868,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       }
                     }
                   }
-                  
+
                   setDraggedCategoryId(null);
                   setDragOverIndex(null);
                 }}
@@ -903,8 +877,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 {isDragOver && (
                   <div className="absolute -left-1 top-0 bottom-0 w-1 bg-primary rounded-full z-10 animate-pulse"></div>
                 )}
-                
-                <button 
+
+                <button
                   onClick={(e) => {
                     // Prevenir clique se houve pan
                     if (categoryHasMovedRef.current || isCategoryPanningRef.current) {
@@ -914,14 +888,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     }
                     setSelectedFilter(filterKey);
                   }}
-                  className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative ${
-                    isActive 
-                      ? 'text-primary' 
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
+                  className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative ${isActive
+                    ? 'text-primary'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
                 >
-                  <span 
-                    className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity drag-indicator-handle cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-100' : ''}`} 
+                  <span
+                    className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity drag-indicator-handle cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-100' : ''}`}
                     style={{ fontSize: '16px' }}
                     draggable
                     onDragStart={(e) => {
@@ -947,17 +920,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     </span>
                   )}
                   <span>{category.name}</span>
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
-                    isActive ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                  }`}>
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${isActive ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
                     {projectCount}
                   </span>
-                  
+
                   {isActive && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
                   )}
                 </button>
-                
+
                 <button
                   onClick={() => setCategoryToDelete(category.name)}
                   className="opacity-0 group-hover:opacity-100 transition-all size-6 flex items-center justify-center rounded-full hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-500 -ml-2 mr-2 mb-3"
@@ -965,7 +937,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 >
                   <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>
-      </div>
+              </div>
             );
           })}
 
@@ -973,23 +945,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             const types = p.types || (p.type ? [p.type] : []);
             return types.length === 0 || types.includes('Sem categoria');
           }) && (
-            <button 
-              onClick={() => setSelectedFilter('sem-categoria')}
-              className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${
-                selectedFilter === 'sem-categoria' 
-                  ? 'text-primary' 
+              <button
+                onClick={() => setSelectedFilter('sem-categoria')}
+                className={`flex items-center gap-2 px-4 pb-3 text-sm font-bold transition-all relative whitespace-nowrap ${selectedFilter === 'sem-categoria'
+                  ? 'text-primary'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">help_outline</span>
-              <span>Sem serviço</span>
-              {selectedFilter === 'sem-categoria' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
-              )}
-            </button>
-          )}
-          
-          <button 
+                  }`}
+              >
+                <span className="material-symbols-outlined text-lg">help_outline</span>
+                <span>Sem serviço</span>
+                {selectedFilter === 'sem-categoria' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-1px_4px_rgba(var(--primary-rgb),0.3)]"></div>
+                )}
+              </button>
+            )}
+
+          <button
             onClick={() => setShowAddCategory(true)}
             className="flex items-center gap-1.5 px-4 pb-3 text-sm font-bold text-primary hover:bg-primary/5 transition-all whitespace-nowrap"
           >
@@ -999,20 +970,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         </div>
       </div>
 
-      <div 
+      <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50 dark:bg-slate-900/20" 
-        style={{ 
-          scrollbarWidth: 'thin', 
+        className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50 dark:bg-slate-900/20"
+        style={{
+          scrollbarWidth: 'thin',
           WebkitOverflowScrolling: 'touch',
           cursor: isPanning ? 'grabbing' : 'default'
         }}
         onMouseDown={(e: React.MouseEvent) => {
           // Não ativa se for botão direito do mouse
           if (e.button !== 0) return;
-          
+
           const target = e.target as HTMLElement;
-          
+
           // Não ativa se clicar em elementos interativos específicos
           if (
             target.closest('button') ||
@@ -1025,7 +996,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           ) {
             return;
           }
-          
+
           // Ativa pan
           if (scrollContainerRef.current) {
             setIsPanning(true);
@@ -1039,7 +1010,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         }}
         onMouseMove={(e: React.MouseEvent) => {
           if (!isPanning || !scrollContainerRef.current) return;
-          
+
           e.preventDefault();
           const x = e.pageX;
           const walk = (x - panStart.x) * 1.5;
@@ -1060,15 +1031,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             }
             return project.type ? [project.type] : [];
           };
-          
-          const filteredProjects = selectedFilter === 'all' 
-            ? projects 
+
+          const filteredProjects = selectedFilter === 'all'
+            ? projects
             : selectedFilter === 'sem-categoria'
-            ? projects.filter(p => {
+              ? projects.filter(p => {
                 const types = getProjectTypesLocal(p);
                 return types.length === 0 || types.includes('Sem categoria');
               })
-            : projects.filter(p => {
+              : projects.filter(p => {
                 const selectedCategory = categories.find(cat => cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter);
                 if (selectedCategory) {
                   // Normalizar strings para comparação (remover espaços extras, converter para lowercase, remover acentos opcionalmente)
@@ -1079,75 +1050,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       .normalize('NFD')
                       .replace(/[\u0300-\u036f]/g, ''); // Remove acentos
                   };
-                  
+
                   const categoryNameNormalized = normalizeString(selectedCategory.name);
-                  
+
                   // Verificar se ALGUM dos tipos do projeto corresponde à categoria selecionada
                   const projectTypes = getProjectTypesLocal(p);
                   return projectTypes.some(typeName => {
                     const projectTypeNormalized = normalizeString(typeName);
-                  
-                  // Comparação exata primeiro (mais precisa)
-                  if (projectTypeNormalized === categoryNameNormalized) {
-                    return true;
-                  }
-                  
-                  // Comparação sem acentos também
-                  const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+                    // Comparação exata primeiro (mais precisa)
+                    if (projectTypeNormalized === categoryNameNormalized) {
+                      return true;
+                    }
+
+                    // Comparação sem acentos também
+                    const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                     const projectTypeNoAccent = typeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                  if (projectTypeNoAccent === categoryNameNoAccent || 
+                    if (projectTypeNoAccent === categoryNameNoAccent ||
                       projectTypeNoAccent.includes(categoryNameNoAccent) ||
                       categoryNameNoAccent.includes(projectTypeNoAccent)) {
-                    return true;
-                  }
-                  
-                  // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
-                  return projectTypeNormalized.includes(categoryNameNormalized) || 
-                         categoryNameNormalized.includes(projectTypeNormalized) ||
-                         projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
+                      return true;
+                    }
+
+                    // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
+                    return projectTypeNormalized.includes(categoryNameNormalized) ||
+                      categoryNameNormalized.includes(projectTypeNormalized) ||
+                      projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
                   });
                 }
                 return true;
               });
-          
+
           // Aplicar filtro de projetos concluídos/finalizados
-          const finalFilteredProjects = showCompletedProjects 
-            ? filteredProjects 
+          const finalFilteredProjects = showCompletedProjects
+            ? filteredProjects
             : filteredProjects.filter(p => {
-                // Verificar se está em etapa final
-                const isCompleted = p.status === 'Completed';
-                const isFinished = p.status === 'Finished';
-                const isMaintenanceStage = p.stageId?.includes('maintenance') || false;
-                const projectTypes = getProjectTypesLocal(p);
-                const isRecurring = projectTypes.some(typeName => 
-                  categories.find(cat => cat.name === typeName && cat.isRecurring)
-                );
-                const isInMaintenance = isRecurring && isCompleted && isMaintenanceStage;
-                
-                // Manter projetos em Manutenção sempre visíveis
-                if (isInMaintenance) {
-                  return true;
-                }
-                
-                // Excluir apenas Finalizado e Concluído (que não está em Manutenção)
-                return !(isFinished || (isCompleted && !isInMaintenance));
-              });
-          
+              // Verificar se está em etapa final
+              const isCompleted = p.status === 'Completed';
+              const isFinished = p.status === 'Finished';
+              const isMaintenanceStage = p.stageId?.includes('maintenance') || false;
+              const projectTypes = getProjectTypesLocal(p);
+              const isRecurring = projectTypes.some(typeName =>
+                categories.find(cat => cat.name === typeName && cat.isRecurring)
+              );
+              const isInMaintenance = isRecurring && isCompleted && isMaintenanceStage;
+
+              // Manter projetos em Manutenção sempre visíveis
+              if (isInMaintenance) {
+                return true;
+              }
+
+              // Excluir apenas Finalizado e Concluído (que não está em Manutenção)
+              return !(isFinished || (isCompleted && !isInMaintenance));
+            });
+
           // Usar projetos filtrados diretamente (agora temos etapa "Em Revisão" no quadro)
           // Migrar projetos para garantir integridade de stageId
           // IMPORTANTE: Não remover stageId de projetos recorrentes em "Todos os Projetos"
           // pois eles podem estar em etapas normais
-          
+
           // IDs fixos conhecidos para etapas normais
           const fixedStageIdsLocal = ['onboarding', 'development', 'review', 'completed'];
-          
+
           // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
           const hasFixedStageIdLocal = (projectStageId: string | undefined): boolean => {
             if (!projectStageId) return false;
             const projectIdBase = projectStageId.split('-')[0];
             return fixedStageIdsLocal.includes(projectIdBase) || fixedStageIdsLocal.includes(projectStageId);
           };
-          
+
           // Função para obter o ID base de uma etapa
           const getStageBaseIdLocal = (stage: Stage): string => {
             const originalId = (stage as any).originalId;
@@ -1155,14 +1126,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             const baseId = stage.id.split('-')[0];
             return fixedStageIdsLocal.includes(baseId) ? baseId : stage.id;
           };
-          
+
           const projectsForBoard = finalFilteredProjects.map(p => {
             // Verificar se ALGUM dos tipos do projeto é recorrente
             const projectTypes = getProjectTypesLocal(p);
-            const isProjectRecurring = projectTypes.some(typeName => 
+            const isProjectRecurring = projectTypes.some(typeName =>
               categories.find(cat => cat.name === typeName && cat.isRecurring)
             );
-            
+
             if (isProjectRecurring) {
               // Para projetos recorrentes:
               // - Se tem stageId de etapa fixa (foi movido para etapa normal), NUNCA remover
@@ -1198,18 +1169,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           if (viewMode === 'board') {
             // Quando "Todos os Projetos" está selecionado, mostrar etapas normais + etapas recorrentes (Manutenção e Finalizado)
             let displayStages: Stage[];
-            
+
             if (selectedFilter === 'all') {
               // Combinar etapas normais FIXAS com etapas recorrentes (apenas Manutenção e Finalizado)
               // Usar sempre as etapas fixas para garantir IDs consistentes
               const normalStages = recalculateStageProgress(fixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })));
-              
+
               const recurringStages = recalculateStageProgress(fixedStagesRecurring.map(s => ({ ...s, workspaceId: currentWorkspace?.id })));
-              
+
               // Pegar apenas Manutenção e Finalizado das etapas recorrentes
               const maintenanceStage = recurringStages.find(s => s.status === 'Completed' && s.title === 'Manutenção');
               const finishedStage = recurringStages.find(s => s.status === 'Finished');
-              
+
               // Combinar: etapas normais + Manutenção + Finalizado
               displayStages = [
                 ...normalStages,
@@ -1223,72 +1194,72 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // Serviço normal selecionado: usar etapas normais
               displayStages = stages;
             }
-            
+
             const sortedStages = [...displayStages].sort((a, b) => a.order - b.order);
-            
+
             const handleContainerDragOver = (e: React.DragEvent) => {
               e.preventDefault();
               if (e.dataTransfer.types.includes('stageId')) {
                 e.dataTransfer.dropEffect = 'move';
               }
             };
-            
+
             const handleContainerDrop = (e: React.DragEvent) => {
               e.preventDefault();
             };
 
             return (
-              <div 
+              <div
                 className="flex gap-6 h-full pb-4"
                 onDragOver={handleContainerDragOver}
                 onDrop={handleContainerDrop}
-                style={{ 
+                style={{
                   minWidth: 'max-content'
                 }}
               >
                 {sortedStages.map((stage, index) => {
                   // Verificar se é uma etapa recorrente (Manutenção ou Finalizado)
                   const isRecurringStage = stage.title === 'Manutenção' || stage.title === 'Finalizado';
-                  
+
                   // IDs fixos conhecidos para etapas normais
                   const fixedStageIds = ['onboarding', 'development', 'review', 'completed'];
-                  
+
                   // Função auxiliar para verificar se o stageId do projeto corresponde a esta etapa
                   // Considera: match direto, match por originalId, ou match parcial (ID base)
                   const matchesStageId = (projectStageId: string | undefined, stageId: string, stageOriginalId?: string): boolean => {
                     if (!projectStageId) return false;
-                    
+
                     // Match direto
                     if (projectStageId === stageId) return true;
-                    
+
                     // Match por originalId (se a etapa tiver)
                     if (stageOriginalId && projectStageId === stageOriginalId) return true;
-                    
+
                     // Match por ID base (ex: 'onboarding' matches 'onboarding-workspace123')
                     const stageIdBase = stageId.split('-')[0];
                     if (projectStageId === stageIdBase) return true;
-                    
+
                     // Match reverso (ex: 'onboarding-workspace123' matches 'onboarding')
                     const projectIdBase = projectStageId.split('-')[0];
                     if (projectIdBase === stageIdBase) return true;
-                    
+
                     return false;
                   };
-                  
+
                   // Verificar se o projeto tem stageId de etapa fixa (considera variações de ID)
                   const hasFixedStageId = (projectStageId: string | undefined): boolean => {
                     if (!projectStageId) return false;
                     const projectIdBase = projectStageId.split('-')[0];
                     return fixedStageIds.includes(projectIdBase) || fixedStageIds.includes(projectStageId);
                   };
-                  
+
                   const stageProjects = projectsForBoard.filter(p => {
                     // Verificar se ALGUM dos tipos do projeto é recorrente
                     const pTypes = p.types || (p.type ? [p.type] : []);
-                    const isProjectRecurring = pTypes.some(typeName => 
+                    const isProjectRecurring = pTypes.some(typeName =>
                       categories.find(cat => cat.name === typeName && cat.isRecurring)
                     );
-                    
+
                     if (selectedFilter === 'all') {
                       // Quando "Todos os Projetos" está selecionado:
                       if (isRecurringStage) {
@@ -1329,11 +1300,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     }
                   });
                   return (
-                    <StageColumn 
+                    <StageColumn
                       key={stage.id}
                       stage={stage}
                       index={index}
-                      count={stageProjects.length} 
+                      count={stageProjects.length}
                       projects={stageProjects}
                       allProjects={finalFilteredProjects}
                       isActive={stage.status === 'Active'}
@@ -1342,7 +1313,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       onProjectClick={onProjectClick}
                       onDelete={setProjectToDelete}
                       onDrop={(project) => {
-                        handleProjectDrop(project, stage);
+                        handleProjectDrop(project, stage as any);
                       }}
                       onStageDragStart={(stage) => setDraggedStage(stage)}
                       onStageDragEnd={() => setDraggedStage(null)}
@@ -1356,26 +1327,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                           // Encontrar índices das etapas
                           const draggedIndex = stages.findIndex(s => s.id === draggedStage.id);
                           const targetIndex = stages.findIndex(s => s.id === targetStage.id);
-                          
+
                           if (draggedIndex !== -1 && targetIndex !== -1) {
                             // Criar nova array com etapas reordenadas
                             const newStages = [...stages];
                             const [removed] = newStages.splice(draggedIndex, 1);
                             newStages.splice(targetIndex, 0, removed);
-                            
+
                             // Atualizar ordem e recalcular progresso
                             const withNewOrder = newStages.map((s, idx) => ({ ...s, order: idx }));
                             const recalculated = recalculateStageProgress(withNewOrder);
-                            
+
                             // Encontrar a nova etapa (com status e progresso atualizados)
                             const updatedDraggedStage = recalculated.find(s => s.id === draggedStage.id);
-                            
+
                             if (updatedDraggedStage) {
                               // Atualizar todos os projetos que estavam na etapa arrastada (por stageId ou status)
-                              const projectsInStage = projectsForBoard.filter(p => 
+                              const projectsInStage = projectsForBoard.filter(p =>
                                 p.stageId ? p.stageId === draggedStage.id : p.status === draggedStage.status
                               );
-                              
+
                               try {
                                 // Atualizar todos os projetos no Firebase
                                 if (projectsInStage.length > 0) {
@@ -1395,10 +1366,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                                 return; // Não atualiza as etapas se houver erro
                               }
                             }
-                            
+
                             setStages(recalculated);
                             // Salvar etapas atualizadas no Firebase
-                            saveStages(recalculated).catch(err => {
+                            saveStages(recalculated as any).catch(err => {
                               console.error("Error saving reordered stages:", err);
                             });
                           }
@@ -1407,15 +1378,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     />
                   );
                 })}
-    </div>
-  );
+              </div>
+            );
           }
-          
+
           if (viewMode === 'list') {
-            return <ListView 
-              projects={finalFilteredProjects} 
+            return <ListView
+              projects={finalFilteredProjects}
               onProjectClick={onProjectClick}
-              stages={isSelectedCategoryRecurring 
+              stages={isSelectedCategoryRecurring
                 ? recalculateStageProgress(currentFixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })))
                 : stages}
               categories={categories}
@@ -1426,9 +1397,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
       {/* Modal Adicionar Projeto */}
       {showAddProject && (
-        <AddProjectModal 
+        <AddProjectModal
           categories={categories}
-          stages={isSelectedCategoryRecurring 
+          stages={isSelectedCategoryRecurring
             ? recalculateStageProgress(currentFixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })))
             : stages}
           workspaceId={currentWorkspace?.id}
@@ -1444,19 +1415,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const category = categories.find(cat => cat.name === typeName);
                 return category?.isRecurring || false;
               });
-              
+
               // Usar as etapas corretas baseado nos tipos do projeto
-              const stagesForProject = isProjectRecurring 
+              const stagesForProject = isProjectRecurring
                 ? recalculateStageProgress(currentFixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })))
                 : stages;
-              
+
               console.log('🔍 [Dashboard] Buscando etapa:', {
                 projectDataStageId: projectData.stageId,
                 projectDataStatus: projectData.status,
                 isProjectRecurring,
                 stagesForProjectIds: stagesForProject.map(s => ({ id: s.id, title: s.title, status: s.status }))
               });
-              
+
               // Encontrar etapa pelo stageId se fornecido, ou pelo status
               let selectedStage = null;
               if (projectData.stageId) {
@@ -1468,13 +1439,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               } else {
                 selectedStage = stagesForProject.find(s => s.status === projectData.status);
               }
-              
+
               console.log('✅ [Dashboard] Etapa selecionada:', {
                 selectedStageId: selectedStage?.id,
                 selectedStageTitle: selectedStage?.title,
                 selectedStageStatus: selectedStage?.status
               });
-              
+
               // Se não encontrou a etapa mas temos um stageId, usar diretamente
               // Priorizar o stageId fornecido pelo usuário
               const finalStageId = projectData.stageId || selectedStage?.id || stagesForProject[0]?.id;
@@ -1489,7 +1460,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 finalStatus = stagesForProject[0]?.status as Project['status'] || 'Lead';
               }
               const finalProgress = selectedStage?.progress || 0;
-              
+
               console.log('💾 [Dashboard] Salvando projeto com:', {
                 finalStageId,
                 finalStatus,
@@ -1497,7 +1468,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 projectDataStageId: projectData.stageId,
                 selectedStageFound: !!selectedStage
               });
-              
+
               const newProject: Omit<Project, "id"> = {
                 name: projectData.name || '',
                 client: projectData.client || '',
@@ -1517,7 +1488,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 isPaid: projectData.isPaid || false,
               };
               const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id, userId);
-              
+
               // Verificar se é um projeto recorrente (usar a variável já calculada)
               if (isProjectRecurring && projectId) {
                 // Para projetos recorrentes: criar faturas separadas para implementação e mensalidade
@@ -1526,7 +1497,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const implementationBudget = projectData.budget || 0; // Valor da implementação
                 const parcelas = (projectData as any).parcelas || 1; // Número de parcelas da implementação
                 const year = new Date().getFullYear();
-                
+
                 console.log('🔄 [Dashboard] Criando faturas para projeto recorrente:', {
                   projectId,
                   recurringAmount,
@@ -1534,26 +1505,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   implementationBudget,
                   parcelas
                 });
-                
+
                 // 1. Criar faturas de implementação parceladas (se valor > 0)
                 if (implementationBudget > 0) {
                   const valorParcela = implementationBudget / parcelas;
-                  
+
                   for (let i = 0; i < parcelas; i++) {
                     try {
-                    const invoiceDate = new Date();
-                    invoiceDate.setMonth(invoiceDate.getMonth() + i); // Cada parcela vence um mês depois
-                    
-                    await addInvoice({
-                      projectId,
-                      workspaceId: currentWorkspace?.id,
-                      number: `IMP-${year}-${String(i + 1).padStart(3, '0')}`,
-                      description: parcelas === 1 
-                        ? 'Implementação do Projeto' 
-                        : `Implementação - Parcela ${i + 1} de ${parcelas}`,
-                      amount: valorParcela,
-                      date: invoiceDate,
-                      status: 'Pending'
+                      const invoiceDate = new Date();
+                      invoiceDate.setMonth(invoiceDate.getMonth() + i); // Cada parcela vence um mês depois
+
+                      await addInvoice({
+                        projectId,
+                        workspaceId: currentWorkspace?.id,
+                        number: `IMP-${year}-${String(i + 1).padStart(3, '0')}`,
+                        description: parcelas === 1
+                          ? 'Implementação do Projeto'
+                          : `Implementação - Parcela ${i + 1} de ${parcelas}`,
+                        amount: valorParcela,
+                        date: invoiceDate,
+                        status: 'Pending'
                       }, userId);
                     } catch (invoiceError: any) {
                       // Ignorar erros de aborto (requisição cancelada) - não são críticos
@@ -1563,27 +1534,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     }
                   }
                 }
-                
+
                 // 2. Criar fatura de mensalidade (se valor e data definidos) - SEM numeração de parcelas
                 console.log('🔄 [Dashboard] Verificando condição para criar fatura de mensalidade:', {
                   recurringAmount,
                   recurringFirstDate,
                   condicaoAtendida: recurringAmount > 0 && recurringFirstDate
                 });
-                
+
                 if (recurringAmount > 0 && recurringFirstDate) {
                   try {
-                  const [rYear, rMonth, rDay] = recurringFirstDate.split('-').map(Number);
-                  const recurringDate = new Date(rYear, rMonth - 1, rDay);
-                  
-                  await addInvoice({
-                    projectId,
-                    workspaceId: currentWorkspace?.id,
-                    number: `REC-${rYear}-001`,
-                    description: 'Mensalidade', // Sem numeração de parcelas
-                    amount: recurringAmount,
-                    date: recurringDate,
-                    status: 'Pending'
+                    const [rYear, rMonth, rDay] = recurringFirstDate.split('-').map(Number);
+                    const recurringDate = new Date(rYear, rMonth - 1, rDay);
+
+                    await addInvoice({
+                      projectId,
+                      workspaceId: currentWorkspace?.id,
+                      number: `REC-${rYear}-001`,
+                      description: 'Mensalidade', // Sem numeração de parcelas
+                      amount: recurringAmount,
+                      date: recurringDate,
+                      status: 'Pending'
                     }, userId);
                   } catch (invoiceError: any) {
                     // Ignorar erros de aborto (requisição cancelada) - não são críticos
@@ -1592,15 +1563,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     }
                   }
                 }
-                
+
                 // Restaurar o budget original (implementação) e salvar o recurringAmount (mensalidade)
                 // O addInvoice sobrescreve o budget com a soma das faturas, então precisamos restaurar
                 if (projectId) {
                   try {
-                await updateProjectInFirebase(projectId, { 
-                  budget: implementationBudget, 
-                  recurringAmount: recurringAmount 
-                });
+                    await updateProjectInFirebase(projectId, {
+                      budget: implementationBudget,
+                      recurringAmount: recurringAmount
+                    });
                   } catch (updateError: any) {
                     // Ignorar erros de aborto (requisição cancelada) - não são críticos
                     if (updateError?.name !== 'AbortError' && updateError?.code !== 'cancelled') {
@@ -1613,18 +1584,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const parcelas = (projectData as any).parcelas || 1;
                 const valorParcela = projectData.budget / parcelas;
                 const year = new Date().getFullYear();
-                
+
                 // Criar uma fatura para cada parcela
                 for (let i = 0; i < parcelas; i++) {
                   const invoiceDate = new Date();
                   invoiceDate.setMonth(invoiceDate.getMonth() + i); // Cada parcela vence um mês depois
-                  
+
                   await addInvoice({
                     projectId,
                     workspaceId: currentWorkspace?.id,
                     number: `INV-${year}-${String(i + 1).padStart(3, '0')}`,
-                    description: parcelas === 1 
-                      ? 'Pagamento à vista' 
+                    description: parcelas === 1
+                      ? 'Pagamento à vista'
                       : `Parcela ${i + 1} de ${parcelas}`,
                     amount: valorParcela,
                     date: invoiceDate,
@@ -1632,13 +1603,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   }, userId);
                 }
               }
-              
+
               // Fechar modal DEPOIS de todas as operações assíncronas serem concluídas
               handleCloseAddProject();
-              
+
             } catch (error) {
               console.error("Error adding project:", error);
-              setIsSubmitting(false);
+              // setIsSubmitting(false); // Removido pois não está definido neste escopo
               // Não fechar o modal em caso de erro para o usuário poder tentar novamente
               alert("Erro ao adicionar projeto. Verifique os dados e tente novamente.");
             }
@@ -1648,7 +1619,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
       {/* Modal Adicionar Serviço */}
       {showAddCategory && (
-        <AddCategoryModal 
+        <AddCategoryModal
           onClose={() => setShowAddCategory(false)}
           onSave={async (categoryData) => {
             try {
@@ -1673,29 +1644,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               <div className="flex items-center gap-4 mb-4">
                 <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
                   <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-      </div>
+                </div>
                 <div>
                   <h3 className="text-xl font-bold">Excluir Projeto</h3>
                   <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-    </div>
+                </div>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 Tem certeza que deseja excluir o projeto <span className="font-bold">"{projectToDelete.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
               </p>
             </div>
             <div className="p-6 flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setProjectToDelete(null)}
                 className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
               >
                 Cancelar
-        </button>
-              <button 
+              </button>
+              <button
                 onClick={async () => {
                   const projectId = projectToDelete.id;
                   // Fechar modal ANTES de iniciar operação assíncrona
                   setProjectToDelete(null);
-                  
+
                   try {
                     await deleteProject(projectId);
                     // O projeto será removido automaticamente pela subscription
@@ -1725,33 +1696,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const pTypes = p.types || (p.type ? [p.type] : []);
                 return pTypes.some(typeName => {
                   const projectTypeLower = typeName.toLowerCase();
-                const categoryLower = categoryToDelete.toLowerCase();
-                return projectTypeLower.includes(categoryLower) || 
-                       projectTypeLower.includes(categoryToDelete.split(' ')[0].toLowerCase());
+                  const categoryLower = categoryToDelete.toLowerCase();
+                  return projectTypeLower.includes(categoryLower) ||
+                    projectTypeLower.includes(categoryToDelete.split(' ')[0].toLowerCase());
                 });
               });
 
               // Atualizar cada projeto no Firebase (remover o serviço do array de tipos)
               for (const project of projectsToUpdate) {
                 const currentTypes = project.types || (project.type ? [project.type] : []);
-                const newTypes = currentTypes.filter(t => 
+                const newTypes = currentTypes.filter(t =>
                   t.toLowerCase() !== categoryToDelete.toLowerCase()
                 );
-                await updateProjectInFirebase(project.id, { 
+                await updateProjectInFirebase(project.id, {
                   types: newTypes.length > 0 ? newTypes : ['Sem categoria'],
                   type: newTypes[0] || 'Sem categoria' // Compatibilidade
                 });
               }
-              
+
               // Remove o serviço do Firebase
               await deleteCategoryFromFirebase(categoryToDelete, currentWorkspace?.id);
-              
+
               // Se o serviço excluído estava selecionado, volta para "Todos"
               const filterKey = categoryToDelete.toLowerCase().replace(/\s+/g, '-');
               if (selectedFilter === filterKey) {
                 setSelectedFilter('all');
               }
-              
+
               setCategoryToDelete(null);
             } catch (error) {
               console.error("Error deleting category:", error);
@@ -1773,7 +1744,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             try {
               // Marcar que estamos excluindo para evitar que o subscribe sobrescreva
               isDeletingStage.current = true;
-              
+
               // Não permitir excluir etapas fixas
               if (stageToDelete.isFixed) {
                 alert("Não é possível excluir etapas fixas.");
@@ -1782,11 +1753,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 setStageMenuOpen(null);
                 return;
               }
-              
+
               // Encontrar a primeira etapa disponível (ou criar uma padrão)
               const remainingStages = stages.filter(s => s.id !== stageToDelete.id);
               const sortedRemaining = remainingStages.sort((a, b) => a.order - b.order);
-              
+
               // Se não houver etapas restantes, criar uma padrão
               let targetStage: Stage;
               if (sortedRemaining.length === 0) {
@@ -1799,12 +1770,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 // Usar a primeira etapa disponível (preferir etapa fixa se houver)
                 targetStage = sortedRemaining.find(s => s.isFixed) || sortedRemaining[0];
               }
-              
+
               // Atualizar todos os projetos que estavam na etapa excluída (por stageId ou status)
-              const projectsInStage = projects.filter(p => 
+              const projectsInStage = projects.filter(p =>
                 p.stageId ? p.stageId === stageToDelete.id : p.status === stageToDelete.status
               );
-              
+
               if (projectsInStage.length > 0) {
                 await Promise.all(
                   projectsInStage.map(project =>
@@ -1816,36 +1787,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   )
                 );
               }
-              
+
               // Atualizar as etapas localmente (remover a etapa excluída)
               const deletedStageOrder = stageToDelete.order;
               const updatedStages = stages.filter(s => s.id !== stageToDelete.id);
               const withNewOrder = updatedStages.map((s, idx) => ({ ...s, order: idx }));
               const recalculated = recalculateStageProgress(withNewOrder);
-              
+
               console.log("Excluindo etapa:", stageToDelete.id);
               console.log("Etapas restantes:", recalculated.length);
-              
+
               // Atualizar estado local primeiro para feedback imediato no frontend
               setStages(recalculated);
-              
+
               // Deletar apenas a etapa específica do Firebase
               await deleteStageFromFirebase(stageToDelete.id);
-              
+
               // Atualizar apenas as etapas que mudaram (as que estavam depois da etapa excluída)
               const stagesToUpdate = recalculated.filter(stage => {
                 // Encontrar a etapa original para comparar
                 const originalStage = stages.find(s => s.id === stage.id);
                 if (!originalStage) return false;
                 // Atualizar se a ordem ou progresso mudou
-                return originalStage.order !== stage.order || 
-                       originalStage.progress !== stage.progress ||
-                       originalStage.status !== stage.status;
+                return originalStage.order !== stage.order ||
+                  originalStage.progress !== stage.progress ||
+                  originalStage.status !== stage.status;
               });
-              
+
               if (stagesToUpdate.length > 0) {
                 await Promise.all(
-                  stagesToUpdate.map((stage) => 
+                  stagesToUpdate.map((stage) =>
                     updateStage(stage.id, {
                       order: stage.order,
                       progress: stage.progress,
@@ -1854,15 +1825,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   )
                 );
               }
-              
+
               console.log("Etapa excluída e etapas atualizadas no Firebase");
-              
+
               // Aguardar um pouco para garantir que o Firebase processou
               await new Promise(resolve => setTimeout(resolve, 300));
-              
+
               // Liberar a flag para permitir atualizações do subscribe novamente
               isDeletingStage.current = false;
-              
+
               setStageToDelete(null);
               setStageMenuOpen(null);
             } catch (error: any) {
@@ -1887,32 +1858,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
-          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${
-            toast.type === 'success' 
-              ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50' 
-              : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
-          }`}>
-            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${
-              toast.type === 'success' 
-                ? 'bg-emerald-100 dark:bg-emerald-900/30' 
-                : 'bg-amber-100 dark:bg-amber-900/30'
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${toast.type === 'success'
+            ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50'
+            : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
             }`}>
-              <span className={`material-symbols-outlined text-xl ${
-                toast.type === 'success' 
-                  ? 'text-emerald-600 dark:text-emerald-400' 
-                  : 'text-amber-600 dark:text-amber-400'
+            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${toast.type === 'success'
+              ? 'bg-emerald-100 dark:bg-emerald-900/30'
+              : 'bg-amber-100 dark:bg-amber-900/30'
               }`}>
+              <span className={`material-symbols-outlined text-xl ${toast.type === 'success'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-amber-600 dark:text-amber-400'
+                }`}>
                 {toast.type === 'success' ? 'check_circle' : 'warning'}
               </span>
-    </div>
-            <p className={`text-sm font-semibold flex-1 leading-relaxed ${
-              toast.type === 'success' 
-                ? 'text-emerald-900 dark:text-emerald-100' 
-                : 'text-amber-900 dark:text-amber-100'
-            }`}>
+            </div>
+            <p className={`text-sm font-semibold flex-1 leading-relaxed ${toast.type === 'success'
+              ? 'text-emerald-900 dark:text-emerald-100'
+              : 'text-amber-900 dark:text-amber-100'
+              }`}>
               {toast.message}
             </p>
-            <button 
+            <button
               onClick={() => setToast(null)}
               className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
               aria-label="Fechar"
@@ -1922,14 +1889,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           </div>
         </div>
       )}
-  </div>
-);
+    </div>
+  );
 };
 
-const StageColumn: React.FC<{ 
+const StageColumn: React.FC<{
   stage: Stage;
   index: number;
-  count: number; 
+  count: number;
   projects: Project[];
   allProjects: Project[];
   isActive?: boolean;
@@ -1972,7 +1939,7 @@ const StageColumn: React.FC<{
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
-    
+
     // Verificar se é uma etapa sendo arrastada (verificar primeiro)
     try {
       const stageId = e.dataTransfer.getData('stageId');
@@ -1983,11 +1950,11 @@ const StageColumn: React.FC<{
     } catch (err) {
       // Não é uma etapa, continuar para verificar se é projeto
     }
-    
+
     // Se for arrastar projeto
     const projectId = e.dataTransfer.getData('projectId');
     let project = allProjects.find(p => p.id === projectId);
-    
+
     if (!project) {
       try {
         project = JSON.parse(e.dataTransfer.getData('project'));
@@ -1996,7 +1963,7 @@ const StageColumn: React.FC<{
         return;
       }
     }
-    
+
     if (project && onDrop) {
       onDrop(project, stage);
     }
@@ -2017,17 +1984,16 @@ const StageColumn: React.FC<{
   };
 
   return (
-    <div 
-      className={`stage-column w-80 flex flex-col gap-3 p-3 rounded-2xl transition-all duration-200 ${
-        isDraggingOver 
-          ? 'bg-primary/5 ring-2 ring-primary/20' 
-          : 'bg-slate-50/50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/50'
-      } ${isStageDragging ? 'opacity-50' : ''}`}
+    <div
+      className={`stage-column w-80 flex flex-col gap-3 p-3 rounded-2xl transition-all duration-200 ${isDraggingOver
+        ? 'bg-primary/5 ring-2 ring-primary/20'
+        : 'bg-slate-50/50 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/50'
+        } ${isStageDragging ? 'opacity-50' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div 
+      <div
         draggable
         onDragStart={handleStageDragStart}
         onDragEnd={handleStageDragEnd}
@@ -2036,18 +2002,18 @@ const StageColumn: React.FC<{
           stage.title.toLowerCase().includes('on boarding') || stage.title.toLowerCase().includes('onboarding')
             ? 'bg-slate-500/10 text-slate-700 dark:text-slate-400'
             : stage.title.toLowerCase().includes('desenvolvimento')
-            ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400'
-            : stage.title.toLowerCase().includes('revisão') || stage.title.toLowerCase().includes('revisao')
-            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
-            : stage.title.toLowerCase().includes('finalizado')
-            ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
-            : stage.title.toLowerCase().includes('manutenção') || stage.title.toLowerCase().includes('manutencao')
-            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-            : stage.title.toLowerCase().includes('concluído') || stage.title.toLowerCase().includes('concluido')
-            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-            // Novas etapas criadas pelo usuário ficam em azul
-            : 'bg-blue-500/10 text-blue-700 dark:text-blue-400'
-        }`}
+              ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400'
+              : stage.title.toLowerCase().includes('revisão') || stage.title.toLowerCase().includes('revisao')
+                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                : stage.title.toLowerCase().includes('finalizado')
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                  : stage.title.toLowerCase().includes('manutenção') || stage.title.toLowerCase().includes('manutencao')
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                    : stage.title.toLowerCase().includes('concluído') || stage.title.toLowerCase().includes('concluido')
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                      // Novas etapas criadas pelo usuário ficam em azul
+                      : 'bg-blue-500/10 text-blue-700 dark:text-blue-400'
+          }`}
       >
         <div className="flex items-center gap-2.5">
           <span className="material-symbols-outlined text-[18px] opacity-40">drag_indicator</span>
@@ -2058,10 +2024,10 @@ const StageColumn: React.FC<{
             <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">
               {count} {count === 1 ? 'Projeto' : 'Projetos'}
             </span>
-      </div>
-    </div>
+          </div>
+        </div>
         <div className="relative stage-menu-container flex items-center gap-1">
-          <button 
+          <button
             onClick={(e) => {
               e.stopPropagation();
               onMenuToggle?.(stage.id);
@@ -2096,19 +2062,19 @@ const StageColumn: React.FC<{
                 >
                   <span className="material-symbols-outlined text-[18px]">delete</span>
                   <span className="font-semibold">Excluir Etapa</span>
-        </button>
+                </button>
               )}
             </div>
           )}
         </div>
       </div>
-      
+
       <div className="flex-1 flex flex-col gap-3 min-h-[200px] overflow-y-auto custom-scrollbar pr-1 pb-2">
         {projects.length > 0 ? (
           projects.map(project => (
-            <Card 
-              key={project.id} 
-              project={project} 
+            <Card
+              key={project.id}
+              project={project}
               onClick={() => onProjectClick?.(project)}
               onDelete={onDelete}
               isHighlighted={highlightedProjectId === project.id}
@@ -2122,32 +2088,32 @@ const StageColumn: React.FC<{
               Nenhum projeto nesta etapa
             </p>
           </div>
-      )}
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean; categories?: Category[] }> = ({ project, onClick, onDelete, isHighlighted, categories = [] }) => {
   const [isDragging, setIsDragging] = useState(false);
-  
+
   // Helper para verificar se o projeto está em uma etapa final (não precisa de deadline)
   const isInFinalStage = () => {
     const isCompleted = project.status === 'Completed';
     const isFinished = project.status === 'Finished';
     const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
     const projectTypes = project.types || (project.type ? [project.type] : []);
-    const isRecurring = projectTypes.some(typeName => 
+    const isRecurring = projectTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
     const isInMaintenance = isRecurring && isCompleted && isMaintenanceStage;
-    
+
     // Retorna true se estiver em Finalizado, Concluído (não Manutenção), ou Manutenção/Gestão
     return isFinished || (isCompleted && !isInMaintenance) || isInMaintenance;
   };
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
-  
+
   // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
   const getProjectTypes = (project: Project): string[] => {
     const types = project.types || (project.type ? [project.type] : []);
@@ -2159,20 +2125,20 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
     // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
     return types.length > 0 ? types : ['Sem categoria'];
   };
-  
+
   // Função auxiliar para determinar a cor da data baseada na proximidade
   const getDateColor = (dateString: string | undefined): string => {
     if (!dateString) return 'text-slate-500 dark:text-slate-400';
-    
+
     const date = new Date(dateString);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
-    
+
     const diffTime = targetDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     // Vermelho: data passou
     if (diffDays < 0) {
       return 'text-rose-600 dark:text-rose-400';
@@ -2231,7 +2197,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
   };
 
   return (
-    <div 
+    <div
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -2240,244 +2206,236 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
       data-project-id={project.id}
-      className={`bg-white dark:bg-slate-900 p-4 rounded-xl border ${project.status === 'Active' ? 'border-l-4 border-l-primary' : ''} ${isHighlighted ? 'ring-2 ring-primary shadow-lg' : 'border-slate-200 dark:border-slate-800 shadow-sm'} hover:shadow-md transition-all group ${isDragging ? 'opacity-50' : ''} ${isMouseDown ? 'cursor-grabbing' : 'cursor-pointer'}`}
+      className={`group relative bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-5 rounded-2xl border transition-all duration-300 ${isHighlighted
+        ? 'border-primary ring-4 ring-primary/10 shadow-2xl scale-[1.02]'
+        : 'border-white/50 dark:border-slate-800/50 shadow-sm hover:shadow-xl hover:-translate-y-1'
+        } ${isDragging ? 'opacity-50' : ''} ${isMouseDown ? 'cursor-grabbing' : 'cursor-pointer'}`}
     >
-    <div className="flex justify-between items-start mb-3">
-      <div className="flex flex-wrap gap-1">
-        {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
-          <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
-        project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-        project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-        project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-        'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-      }`}>
-            {typeName}
-      </span>
-        ))}
-        {(getProjectTypes(project).length > 2) && (
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
-            +{getProjectTypes(project).length - 2}
-          </span>
-        )}
-      </div>
-      {onDelete && (
+      {project.status === 'Active' && (
+        <div className="absolute top-0 left-0 w-1.5 h-full bg-primary rounded-l-2xl" />
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex flex-wrap gap-1.5">
+          {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
+            <span key={idx} className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${project.tagColor === 'amber' ? 'text-amber-600 bg-amber-500/10' :
+              project.tagColor === 'blue' ? 'text-blue-600 bg-blue-500/10' :
+                project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-500/10' :
+                  'text-primary bg-primary/10'
+              }`}>
+              {typeName}
+            </span>
+          ))}
+        </div>
         <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onDelete(project);
+            onDelete?.(project);
           }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          className="material-symbols-outlined text-slate-300 hover:text-rose-500 transition-colors text-sm cursor-pointer z-10 relative"
-          title="Excluir projeto"
+          className="size-8 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100"
         >
-          delete
+          <span className="material-symbols-outlined text-[18px]">delete</span>
         </button>
-      )}
-    </div>
-    <div className="flex items-start gap-3 mb-3">
-      {project.projectImage ? (
-        <div 
-          className="flex-shrink-0 size-10 rounded-lg bg-slate-200" 
-          style={{ backgroundImage: `url(${project.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-        ></div>
-      ) : (
-        <div className="flex-shrink-0 size-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
-          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-lg">add_photo_alternate</span>
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-    <h4 className="font-bold text-slate-900 dark:text-white text-base mb-1">{project.name}</h4>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mb-1">{project.client}</p>
-        <p className="text-xs text-slate-500 line-clamp-2">{project.description}</p>
       </div>
-    </div>
-    
-    {/* Verificar se é projeto recorrente (considerando múltiplos tipos) */}
-    {(() => {
-      const pTypes = project.types || (project.type ? [project.type] : []);
-      const isRecurring = pTypes.some(typeName => 
-        categories.find(cat => cat.name === typeName && cat.isRecurring)
-      );
-      
-      // Projeto recorrente: mostrar implementação e mensalidade separados
-      if (isRecurring && (project.budget > 0 || project.recurringAmount > 0)) {
-        return (
-          <div className="mb-3 space-y-2">
-            {/* Implementação */}
-            {project.budget > 0 && (
-              <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-indigo-400">build</span>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Implementação</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
-                    </span>
-                  </div>
-                </div>
-                {project.isImplementationPaid ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                    Pago
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-                    <span className="material-symbols-outlined text-xs">pending</span>
-                    Pendente
-                  </span>
-                )}
-              </div>
-            )}
-            {/* Mensalidade */}
-            {project.recurringAmount > 0 && (
-              <div className="flex items-center justify-between p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200/50 dark:border-amber-800/30">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-amber-500">autorenew</span>
-                  <div>
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 block">Mensalidade</span>
-                    <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.recurringAmount)}
-                    </span>
-                  </div>
-                </div>
-                {project.isRecurringPaid ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                    Pago
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                    <span className="material-symbols-outlined text-xs">pending</span>
-                    Pendente
-                  </span>
-                )}
-              </div>
-            )}
+      <div className="flex items-center gap-4 mb-4">
+        {project.projectImage ? (
+          <div
+            className="flex-shrink-0 size-12 rounded-xl bg-slate-200 shadow-inner overflow-hidden border border-white/20"
+            style={{ backgroundImage: `url(${project.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+          ></div>
+        ) : (
+          <div className="flex-shrink-0 size-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600 group-hover:border-primary transition-colors">
+            <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
           </div>
-        );
-      }
-      
-      // Projeto normal: mostrar apenas budget total
-      if (project.budget && project.budget > 0) {
-        return (
-          <div className="flex items-center justify-between mb-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm text-slate-400">payments</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-white">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
-              </span>
-            </div>
-            {project.isPaid ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                <span className="material-symbols-outlined text-xs">check_circle</span>
-                Pago
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                <span className="material-symbols-outlined text-xs">pending</span>
-                Pendente
-              </span>
-            )}
-          </div>
-        );
-      }
-      
-      return null;
-    })()}
-    
-    {project.progress >= 10 && (
-      <div className="space-y-1.5 mb-4">
-        <div className="flex justify-between text-[10px] font-bold text-slate-400">
-          <span>{project.status === 'Active' ? 'Fase de Codificação' : 'Testes'}</span>
-          <span>{project.progress}%</span>
-        </div>
-        <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
-          <div className={`h-full ${project.tagColor === 'emerald' ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${project.progress}%` }}></div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h4 className="font-display font-black text-slate-900 dark:text-white text-base leading-tight group-hover:text-primary transition-colors">{project.name}</h4>
+          <p className="text-xs text-slate-500 font-bold mt-0.5">{project.client}</p>
         </div>
       </div>
-    )}
 
-    {project.deadline ? (() => {
-      const deadlineDate = new Date(project.deadline);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const deadline = new Date(deadlineDate);
-      deadline.setHours(0, 0, 0, 0);
-      
-      const diffTime = deadline.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      let deadlineColor = '';
-      if (project.status === 'Completed') {
-        deadlineColor = 'text-emerald-600 dark:text-emerald-400';
-      } else if (diffDays < 0) {
-        deadlineColor = 'text-rose-600 dark:text-rose-400';
-      } else if (diffDays === 0 || diffDays === 1) {
-        deadlineColor = 'text-amber-600 dark:text-amber-400';
-      } else {
-        deadlineColor = 'text-slate-500 dark:text-slate-400';
-      }
-      
-      return (
-        <div className={`flex items-center gap-1.5 mb-3 text-xs font-semibold ${deadlineColor}`}>
-          <span className="material-symbols-outlined text-sm">calendar_today</span>
-          <span>
-            {project.status === 'Completed' ? 'Data de conclusão: ' : 'Data de entrega: '}
-            {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </span>
-      </div>
-      );
-    })() : (
-      // Só mostrar aviso se não estiver em etapa final
-      !isInFinalStage() ? (
-      <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50">
-        <span className="material-symbols-outlined text-sm text-rose-600 dark:text-rose-400 animate-pulse">warning</span>
-        <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">Definir data de entrega</span>
-      </div>
-      ) : null
-    )}
-    
-    {/* Datas de Manutenção e Relatório para projetos recorrentes em Manutenção */}
-    {(() => {
-      const pTypesForMaint = project.types || (project.type ? [project.type] : []);
-      const isRecurringService = pTypesForMaint.some(typeName => 
-        categories.find(cat => cat.name === typeName && cat.isRecurring)
-      );
-      const isInMaintenance = isRecurringService && project.status === 'Completed';
-      
-      if (!isInMaintenance || (!project.maintenanceDate && !project.reportDate)) return null;
-      
-      return (
-        <div className="space-y-2 mb-3">
-          {project.maintenanceDate && (
-            <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
-              <span className="material-symbols-outlined text-sm">build</span>
-              <span>
-                Manutenção: {new Date(project.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-              </span>
+      {/* Verificar se é projeto recorrente (considerando múltiplos tipos) */}
+      {(() => {
+        const pTypes = project.types || (project.type ? [project.type] : []);
+        const isRecurring = pTypes.some(typeName =>
+          categories.find(cat => cat.name === typeName && cat.isRecurring)
+        );
+
+        // Projeto recorrente: mostrar implementação e mensalidade separados
+        if (isRecurring && (project.budget > 0 || project.recurringAmount > 0)) {
+          return (
+            <div className="mb-3 space-y-2">
+              {/* Implementação */}
+              {project.budget > 0 && (
+                <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm text-indigo-400">build</span>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">Implementação</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
+                      </span>
+                    </div>
+                  </div>
+                  {project.isImplementationPaid ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                      Pago
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                      <span className="material-symbols-outlined text-xs">pending</span>
+                      Pendente
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Mensalidade */}
+              {project.recurringAmount > 0 && (
+                <div className="flex items-center justify-between p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200/50 dark:border-amber-800/30">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm text-amber-500">autorenew</span>
+                    <div>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 block">Mensalidade</span>
+                      <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.recurringAmount)}
+                      </span>
+                    </div>
+                  </div>
+                  {project.isRecurringPaid ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                      Pago
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                      <span className="material-symbols-outlined text-xs">pending</span>
+                      Pendente
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-          {project.reportDate && (
-            <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
-              <span className="material-symbols-outlined text-sm">description</span>
-              <span>
-                Relatório: {new Date(project.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-              </span>
+          );
+        }
+
+        // Projeto normal: mostrar apenas budget total
+        if (project.budget && project.budget > 0) {
+          return (
+            <div className="flex items-center justify-between mb-3 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm text-slate-400">payments</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.budget)}
+                </span>
+              </div>
+              {project.isPaid ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                  <span className="material-symbols-outlined text-xs">check_circle</span>
+                  Pago
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                  <span className="material-symbols-outlined text-xs">pending</span>
+                  Pendente
+                </span>
+              )}
             </div>
-          )}
+          );
+        }
+
+        return null;
+      })()}
+
+      {project.progress >= 10 && (
+        <div className="space-y-1.5 mb-4">
+          <div className="flex justify-between text-[10px] font-bold text-slate-400">
+            <span>{project.status === 'Active' ? 'Fase de Codificação' : 'Testes'}</span>
+            <span>{project.progress}%</span>
+          </div>
+          <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+            <div className={`h-full ${project.tagColor === 'emerald' ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${project.progress}%` }}></div>
+          </div>
         </div>
-      );
-    })()}
-        </div>
+      )}
+
+      {project.deadline ? (() => {
+        const deadlineDate = new Date(project.deadline);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const deadline = new Date(deadlineDate);
+        deadline.setHours(0, 0, 0, 0);
+
+        const diffTime = deadline.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let deadlineColor = '';
+        if (project.status === 'Completed') {
+          deadlineColor = 'text-emerald-600 dark:text-emerald-400';
+        } else if (diffDays < 0) {
+          deadlineColor = 'text-rose-600 dark:text-rose-400';
+        } else if (diffDays === 0 || diffDays === 1) {
+          deadlineColor = 'text-amber-600 dark:text-amber-400';
+        } else {
+          deadlineColor = 'text-slate-500 dark:text-slate-400';
+        }
+
+        return (
+          <div className={`flex items-center gap-1.5 mb-3 text-xs font-semibold ${deadlineColor}`}>
+            <span className="material-symbols-outlined text-sm">calendar_today</span>
+            <span>
+              {project.status === 'Completed' ? 'Data de conclusão: ' : 'Data de entrega: '}
+              {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </span>
+          </div>
+        );
+      })() : (
+        // Só mostrar aviso se não estiver em etapa final
+        !isInFinalStage() ? (
+          <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50">
+            <span className="material-symbols-outlined text-sm text-rose-600 dark:text-rose-400 animate-pulse">warning</span>
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">Definir data de entrega</span>
+          </div>
+        ) : null
+      )}
+
+      {/* Datas de Manutenção e Relatório para projetos recorrentes em Manutenção */}
+      {(() => {
+        const pTypesForMaint = project.types || (project.type ? [project.type] : []);
+        const isRecurringService = pTypesForMaint.some(typeName =>
+          categories.find(cat => cat.name === typeName && cat.isRecurring)
+        );
+        const isInMaintenance = isRecurringService && project.status === 'Completed';
+
+        if (!isInMaintenance || (!project.maintenanceDate && !project.reportDate)) return null;
+
+        return (
+          <div className="space-y-2 mb-3">
+            {project.maintenanceDate && (
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
+                <span className="material-symbols-outlined text-sm">build</span>
+                <span>
+                  Manutenção: {new Date(project.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </span>
+              </div>
+            )}
+            {project.reportDate && (
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
+                <span className="material-symbols-outlined text-sm">description</span>
+                <span>
+                  Relatório: {new Date(project.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
   );
 };
 
-const ListView: React.FC<{ 
-  projects: Project[]; 
+const ListView: React.FC<{
+  projects: Project[];
   onProjectClick?: (project: Project) => void;
   stages: Stage[];
   categories: Category[];
@@ -2503,11 +2461,11 @@ const ListView: React.FC<{
     const isFinished = project.status === 'Finished';
     const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
     const projectTypes = project.types || (project.type ? [project.type] : []);
-    const isRecurring = projectTypes.some(typeName => 
+    const isRecurring = projectTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
     const isInMaintenance = isRecurring && isCompleted && isMaintenanceStage;
-    
+
     // Retorna true se estiver em Finalizado, Concluído (não Manutenção), ou Manutenção/Gestão
     return isFinished || (isCompleted && !isInMaintenance) || isInMaintenance;
   };
@@ -2518,26 +2476,26 @@ const ListView: React.FC<{
     const isOnboardingStage = project.stageId?.includes('onboarding') || false;
     const isDevelopmentStage = project.stageId?.includes('development') || false;
     const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
-    
+
     // Verificar se é projeto recorrente
     const pTypes = project.types || (project.type ? [project.type] : []);
-    const isRecurring = pTypes.some(typeName => 
+    const isRecurring = pTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
-    
+
     // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
     if (isRecurring && project.status === 'Completed' && isMaintenanceStage) {
       return 'Gestão';
     }
-    
+
     // Buscar a etapa correspondente ao status do projeto
     const currentStage = stages.find(stage => stage.status === project.status);
-    
+
     if (currentStage) {
       // Retornar o título da etapa
       return currentStage.title;
     }
-    
+
     // Fallback baseado no stageId e status
     if (project.status === 'Lead' && isOnboardingStage) {
       return 'On-boarding';
@@ -2550,7 +2508,7 @@ const ListView: React.FC<{
     } else if (project.status === 'Finished') {
       return 'Finalizado';
     }
-    
+
     // Fallback para labels padrão
     const progress = project.progress || 0;
     if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
@@ -2633,21 +2591,21 @@ const ListView: React.FC<{
   };
 
   return (
-  <div className="max-w-6xl mx-auto">
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div className="max-w-6xl mx-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="overflow-x-auto max-h-[calc(100vh-300px)] overflow-y-auto">
-        <table className="w-full text-left table-fixed">
-          <colgroup>
+          <table className="w-full text-left table-fixed">
+            <colgroup>
               <col className="w-[22%]" />
-            <col className="w-[15%]" />
+              <col className="w-[15%]" />
               <col className="w-[18%]" />
-            <col className="w-[15%]" />
-            <col className="w-[15%]" />
-            <col className="w-[15%]" />
-          </colgroup>
+              <col className="w-[15%]" />
+              <col className="w-[15%]" />
+              <col className="w-[15%]" />
+            </colgroup>
             <thead className="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
               <tr>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('projeto')}
                 >
@@ -2656,7 +2614,7 @@ const ListView: React.FC<{
                     <SortArrow column="projeto" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('cliente')}
                 >
@@ -2665,7 +2623,7 @@ const ListView: React.FC<{
                     <SortArrow column="cliente" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('servico')}
                 >
@@ -2674,7 +2632,7 @@ const ListView: React.FC<{
                     <SortArrow column="servico" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('status')}
                 >
@@ -2683,7 +2641,7 @@ const ListView: React.FC<{
                     <SortArrow column="status" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('progresso')}
                 >
@@ -2692,7 +2650,7 @@ const ListView: React.FC<{
                     <SortArrow column="progresso" />
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   onClick={() => handleSort('prazo')}
                 >
@@ -2701,17 +2659,17 @@ const ListView: React.FC<{
                     <SortArrow column="prazo" />
                   </div>
                 </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {sortedProjects.map((project) => (
-              <tr 
-                key={project.id} 
-                onClick={() => onProjectClick?.(project)}
-                className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
-              >
-                <td className="px-6 py-4 overflow-hidden">
-                  <div className="flex items-center gap-3 min-w-0">
+                <tr
+                  key={project.id}
+                  onClick={() => onProjectClick?.(project)}
+                  className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                >
+                  <td className="px-6 py-4 overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0">
                       {project.projectImage ? (
                         <div className="flex-shrink-0 size-10 rounded-lg bg-slate-200" style={{ backgroundImage: `url(${project.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
                       ) : (
@@ -2719,27 +2677,26 @@ const ListView: React.FC<{
                           <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-lg">add_photo_alternate</span>
                         </div>
                       )}
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <p className="text-sm font-bold truncate">{project.name}</p>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="text-sm font-bold truncate">{project.name}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{project.client}</p>
-                      <p className="text-xs text-slate-500 truncate">{project.description}</p>
+                        <p className="text-xs text-slate-500 truncate">{project.description}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  <span className="text-sm truncate block">{project.client}</span>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <span className="text-sm truncate block">{project.client}</span>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
                     <div className="flex flex-wrap gap-1 whitespace-nowrap">
                       {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
-                        <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded inline-block ${
-                    project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                    project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                    project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                    'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-                  }`}>
+                        <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded inline-block ${project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
+                          project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
+                            project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+                              'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                          }`}>
                           {typeName}
-                  </span>
+                        </span>
                       ))}
                       {(getProjectTypes(project).length > 2) && (
                         <span className="text-[10px] font-bold uppercase tracking-wider px-1 py-1 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
@@ -2747,83 +2704,82 @@ const ListView: React.FC<{
                         </span>
                       )}
                     </div>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${
-                      getStatusLabel(project) === 'Gestão' 
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${getStatusLabel(project) === 'Gestão'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                       project.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                      project.status === 'Active' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
-                      project.status === 'Review' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      project.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      project.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                      'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                    }`}>
+                        project.status === 'Active' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
+                          project.status === 'Review' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            project.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                              project.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                      }`}>
                       {getStatusLabel(project)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  {project.progress >= 10 ? (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="flex-shrink-0 w-20 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                        <div className={`h-full ${project.tagColor === 'emerald' ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${project.progress}%` }}></div>
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    {project.progress >= 10 ? (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex-shrink-0 w-20 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                          <div className={`h-full ${project.tagColor === 'emerald' ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${project.progress}%` }}></div>
+                        </div>
+                        <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{project.progress}%</span>
                       </div>
-                      <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{project.progress}%</span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-slate-400">-</span>
-                  )}
-                </td>
-                <td className="px-6 py-4 overflow-hidden">
-                  {project.deadline ? (() => {
-                    const deadlineDate = new Date(project.deadline);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const deadline = new Date(deadlineDate);
-                    deadline.setHours(0, 0, 0, 0);
-                    
-                    const diffTime = deadline.getTime() - today.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    let deadlineColor = '';
-                    if (project.status === 'Completed') {
-                      deadlineColor = 'text-emerald-600 dark:text-emerald-400';
-                    } else if (diffDays < 0) {
-                      deadlineColor = 'text-rose-600 dark:text-rose-400';
-                    } else if (diffDays === 0 || diffDays === 1) {
-                      deadlineColor = 'text-amber-600 dark:text-amber-400';
-                    } else {
-                      deadlineColor = 'text-slate-500 dark:text-slate-400';
-                    }
-                    
-                    return (
-                      <div className={`flex items-center gap-1 min-w-0 ${deadlineColor}`}>
-                        <span className="material-symbols-outlined text-sm flex-shrink-0">schedule</span>
-                        <span className="text-xs truncate whitespace-nowrap">
-                          {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </span>
-                      </div>
-                    );
-                  })() : (
-                    // Só mostrar aviso se não estiver em etapa final
-                    !isInFinalStage(project) ? (
-                      <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                        <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
-                        <span className="text-xs font-bold whitespace-nowrap">Definir data</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    {project.deadline ? (() => {
+                      const deadlineDate = new Date(project.deadline);
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const deadline = new Date(deadlineDate);
+                      deadline.setHours(0, 0, 0, 0);
+
+                      const diffTime = deadline.getTime() - today.getTime();
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                      let deadlineColor = '';
+                      if (project.status === 'Completed') {
+                        deadlineColor = 'text-emerald-600 dark:text-emerald-400';
+                      } else if (diffDays < 0) {
+                        deadlineColor = 'text-rose-600 dark:text-rose-400';
+                      } else if (diffDays === 0 || diffDays === 1) {
+                        deadlineColor = 'text-amber-600 dark:text-amber-400';
+                      } else {
+                        deadlineColor = 'text-slate-500 dark:text-slate-400';
+                      }
+
+                      return (
+                        <div className={`flex items-center gap-1 min-w-0 ${deadlineColor}`}>
+                          <span className="material-symbols-outlined text-sm flex-shrink-0">schedule</span>
+                          <span className="text-xs truncate whitespace-nowrap">
+                            {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </span>
+                        </div>
+                      );
+                    })() : (
+                      // Só mostrar aviso se não estiver em etapa final
+                      !isInFinalStage(project) ? (
+                        <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                          <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
+                          <span className="text-xs font-bold whitespace-nowrap">Definir data</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-                  ) : (
-                    <span className="text-xs text-slate-400">-</span>
-                    )
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: Project) => void }> = ({ projects, onProjectClick }) => {
@@ -2838,106 +2794,106 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     // Se só tiver "Sem categoria" ou estiver vazio, retornar ["Sem categoria"]
     return types.length > 0 ? types : ['Sem categoria'];
   };
-  
+
   // Calcular a data inicial do cronograma (deadline mais antiga de projetos não concluídos)
   const calculateStartDate = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Filtrar apenas projetos não concluídos que tenham deadline
-    const activeProjects = projects.filter(p => 
+    const activeProjects = projects.filter(p =>
       p.status !== 'Completed' && p.deadline
     );
-    
+
     if (activeProjects.length === 0) {
       // Se não há projetos ativos, começar de hoje
       return today;
     }
-    
+
     // Encontrar a deadline mais antiga entre projetos não concluídos
     let earliestDeadline: Date | null = null;
-    
+
     activeProjects.forEach(project => {
       if (project.deadline) {
         const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
         deadline.setHours(0, 0, 0, 0);
-        
+
         if (!earliestDeadline || deadline < earliestDeadline) {
           earliestDeadline = deadline;
         }
       }
     });
-    
+
     // Se a deadline mais antiga for no futuro, usar hoje
     // Se for no passado, usar a deadline mais antiga
     if (earliestDeadline && earliestDeadline < today) {
       return earliestDeadline;
     }
-    
+
     return today;
   };
-  
+
   // Calcular até quando mostrar o cronograma (pelo menos 30 dias ou até a data de entrega mais distante)
   const calculateEndDate = (startDate: Date) => {
     let maxDeadline: Date | null = null;
-    
+
     // Encontrar a deadline mais distante entre todos os projetos
     projects.forEach(project => {
       if (project.deadline) {
         const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
         deadline.setHours(0, 0, 0, 0);
-        
+
         if (!maxDeadline || deadline > maxDeadline) {
           maxDeadline = deadline;
         }
       }
     });
-    
+
     // Se não houver deadline, usar 30 dias a partir da data inicial
     if (!maxDeadline) {
       const defaultEndDate = new Date(startDate);
       defaultEndDate.setDate(startDate.getDate() + 30);
       return defaultEndDate;
     }
-    
+
     // Sempre adicionar pelo menos 7 dias extras além da deadline mais distante para visualização
     const endDate = new Date(maxDeadline);
     endDate.setDate(maxDeadline.getDate() + 7);
-    
+
     // Garantir que o cronograma mostre pelo menos 30 dias
     const defaultEndDate = new Date(startDate);
     defaultEndDate.setDate(startDate.getDate() + 30);
-    
+
     // Retornar a data mais distante entre 30 dias e deadline + 7 dias
     return endDate > defaultEndDate ? endDate : defaultEndDate;
   };
-  
+
   // Gerar dias dinamicamente
   const generateDays = () => {
     const days = [];
     const startDate = calculateStartDate();
     const endDate = calculateEndDate(startDate);
-    
+
     const diffTime = endDate.getTime() - startDate.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     // Garantir que sempre mostramos pelo menos até a deadline mais distante + pelo menos 7 dias extras
     // Adicionar mais dias para garantir que alcancemos todas as deadlines
     const totalDays = diffDays + 14; // Adicionar 14 dias extras para garantir margem
-    
+
     const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    
+
     for (let i = 0; i < totalDays; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(startDate.getDate() + i);
-      
+
       // Agrupar por semana (mostrar apenas domingos, ou início do período)
       const dayOfWeek = currentDate.getDay();
       const isWeekStart = dayOfWeek === 0 || i === 0;
-      
+
       if (isWeekStart || i % 7 === 0) {
         const month = monthNames[currentDate.getMonth()];
         const day = currentDate.getDate().toString().padStart(2, '0');
-        
+
         days.push({
           label: `${month} ${day}`,
           date: new Date(currentDate),
@@ -2945,23 +2901,23 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
         });
       }
     }
-    
+
     return days;
   };
-  
+
   const days = generateDays();
-  
+
   // Calcular posição e duração de cada projeto baseado nas datas
   const getProjectPosition = (project: Project) => {
     const startDate = calculateStartDate();
     startDate.setHours(0, 0, 0, 0);
-    
+
     // Usar data de criação como início (ou data inicial do cronograma se não houver)
-    const projectStartDate = project.createdAt 
+    const projectStartDate = project.createdAt
       ? (project.createdAt instanceof Date ? project.createdAt : new Date(project.createdAt))
       : startDate;
     projectStartDate.setHours(0, 0, 0, 0);
-    
+
     // Usar deadline como fim (ou calcular baseado no status)
     let endDate: Date;
     if (project.deadline) {
@@ -2973,19 +2929,19 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
       const estimatedWeeks = project.status === 'Active' ? 4 : project.status === 'Completed' ? 2 : 3;
       endDate.setDate(endDate.getDate() + (estimatedWeeks * 7));
     }
-    
+
     // Encontrar a primeira data do cronograma
     const firstDayDate = days[0]?.date || startDate;
     firstDayDate.setHours(0, 0, 0, 0);
-    
+
     // Se a data de início do projeto for antes da data inicial do cronograma, usar a data inicial
     const actualStartDate = projectStartDate < firstDayDate ? firstDayDate : projectStartDate;
-    
+
     // Calcular diferença em dias para posição inicial
     const diffTimeStart = actualStartDate.getTime() - firstDayDate.getTime();
     const diffDaysStart = Math.ceil(diffTimeStart / (1000 * 60 * 60 * 24));
     const startDay = Math.max(0, diffDaysStart);
-    
+
     // Encontrar qual coluna (semana) corresponde ao dia inicial
     let startColumn = 0;
     for (let i = 0; i < days.length; i++) {
@@ -2997,18 +2953,18 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
         startColumn = i;
       }
     }
-    
+
     // Calcular diferença em dias até a deadline
     const diffTimeEnd = endDate.getTime() - firstDayDate.getTime();
     const diffDaysEnd = Math.ceil(diffTimeEnd / (1000 * 60 * 60 * 24));
     const endDay = Math.max(0, diffDaysEnd);
-    
+
     // Encontrar qual coluna corresponde ao final (deadline)
     // Procurar a última coluna cujo index seja <= endDay (a coluna que contém ou está antes da deadline)
     // Se não encontrar, usar a primeira coluna que seja >= endDay
     let endColumn = days.length - 1;
     let foundExact = false;
-    
+
     for (let i = days.length - 1; i >= 0; i--) {
       if (days[i].index <= endDay) {
         endColumn = i;
@@ -3016,7 +2972,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
         break;
       }
     }
-    
+
     // Se não encontrou nenhuma coluna antes ou igual à deadline, usar a primeira que seja >=
     if (!foundExact) {
       for (let i = 0; i < days.length; i++) {
@@ -3026,41 +2982,41 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
         }
       }
     }
-    
+
     // Calcular duração baseada nas colunas (diferença entre coluna inicial e final + 1)
     let durationColumns = endColumn - startColumn + 1;
-    
+
     // Garantir duração mínima de 1 coluna
     durationColumns = Math.max(1, durationColumns);
-    
+
     // Limitar startColumn
     const maxStartColumn = Math.max(0, days.length - 1);
     const finalStartColumn = Math.min(startColumn, maxStartColumn);
-    
+
     // Calcular duração final garantindo que alcance pelo menos até a deadline
     const maxDuration = days.length - finalStartColumn;
-    
+
     // Se endColumn está além das colunas disponíveis, usar o máximo disponível
     if (endColumn >= days.length) {
       // A deadline está além do cronograma gerado
       // Usar o máximo disponível, mas isso indica que o cronograma precisa ser expandido
       const finalDuration = maxDuration;
-      
+
       return {
         startColumn: finalStartColumn,
         duration: finalDuration
       };
     }
-    
+
     // Garantir que a duração inclua pelo menos até a coluna da deadline
     const finalDuration = Math.min(durationColumns, maxDuration);
-    
+
     return {
       startColumn: finalStartColumn,
       duration: finalDuration
     };
   };
-  
+
   // Mapear status para cores do Timeline
   const getStatusColor = (status: string, tagColor?: string) => {
     if (status === 'Active') return 'blue';
@@ -3078,26 +3034,26 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
   const getStatusLabel = (project: Project) => {
     // Verificar etapa baseado no stageId
     const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
-    
+
     // Verificar se é projeto recorrente
     const pTypesForLabel = project.types || (project.type ? [project.type] : []);
-    const isRecurringService = pTypesForLabel.some(typeName => 
+    const isRecurringService = pTypesForLabel.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
-    
+
     // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
     if (isRecurringService && project.status === 'Completed' && isMaintenanceStage) {
       return 'Gestão';
     }
-    
+
     // Buscar a etapa correspondente ao status do projeto
     const currentStage = stages.find(stage => stage.status === project.status);
-    
+
     if (currentStage) {
       // Retornar o título da etapa
       return currentStage.title;
     }
-    
+
     // Fallback para labels padrão se não encontrar etapa
     const progress = project.progress || 0;
     if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
@@ -3106,7 +3062,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     if (project.status === 'Finished') return 'Finalizado';
     return `Em Revisão (${progress}%)`;
   };
-  
+
   // Obter cor do status - retornar azul para "Gestão"
   const getStatusColorForLabel = (project: Project) => {
     const label = getStatusLabel(project);
@@ -3124,24 +3080,23 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const isDayToday = day.date.getTime() === today.getTime();
-              
+
               // Calcular posição da linha baseado no horário atual (0-100px)
               const now = new Date();
               const minutesInDay = (now.getHours() * 60) + now.getMinutes();
               const positionX = (minutesInDay / 1440) * 100;
 
               return (
-                <div 
-                  key={i} 
-                  className={`w-[100px] flex-shrink-0 text-center border-r flex items-center justify-center relative ${
-                    isDayToday 
-                      ? 'bg-slate-50/30 dark:bg-slate-800/10 border-r-slate-100 dark:border-r-slate-800/50' 
-                      : 'border-slate-100 dark:border-slate-800/50'
-                  }`}
+                <div
+                  key={i}
+                  className={`w-[100px] flex-shrink-0 text-center border-r flex items-center justify-center relative ${isDayToday
+                    ? 'bg-slate-50/30 dark:bg-slate-800/10 border-r-slate-100 dark:border-r-slate-800/50'
+                    : 'border-slate-100 dark:border-slate-800/50'
+                    }`}
                 >
                   {/* Bolinha única no topo */}
                   {isDayToday && (
-                    <div 
+                    <div
                       className="absolute -bottom-1 size-2 rounded-full bg-primary z-30 shadow-sm"
                       style={{ left: `${positionX - 4}px` }}
                     ></div>
@@ -3150,11 +3105,10 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                     <span className={`block text-[9px] font-bold leading-tight uppercase ${isDayToday ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
                       {day.label.split(' ')[0]}
                     </span>
-                    <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all ${
-                      isDayToday 
-                        ? 'bg-primary text-white shadow-sm shadow-primary/20' 
-                        : 'text-slate-900 dark:text-white'
-                    }`}>
+                    <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all ${isDayToday
+                      ? 'bg-primary text-white shadow-sm shadow-primary/20'
+                      : 'text-slate-900 dark:text-white'
+                      }`}>
                       {day.label.split(' ')[1]}
                     </span>
                   </div>
@@ -3168,17 +3122,17 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
             const { startColumn, duration } = getProjectPosition(project);
             const statusColor = getStatusColorForLabel(project);
             const isLate = project.deadline && new Date(project.deadline) < new Date() && project.status !== 'Completed';
-            
+
             // Calcular progresso temporal baseado nas datas (até a deadline)
             // O progresso começa a contar a partir da data em que o deadline foi definido
             let temporalProgress = 0;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+
             if (project.deadline) {
               const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
               deadline.setHours(0, 0, 0, 0);
-              
+
               // Usar a data de atualização do projeto (quando o deadline foi definido/modificado)
               // Se não houver updatedAt, usar a data de criação ou a data atual
               let startDate: Date;
@@ -3191,19 +3145,19 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                 startDate = today;
               }
               startDate.setHours(0, 0, 0, 0);
-              
+
               // Se a deadline está no passado em relação à data de início, ajustar
               // Isso pode acontecer se o deadline foi atualizado para uma data anterior
               if (deadline < startDate) {
                 startDate = deadline;
               }
-              
+
               // Calcular a duração total (do início até a deadline)
               const totalDuration = deadline.getTime() - startDate.getTime();
-              
+
               // Calcular quanto tempo já passou desde o início até hoje
               const elapsed = today.getTime() - startDate.getTime();
-              
+
               if (totalDuration > 0) {
                 // Progresso temporal: (tempo decorrido / duração total) * 100
                 temporalProgress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
@@ -3214,7 +3168,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                 // Se deadline está antes da data de início (caso estranho), mostrar 100%
                 temporalProgress = 100;
               }
-              
+
               // Se o projeto foi concluído, mostrar 100%
               if (project.status === 'Completed') {
                 temporalProgress = 100;
@@ -3227,10 +3181,10 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
               // Se não houver deadline, usar o progresso do projeto
               temporalProgress = project.progress || 0;
             }
-            
+
             return (
-              <div 
-                key={project.id} 
+              <div
+                key={project.id}
                 onClick={() => onProjectClick?.(project)}
                 className="flex hover:bg-white dark:hover:bg-slate-800/50 transition-colors group"
               >
@@ -3238,15 +3192,14 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                   <h4 className="text-sm font-bold">{project.name}</h4>
                   <div className="flex flex-wrap gap-1">
                     {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
-                      <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${
-                    project.tagColor === 'amber' ? 'bg-amber-50 text-amber-600' :
-                    project.tagColor === 'blue' ? 'bg-blue-50 text-blue-600' :
-                    project.tagColor === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
-                    project.tagColor === 'indigo' ? 'bg-indigo-50 text-indigo-600' :
-                    'bg-blue-50 text-blue-600'
-                  }`}>
+                      <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${project.tagColor === 'amber' ? 'bg-amber-50 text-amber-600' :
+                        project.tagColor === 'blue' ? 'bg-blue-50 text-blue-600' :
+                          project.tagColor === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
+                            project.tagColor === 'indigo' ? 'bg-indigo-50 text-indigo-600' :
+                              'bg-blue-50 text-blue-600'
+                        }`}>
                         {typeName}
-                  </span>
+                      </span>
                     ))}
                     {(getProjectTypes(project).length > 2) && (
                       <span className="text-[10px] font-bold uppercase tracking-wider px-1 py-0.5 rounded text-slate-500 bg-slate-100 dark:bg-slate-800">
@@ -3262,24 +3215,23 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                       const today = new Date();
                       today.setHours(0, 0, 0, 0);
                       const isDayToday = day.date.getTime() === today.getTime();
-                      
+
                       // Calcular posição da linha baseado no horário atual (0-100px)
                       const now = new Date();
                       const minutesInDay = (now.getHours() * 60) + now.getMinutes();
                       const positionX = (minutesInDay / 1440) * 100;
 
                       return (
-                        <div 
-                          key={i} 
-                          className={`w-[100px] h-full border-r flex-shrink-0 relative ${
-                            isDayToday 
-                              ? 'bg-primary/[0.01] dark:bg-primary/[0.02] border-r-slate-100 dark:border-r-slate-800/50' 
-                              : 'border-slate-100 dark:border-slate-800/50'
-                          }`}
+                        <div
+                          key={i}
+                          className={`w-[100px] h-full border-r flex-shrink-0 relative ${isDayToday
+                            ? 'bg-primary/[0.01] dark:bg-primary/[0.02] border-r-slate-100 dark:border-r-slate-800/50'
+                            : 'border-slate-100 dark:border-slate-800/50'
+                            }`}
                         >
                           {/* Linha vertical indicadora do horário atual */}
                           {isDayToday && (
-                            <div 
+                            <div
                               className="absolute inset-y-0 w-px bg-primary/40 z-20"
                               style={{ left: `${positionX}px` }}
                             >
@@ -3291,50 +3243,48 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                   </div>
 
                   {/* Barra do projeto */}
-                  <div 
+                  <div
                     className={`absolute h-8 ${statusColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
                       statusColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
-                      statusColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
-                      statusColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
-                      isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                      'bg-blue-500/10 border-l-4 border-l-blue-500'
-                    } rounded-r-lg flex items-center px-3 gap-2 cursor-pointer relative overflow-hidden`}
-                    style={{ 
-                      left: `${startColumn * 100}px`, 
+                        statusColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
+                          statusColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
+                            isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
+                              'bg-blue-500/10 border-l-4 border-l-blue-500'
+                      } rounded-r-lg flex items-center px-3 gap-2 cursor-pointer relative overflow-hidden`}
+                    style={{
+                      left: `${startColumn * 100}px`,
                       width: `${duration * 100}px`,
                       minWidth: '100px'
                     }}
                   >
                     {/* Overlay de progresso temporal (cresce até a deadline) */}
                     {project.deadline && (
-                      <div 
-                        className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${
-                          statusColor === 'amber' ? 'bg-amber-500/40' :
+                      <div
+                        className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${statusColor === 'amber' ? 'bg-amber-500/40' :
                           statusColor === 'blue' ? 'bg-blue-500/40' :
-                          statusColor === 'emerald' ? 'bg-emerald-500/40' :
-                          statusColor === 'indigo' ? 'bg-indigo-500/40' :
-                          isLate ? 'bg-rose-500/40' :
-                          'bg-blue-500/40'
-                        }`}
-                        style={{ 
+                            statusColor === 'emerald' ? 'bg-emerald-500/40' :
+                              statusColor === 'indigo' ? 'bg-indigo-500/40' :
+                                isLate ? 'bg-rose-500/40' :
+                                  'bg-blue-500/40'
+                          }`}
+                        style={{
                           width: `${temporalProgress}%`,
                         }}
                         title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
                       />
                     )}
-                    <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${
-                      statusColor === 'amber' ? 'text-amber-700' :
+                    <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${statusColor === 'amber' ? 'text-amber-700' :
                       statusColor === 'blue' ? 'text-blue-700' :
-                      statusColor === 'emerald' ? 'text-emerald-700' :
-                      statusColor === 'indigo' ? 'text-indigo-700' :
-                      isLate ? 'text-rose-700' :
-                      'text-blue-700'
-                    }`}>
+                        statusColor === 'emerald' ? 'text-emerald-700' :
+                          statusColor === 'indigo' ? 'text-indigo-700' :
+                            isLate ? 'text-rose-700' :
+                              'text-blue-700'
+                      }`}>
                       {getStatusLabel(project)}
                     </span>
                     {isLate && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
                   </div>
-                  
+
                 </div>
               </div>
             );
@@ -3349,15 +3299,15 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   const today = new Date();
-  
+
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  
+
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startingDayOfWeek = firstDayOfMonth.getDay();
   const daysInMonth = lastDayOfMonth.getDate();
-  
+
   const days: (Date | null)[] = [];
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -3365,39 +3315,39 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
   for (let i = 1; i <= daysInMonth; i++) {
     days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
   }
-  
+
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
-  
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
-  
+
   const isToday = (date: Date | null) => {
     if (!date) return false;
     return date.getFullYear() === today.getFullYear() &&
-           date.getMonth() === today.getMonth() &&
-           date.getDate() === today.getDate();
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
   };
-  
+
   const isSelected = (date: Date | null) => {
     if (!date || !selectedDate) return false;
     return date.getFullYear() === selectedDate.getFullYear() &&
-           date.getMonth() === selectedDate.getMonth() &&
-           date.getDate() === selectedDate.getDate();
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
   };
-  
+
   const handleDateClick = (date: Date | null) => {
     if (date) {
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       onSelectDate(localDate);
     }
   };
-  
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[100]" onClick={onClose}>
-      <div 
+      <div
         className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 w-72"
         onClick={(e) => e.stopPropagation()}
       >
@@ -3420,7 +3370,7 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
             <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1 mb-2">
           {weekDays.map((day) => (
             <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
@@ -3428,7 +3378,7 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
             </div>
           ))}
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1">
           {days.map((date, index) => (
             <button
@@ -3440,10 +3390,10 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
                 aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
                 ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-amber-500/10'}
                 ${date && isToday(date) ? 'ring-2 ring-amber-500' : ''}
-                ${date && isSelected(date) 
-                  ? 'bg-amber-500 text-white hover:bg-amber-500/90' 
-                  : date 
-                    ? 'text-slate-700 dark:text-slate-300 hover:text-amber-600' 
+                ${date && isSelected(date)
+                  ? 'bg-amber-500 text-white hover:bg-amber-500/90'
+                  : date
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-amber-600'
                     : 'text-transparent'
                 }
               `}
@@ -3452,7 +3402,7 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
             </button>
           ))}
         </div>
-        
+
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
@@ -3474,20 +3424,20 @@ const RecurringDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (
   );
 };
 
-const AddProjectModal: React.FC<{ 
-  categories: Category[]; 
-  stages: Stage[]; 
-  workspaceId?: string | null; 
+const AddProjectModal: React.FC<{
+  categories: Category[];
+  stages: Stage[];
+  workspaceId?: string | null;
   selectedFilter?: string;
   existingProjects?: Project[];
   userId?: string | null;
-  onClose: () => void; 
-  onSave: (project: Partial<Project>) => Promise<void> 
+  onClose: () => void;
+  onSave: (project: Partial<Project>) => Promise<void>
 }> = ({ categories, stages, workspaceId, selectedFilter, existingProjects = [], userId, onClose, onSave }) => {
   // Determinar o tipo/serviço inicial baseado no filtro selecionado
   const getInitialType = () => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria') {
-      const selectedCategory = categories.find(cat => 
+      const selectedCategory = categories.find(cat =>
         cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
       );
       return selectedCategory?.name || '';
@@ -3498,7 +3448,7 @@ const AddProjectModal: React.FC<{
   // Determinar os tipos iniciais baseado no filtro selecionado
   const getInitialTypes = (): string[] => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria') {
-      const selectedCategory = categories.find(cat => 
+      const selectedCategory = categories.find(cat =>
         cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
       );
       return selectedCategory?.name ? [selectedCategory.name] : [];
@@ -3529,7 +3479,7 @@ const AddProjectModal: React.FC<{
   const typesDropdownRef = useRef<HTMLDivElement>(null);
   const typesButtonRef = useRef<HTMLButtonElement>(null);
   const [typesDropdownPosition, setTypesDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
-  
+
   // Etapas fixas para projetos normais (usando useMemo para evitar recriação)
   const fixedStagesNormal = useMemo<Stage[]>(() => [
     { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
@@ -3546,7 +3496,7 @@ const AddProjectModal: React.FC<{
     { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
     { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
   ], []);
-  
+
   // Verificar se algum dos serviços selecionados é recorrente
   const isSelectedTypeRecurring = () => {
     return formData.types.some(typeName => {
@@ -3554,12 +3504,12 @@ const AddProjectModal: React.FC<{
       return category?.isRecurring || false;
     });
   };
-  
+
   // Toggle de seleção de tipo
   const toggleTypeSelection = (typeName: string) => {
     setFormData(prev => {
       let newTypes: string[];
-      
+
       if (prev.types.includes(typeName)) {
         // Removendo o serviço
         newTypes = prev.types.filter(t => t !== typeName && t !== 'Sem categoria');
@@ -3571,7 +3521,7 @@ const AddProjectModal: React.FC<{
         // Adicionando o serviço - remover "Sem categoria" se existir
         newTypes = [...prev.types.filter(t => t !== 'Sem categoria'), typeName];
       }
-      
+
       // Atualizar type para compatibilidade (primeiro tipo selecionado)
       return { ...prev, types: newTypes, type: newTypes[0] || '' };
     });
@@ -3582,7 +3532,7 @@ const AddProjectModal: React.FC<{
   const clientInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientAvatar, setClientAvatar] = useState<string>(''); // Avatar do cliente selecionado
-  
+
   // Estados para autocomplete de projetos
   const [availableProjectNames, setAvailableProjectNames] = useState<string[]>([]);
   const [showProjectSuggestions, setShowProjectSuggestions] = useState(false);
@@ -3605,7 +3555,7 @@ const AddProjectModal: React.FC<{
   useEffect(() => {
     if (formData.client.trim()) {
       // Buscar o primeiro projeto desse cliente que tenha avatar
-      const clientProject = existingProjects.find(p => 
+      const clientProject = existingProjects.find(p =>
         p.client === formData.client && p.avatar && p.avatar.trim() !== ''
       );
       if (clientProject) {
@@ -3621,14 +3571,14 @@ const AddProjectModal: React.FC<{
   // Atualizar tipos quando categorias forem carregadas e selectedFilter estiver definido
   useEffect(() => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria' && categories.length > 0) {
-      const selectedCategory = categories.find(cat => 
+      const selectedCategory = categories.find(cat =>
         cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter
       );
       if (selectedCategory && !formData.types.includes(selectedCategory.name)) {
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           types: [selectedCategory.name],
-          type: selectedCategory.name 
+          type: selectedCategory.name
         }));
       }
     }
@@ -3641,7 +3591,7 @@ const AddProjectModal: React.FC<{
       // Verificar se clicou fora do botão E fora do dropdown
       const clickedOutsideButton = typesDropdownRef.current && !typesDropdownRef.current.contains(target);
       const clickedInsideDropdown = (target as HTMLElement).closest?.('[data-types-dropdown]');
-      
+
       if (clickedOutsideButton && !clickedInsideDropdown) {
         setShowTypesDropdown(false);
         setTypesDropdownPosition(null);
@@ -3653,8 +3603,8 @@ const AddProjectModal: React.FC<{
 
   // Calcular etapas disponíveis baseado nos serviços selecionados
   const availableStages = useMemo(() => {
-    return isSelectedTypeRecurring() 
-      ? fixedStagesRecurringModal 
+    return isSelectedTypeRecurring()
+      ? fixedStagesRecurringModal
       : fixedStagesNormal;
   }, [formData.types, categories]);
 
@@ -3663,9 +3613,9 @@ const AddProjectModal: React.FC<{
     if (availableStages.length > 0) {
       const currentStageExists = availableStages.some(s => s.id === formData.stageId);
       if (!currentStageExists) {
-        setFormData(prev => ({ 
-          ...prev, 
-          stageId: availableStages[0].id, 
+        setFormData(prev => ({
+          ...prev,
+          stageId: availableStages[0].id,
           status: availableStages[0].status as Project['status']
         }));
       }
@@ -3766,13 +3716,13 @@ const AddProjectModal: React.FC<{
       try {
         // Incluir avatar do cliente se existir e o array de tipos
         // Se não houver tipos selecionados, usar array vazio (não adicionar "Sem categoria" automaticamente)
-        const finalTypes = formData.types.length > 0 
+        const finalTypes = formData.types.length > 0
           ? formData.types.filter(t => t !== 'Sem categoria') // Remover "Sem categoria" se houver outros tipos
           : (formData.type && formData.type !== 'Sem categoria' ? [formData.type] : []);
-        
+
         // Se realmente não houver nenhum tipo, adicionar "Sem categoria"
         const projectTypes = finalTypes.length > 0 ? finalTypes : ['Sem categoria'];
-        
+
         const projectData = {
           ...formData,
           avatar: clientAvatar,
@@ -3799,7 +3749,7 @@ const AddProjectModal: React.FC<{
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
           <h3 className="text-xl font-bold">Adicionar Novo Projeto</h3>
-          <button 
+          <button
             onClick={onClose}
             className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
           >
@@ -3900,10 +3850,10 @@ const AddProjectModal: React.FC<{
                       const viewportHeight = window.innerHeight;
                       const spaceBelow = viewportHeight - rect.bottom;
                       const dropdownHeight = Math.min(320, (categories.length + 1) * 44); // Altura estimada
-                      
+
                       // Se não houver espaço suficiente abaixo, abrir para cima
                       const shouldOpenUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
-                      
+
                       setTypesDropdownPosition({
                         top: shouldOpenUp ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
                         left: rect.left,
@@ -3914,19 +3864,19 @@ const AddProjectModal: React.FC<{
                   }}
                   className="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-left text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary cursor-pointer transition-all hover:border-primary/50"
                 >
-                  {formData.types.length > 0 
-                    ? (formData.types.length === 1 
-                        ? formData.types[0] 
-                        : `${formData.types.length} serviços selecionados`)
+                  {formData.types.length > 0
+                    ? (formData.types.length === 1
+                      ? formData.types[0]
+                      : `${formData.types.length} serviços selecionados`)
                     : 'Selecione os serviços'}
                 </button>
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                   <span className="material-symbols-outlined text-lg">{showTypesDropdown ? 'expand_less' : 'expand_more'}</span>
                 </span>
-                
+
                 {/* Dropdown de seleção múltipla - Posição fixa para não ser cortado */}
                 {showTypesDropdown && typesDropdownPosition && (
-                  <div 
+                  <div
                     data-types-dropdown
                     className="fixed bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden"
                     style={{
@@ -3938,14 +3888,13 @@ const AddProjectModal: React.FC<{
                     }}
                   >
                     <div className="max-h-[320px] overflow-y-auto">
-                  {categories.map((category, index) => (
+                      {categories.map((category, index) => (
                         <label
                           key={category.id || index}
-                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${
-                            formData.types.includes(category.name) 
-                              ? 'bg-primary/10' 
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-                          }`}
+                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${formData.types.includes(category.name)
+                            ? 'bg-primary/10'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
                         >
                           <input
                             type="checkbox"
@@ -3962,11 +3911,10 @@ const AddProjectModal: React.FC<{
                         </label>
                       ))}
                       <label
-                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                          formData.types.includes('Sem categoria') 
-                            ? 'bg-primary/10' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${formData.types.includes('Sem categoria')
+                          ? 'bg-primary/10'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -3979,7 +3927,7 @@ const AddProjectModal: React.FC<{
                     </div>
                   </div>
                 )}
-                
+
                 {/* Chips dos serviços selecionados */}
                 {formData.types.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
@@ -3988,11 +3936,10 @@ const AddProjectModal: React.FC<{
                       return (
                         <span
                           key={index}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-                            category?.isRecurring 
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          }`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${category?.isRecurring
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            }`}
                         >
                           {typeName}
                           <button
@@ -4005,7 +3952,7 @@ const AddProjectModal: React.FC<{
                           >
                             <span className="material-symbols-outlined text-xs">close</span>
                           </button>
-                </span>
+                        </span>
                       );
                     })}
                   </div>
@@ -4019,8 +3966,8 @@ const AddProjectModal: React.FC<{
                   value={formData.stageId}
                   onChange={(e) => {
                     const selectedStage = availableStages.find(s => s.id === e.target.value);
-                    setFormData({ 
-                      ...formData, 
+                    setFormData({
+                      ...formData,
                       stageId: e.target.value,
                       status: selectedStage?.status as Project['status'] || 'Lead'
                     });
@@ -4090,7 +4037,7 @@ const AddProjectModal: React.FC<{
               )}
             </div>
           </div>
-          
+
           {/* Campos para projeto recorrente */}
           {isSelectedTypeRecurring() && (
             <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -4118,11 +4065,11 @@ const AddProjectModal: React.FC<{
                       className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-left flex items-center justify-between hover:border-amber-500 transition-colors"
                     >
                       <span className={formData.recurringFirstDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                        {formData.recurringFirstDate 
+                        {formData.recurringFirstDate
                           ? (() => {
-                              const [year, month, day] = formData.recurringFirstDate.split('-').map(Number);
-                              return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-                            })()
+                            const [year, month, day] = formData.recurringFirstDate.split('-').map(Number);
+                            return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                          })()
                           : 'Selecione uma data'
                         }
                       </span>
@@ -4151,16 +4098,16 @@ const AddProjectModal: React.FC<{
               </div>
             </div>
           )}
-          
+
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
               className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
             >
@@ -4199,7 +4146,7 @@ const AddCategoryModal: React.FC<{ onClose: () => void; onSave: (category: { nam
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
           <h3 className="text-xl font-bold">Adicionar Novo Serviço</h3>
-          <button 
+          <button
             onClick={onClose}
             className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
           >
@@ -4225,19 +4172,17 @@ const AddCategoryModal: React.FC<{ onClose: () => void; onSave: (category: { nam
             </div>
           </div>
 
-          <div 
+          <div
             onClick={() => setIsRecurring(!isRecurring)}
-            className={`flex flex-col gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-              isRecurring 
-                ? 'bg-primary/5 border-primary shadow-sm shadow-primary/10' 
-                : 'bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200 dark:hover:border-slate-700'
-            }`}
+            className={`flex flex-col gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${isRecurring
+              ? 'bg-primary/5 border-primary shadow-sm shadow-primary/10'
+              : 'bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+              }`}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`size-10 rounded-lg flex items-center justify-center transition-colors ${
-                  isRecurring ? 'bg-primary text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
-                }`}>
+                <div className={`size-10 rounded-lg flex items-center justify-center transition-colors ${isRecurring ? 'bg-primary text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                  }`}>
                   <span className="material-symbols-outlined">autorenew</span>
                 </div>
                 <div>
@@ -4249,32 +4194,29 @@ const AddCategoryModal: React.FC<{ onClose: () => void; onSave: (category: { nam
                   </p>
                 </div>
               </div>
-              <div className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                isRecurring ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
-              }`}>
+              <div className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isRecurring ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
+                }`}>
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                    isRecurring ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${isRecurring ? 'translate-x-6' : 'translate-x-1'
+                    }`}
                 />
               </div>
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
               disabled={isSubmitting}
-              className={`px-8 py-2.5 text-sm font-black text-white bg-primary rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-95 ${
-                isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary/90'
-              }`}
+              className={`px-8 py-2.5 text-sm font-black text-white bg-primary rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-95 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary/90'
+                }`}
             >
               {isSubmitting ? 'Criando...' : 'Criar Serviço'}
             </button>
@@ -4307,13 +4249,13 @@ const DeleteCategoryModal: React.FC<{ categoryName: string; onClose: () => void;
           </p>
         </div>
         <div className="p-6 flex items-center justify-end gap-3">
-          <button 
+          <button
             onClick={onClose}
             className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
           >
             Cancelar
           </button>
-          <button 
+          <button
             onClick={onConfirm}
             className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
           >
@@ -4325,11 +4267,11 @@ const DeleteCategoryModal: React.FC<{ categoryName: string; onClose: () => void;
   );
 };
 
-const DeleteStageModal: React.FC<{ 
-  stage: Stage; 
+const DeleteStageModal: React.FC<{
+  stage: Stage;
   projectCount: number;
-  onClose: () => void; 
-  onConfirm: () => void 
+  onClose: () => void;
+  onConfirm: () => void
 }> = ({ stage, projectCount, onClose, onConfirm }) => {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -4354,13 +4296,13 @@ const DeleteStageModal: React.FC<{
           )}
         </div>
         <div className="p-6 flex items-center justify-end gap-3">
-          <button 
+          <button
             onClick={onClose}
             className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
           >
             Cancelar
           </button>
-          <button 
+          <button
             onClick={onConfirm}
             className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
           >
@@ -4372,8 +4314,8 @@ const DeleteStageModal: React.FC<{
   );
 };
 
-const DefineStageTasksModal: React.FC<{ 
-  stage: Stage; 
+const DefineStageTasksModal: React.FC<{
+  stage: Stage;
   onClose: () => void;
 }> = ({ stage, onClose }) => {
   const [tasks, setTasks] = useState<Array<{ title: string; order: number }>>([]);
@@ -4432,17 +4374,17 @@ const DefineStageTasksModal: React.FC<{
 
     const newTasks = [...tasks];
     const draggedTask = newTasks[draggedTaskIndex];
-    
+
     // Remove a tarefa da posição original
     newTasks.splice(draggedTaskIndex, 1);
-    
+
     // Insere a tarefa na nova posição
     newTasks.splice(dropIndex, 0, draggedTask);
-    
+
     // Atualiza a ordem
     const reorderedTasks = newTasks.map((t, i) => ({ ...t, order: i }));
     setTasks(reorderedTasks);
-    
+
     setDraggedTaskIndex(null);
     setDragOverIndex(null);
   };
@@ -4500,7 +4442,7 @@ const DefineStageTasksModal: React.FC<{
                   Adicionar
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 {tasks.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 text-sm">
@@ -4516,11 +4458,9 @@ const DefineStageTasksModal: React.FC<{
                       onDragLeave={handleTaskDragLeave}
                       onDrop={(e) => handleTaskDrop(e, index)}
                       onDragEnd={handleTaskDragEnd}
-                      className={`flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-move transition-all ${
-                        draggedTaskIndex === index ? 'opacity-50' : ''
-                      } ${
-                        dragOverIndex === index ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'hover:border-primary/50'
-                      }`}
+                      className={`flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-move transition-all ${draggedTaskIndex === index ? 'opacity-50' : ''
+                        } ${dragOverIndex === index ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'hover:border-primary/50'
+                        }`}
                     >
                       <span className="material-symbols-outlined text-slate-400 text-lg">drag_handle</span>
                       <span className="text-slate-400 text-sm font-bold">{index + 1}.</span>
@@ -4540,13 +4480,13 @@ const DefineStageTasksModal: React.FC<{
           )}
         </div>
         <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
-          <button 
+          <button
             onClick={onClose}
             className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
           >
             Cancelar
           </button>
-          <button 
+          <button
             onClick={handleSave}
             className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all"
           >
@@ -4558,32 +4498,28 @@ const DefineStageTasksModal: React.FC<{
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
-          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${
-            toast.type === 'success' 
-              ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50' 
-              : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
-          }`}>
-            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${
-              toast.type === 'success' 
-                ? 'bg-emerald-100 dark:bg-emerald-900/30' 
-                : 'bg-amber-100 dark:bg-amber-900/30'
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${toast.type === 'success'
+            ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50'
+            : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
             }`}>
-              <span className={`material-symbols-outlined text-xl ${
-                toast.type === 'success' 
-                  ? 'text-emerald-600 dark:text-emerald-400' 
-                  : 'text-amber-600 dark:text-amber-400'
+            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${toast.type === 'success'
+              ? 'bg-emerald-100 dark:bg-emerald-900/30'
+              : 'bg-amber-100 dark:bg-amber-900/30'
               }`}>
+              <span className={`material-symbols-outlined text-xl ${toast.type === 'success'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-amber-600 dark:text-amber-400'
+                }`}>
                 {toast.type === 'success' ? 'check_circle' : 'warning'}
               </span>
             </div>
-            <p className={`text-sm font-semibold flex-1 leading-relaxed ${
-              toast.type === 'success' 
-                ? 'text-emerald-900 dark:text-emerald-100' 
-                : 'text-amber-900 dark:text-amber-100'
-            }`}>
+            <p className={`text-sm font-semibold flex-1 leading-relaxed ${toast.type === 'success'
+              ? 'text-emerald-900 dark:text-emerald-100'
+              : 'text-amber-900 dark:text-amber-100'
+              }`}>
               {toast.message}
             </p>
-            <button 
+            <button
               onClick={() => setToast(null)}
               className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
               aria-label="Fechar"

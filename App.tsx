@@ -32,6 +32,11 @@ const App: React.FC = () => {
   const [dashboardInitialFilter, setDashboardInitialFilter] = useState<string | undefined>(undefined);
   const [dashboardHighlightedProjectId, setDashboardHighlightedProjectId] = useState<string | undefined>(undefined);
   const [openAddProjectModal, setOpenAddProjectModal] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
 
   // Observar estado de autenticação
   useEffect(() => {
@@ -41,6 +46,22 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Efeito para persistência do tema e aplicação da classe dark
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -108,21 +129,21 @@ const App: React.FC = () => {
     try {
       // Buscar todos os projetos do workspace atual
       const allProjects = await getProjects();
-      const workspaceProjects = currentWorkspace 
+      const workspaceProjects = currentWorkspace
         ? allProjects.filter(p => p.workspaceId === currentWorkspace.id)
         : allProjects;
 
       // Buscar por nome do projeto ou cliente (case-insensitive)
       const searchLower = query.toLowerCase();
-      const foundProject = workspaceProjects.find(p => 
-        p.name.toLowerCase().includes(searchLower) || 
+      const foundProject = workspaceProjects.find(p =>
+        p.name.toLowerCase().includes(searchLower) ||
         p.client.toLowerCase().includes(searchLower)
       );
 
       if (foundProject) {
         // Converter o tipo do projeto para o formato do filtro
         const filterKey = foundProject.type.toLowerCase().replace(/\s+/g, '-');
-        
+
         // Navegar para o Dashboard com o filtro do serviço e projeto destacado
         setDashboardInitialFilter(filterKey);
         setDashboardHighlightedProjectId(foundProject.id);
@@ -141,8 +162,8 @@ const App: React.FC = () => {
 
   const renderView = () => {
     switch (currentView) {
-      case 'Dashboard': return <Dashboard 
-        onProjectClick={(project) => navigateToView('ProjectDetails', project)} 
+      case 'Dashboard': return <Dashboard
+        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
         currentWorkspace={currentWorkspace}
         initialFilter={dashboardInitialFilter}
         highlightedProjectId={dashboardHighlightedProjectId}
@@ -150,13 +171,13 @@ const App: React.FC = () => {
         onAddProjectModalClose={() => setOpenAddProjectModal(false)}
         userId={user?.uid}
       />;
-      case 'Financial': return <Financial 
-        currentWorkspace={currentWorkspace} 
+      case 'Financial': return <Financial
+        currentWorkspace={currentWorkspace}
         onCreateInvoice={() => navigateToView('CreateInvoice')}
         onProjectClick={(project) => navigateToView('ProjectDetails', project)}
       />;
       case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
-      case 'Settings': return <Settings 
+      case 'Settings': return <Settings
         currentWorkspace={currentWorkspace}
         onWorkspaceUpdate={(updatedWorkspace) => {
           setWorkspaces(prev => prev.map(w => w.id === updatedWorkspace.id ? updatedWorkspace : w));
@@ -166,27 +187,27 @@ const App: React.FC = () => {
         }}
         userId={user?.uid}
       />;
-      case 'Clients': return <ClientProfile 
+      case 'Clients': return <ClientProfile
         currentWorkspace={currentWorkspace}
         onProjectClick={(project) => navigateToView('ProjectDetails', project)}
       />;
       case 'ProjectDetails': return selectedProject ? (
-        <ProjectDetails 
-          project={selectedProject} 
+        <ProjectDetails
+          project={selectedProject}
           onClose={goBack}
           onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
         />
       ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'ProjectBilling': return selectedProject ? (
-        <ProjectBilling 
-          project={selectedProject} 
+        <ProjectBilling
+          project={selectedProject}
           onClose={goBack}
           onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
         />
       ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'ProjectRoadmap': return selectedProject ? (
-        <ProjectRoadmap 
-          project={selectedProject} 
+        <ProjectRoadmap
+          project={selectedProject}
           onClose={goBack}
           onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
         />
@@ -216,14 +237,14 @@ const App: React.FC = () => {
 
   // Tela de login
   if (!user) {
-    return <Login onLoginSuccess={() => {}} />;
+    return <Login onLoginSuccess={() => { }} />;
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark">
-      <Sidebar 
-        currentView={currentView} 
-        setView={(view) => navigateToView(view)} 
+      <Sidebar
+        currentView={currentView}
+        setView={(view) => navigateToView(view)}
         isOpen={isSidebarOpen}
         onCreateProject={handleCreateProject}
         currentWorkspace={currentWorkspace}
@@ -231,17 +252,20 @@ const App: React.FC = () => {
         onWorkspaceChange={handleWorkspaceChange}
         onWorkspacesChange={handleWorkspacesChange}
         userId={user?.uid}
+        theme={theme}
       />
-      
+
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header 
-          onToggleSidebar={toggleSidebar} 
-          onSearch={handleSearch} 
+        <Header
+          onToggleSidebar={toggleSidebar}
+          onSearch={handleSearch}
           currentWorkspace={currentWorkspace}
           user={user}
           onLogout={handleLogout}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           {renderView()}
         </main>
       </div>

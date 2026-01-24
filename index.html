@@ -6,20 +6,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgencyHub CRM</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/index.css">
     <script>
         tailwind.config = {
             darkMode: "class",
             theme: {
                 extend: {
                     colors: {
-                        "primary": "#135bec",
-                        "background-light": "#f6f6f8",
-                        "background-dark": "#101622",
+                        "primary": {
+                            DEFAULT: "#0062ff",
+                            "50": "#eef4ff",
+                            "100": "#d9e6ff",
+                            "200": "#bcd4ff",
+                            "300": "#8eb9ff",
+                            "400": "#5891ff",
+                            "500": "#0062ff",
+                            "600": "#004ed7",
+                            "700": "#003eaf",
+                            "800": "#00358e",
+                            "900": "#062e71",
+                            "950": "#041c4a",
+                        },
+                        "background-light": "#f8fafc",
+                        "background-dark": "#0f172a",
+                        "slate-card": "#1e293b",
                     },
                     fontFamily: {
-                        "sans": ["Inter", "sans-serif"]
+                        "sans": ["Outfit", "Inter", "sans-serif"],
+                        "display": ["Plus Jakarta Sans", "Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "2xl": "1rem",
+                        "3xl": "1.5rem",
+                    },
+                    boxShadow: {
+                        "glass": "0 8px 32px 0 rgba(0, 0, 0, 0.08)",
                     }
                 }
             }
@@ -29,25 +52,6 @@
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
-        body {
-            font-family: 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-        }
-        /* Custom scrollbars */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 10px;
-        }
-        .dark ::-webkit-scrollbar-thumb {
-            background: #334155;
-        }
         /* Gantt Grid Pattern */
         .gantt-grid {
             background-image: linear-gradient(to right, #e2e8f0 1px, transparent 1px);
@@ -55,20 +59,6 @@
         }
         .dark .gantt-grid {
             background-image: linear-gradient(to right, #1e293b 1px, transparent 1px);
-        }
-        /* Toast Animation */
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        .animate-\[slideIn_0\.3s_ease-out\] {
-            animation: slideIn 0.3s ease-out;
         }
     </style>
 <script type="importmap">
@@ -81,7 +71,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
     <div id="root"></div>

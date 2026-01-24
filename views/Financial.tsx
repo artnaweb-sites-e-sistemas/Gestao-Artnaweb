@@ -16,15 +16,15 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'paid' | 'pending' | 'implementation' | 'recurring' | 'normal'>('all');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  
+
   // Filtro de período (mês/ano)
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
-  
+
   // Nomes dos meses
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  
+
   // Gerar lista de anos disponíveis (últimos 3 anos + atual)
   const availableYears = Array.from({ length: 4 }, (_, i) => currentDate.getFullYear() - i);
 
@@ -56,17 +56,17 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   // Função helper para obter data de uma fatura (retorna timestamp para comparação)
   const getInvoiceDate = useCallback((date: Date | any): Date => {
     if (!date) return new Date(0);
-    
+
     // Se for um Firestore Timestamp
     if (date?.toDate) {
       return date.toDate();
     }
-    
+
     // Se for uma Date
     if (date instanceof Date) {
       return date;
     }
-    
+
     // Se for uma string no formato ISO ou YYYY-MM-DD
     if (typeof date === 'string') {
       // Formato YYYY-MM-DD
@@ -80,12 +80,12 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         return parsed;
       }
     }
-    
+
     // Se for um número (timestamp)
     if (typeof date === 'number') {
       return new Date(date);
     }
-    
+
     // Se for um objeto com propriedades de data (Firebase Timestamp serializado)
     if (date && typeof date === 'object' && ('seconds' in date || 'nanoseconds' in date)) {
       // Firebase Timestamp serializado
@@ -93,7 +93,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         return new Date(date.seconds * 1000);
       }
     }
-    
+
     return new Date(0);
   }, []);
 
@@ -145,7 +145,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       const year = date.getFullYear();
 
       const monthInvoices = invoices.filter(inv => {
-        const invDate = inv.date instanceof Date ? inv.date : 
+        const invDate = inv.date instanceof Date ? inv.date :
           inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
         return invDate.getMonth() === month && invDate.getFullYear() === year;
       });
@@ -174,26 +174,26 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         default: return true;
       }
     });
-    
+
     // Criar uma cópia do array antes de ordenar (sort modifica o array original)
     const sorted = [...filtered].sort((a, b) => {
       const dateA = getInvoiceDate(a.date);
       const dateB = getInvoiceDate(b.date);
       const timeA = dateA.getTime();
       const timeB = dateB.getTime();
-      
+
       // Se as datas forem iguais, ordenar por número da fatura
       if (timeA === timeB) {
         return a.number.localeCompare(b.number);
       }
-      
+
       // Ordenar por data: mais antiga primeiro (menor timestamp primeiro)
       return timeA - timeB;
     });
-    
+
     return sorted;
   }, [filteredByPeriod, selectedFilter, getInvoiceDate]);
-  
+
   // Identificar faturas órfãs (sem projeto associado)
   const orphanInvoices = useMemo(() => {
     return filteredInvoices.filter(inv => {
@@ -201,18 +201,18 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       return !project;
     });
   }, [filteredInvoices, projects]);
-  
+
   // Função para excluir faturas órfãs
   const deleteOrphanInvoices = async () => {
     if (orphanInvoices.length === 0) {
       setToast({ message: 'Nenhuma fatura órfã encontrada', type: 'success' });
       return;
     }
-    
+
     if (!confirm(`Tem certeza que deseja excluir ${orphanInvoices.length} fatura(s) órfã(s) (projetos não encontrados)?`)) {
       return;
     }
-    
+
     try {
       const deletePromises = orphanInvoices.map(inv => deleteInvoice(inv.id));
       await Promise.all(deletePromises);
@@ -281,21 +281,23 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     <div className="p-8 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
-          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-        }`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+          }`}>
           {toast.message}
         </div>
       )}
 
-      <div className="flex flex-wrap justify-between items-end gap-4 mb-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-black leading-tight tracking-tight">Controle Financeiro</h1>
-          <p className="text-slate-500 text-base font-normal">Acompanhe todas as receitas e faturas dos seus projetos</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 animate-fade-in">
+        <div className="animate-fade-in">
+          <h2 className="text-4xl font-black tracking-tight font-display text-slate-900 dark:text-white mb-2">
+            Controle <span className="text-primary">Financeiro</span>
+          </h2>
+          <p className="text-base text-slate-500 font-medium font-jakarta">Acompanhe todas as receitas e faturas com precisão cirúrgica</p>
         </div>
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors">
-            <span className="material-symbols-outlined text-lg">download</span> Exportar
+        <div className="flex items-center gap-4">
+          <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-black hover:scale-105 transition-all shadow-xl shadow-slate-200/50 dark:shadow-none">
+            <span className="material-symbols-outlined text-[20px]">download</span>
+            EXPORTAR
           </button>
         </div>
       </div>
@@ -336,7 +338,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   expand_more
                 </span>
               </div>
-              
+
               {/* Seletor de Ano Customizado */}
               <div className="relative group">
                 <select
@@ -366,11 +368,10 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                     setSelectedMonth(currentDate.getMonth());
                     setSelectedYear(currentDate.getFullYear());
                   }}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                    selectedMonth === currentDate.getMonth() && selectedYear === currentDate.getFullYear()
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === currentDate.getMonth() && selectedYear === currentDate.getFullYear()
                       ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
+                    }`}
                 >
                   Este mês
                 </button>
@@ -379,11 +380,10 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                     setSelectedMonth('all');
                     setSelectedYear(currentDate.getFullYear());
                   }}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                    selectedMonth === 'all' && selectedYear === currentDate.getFullYear()
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === 'all' && selectedYear === currentDate.getFullYear()
                       ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
+                    }`}
                 >
                   Este ano
                 </button>
@@ -406,41 +406,41 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-        <KPICard 
-          title="Total Recebido" 
-          value={formatCurrency(metrics.totalReceived)} 
+        <KPICard
+          title="Total Recebido"
+          value={formatCurrency(metrics.totalReceived)}
           trend={`${metrics.paidCount} faturas pagas`}
-          trendType="up" 
-          icon="account_balance" 
-          iconBg="bg-emerald-100 dark:bg-emerald-900/30" 
-          iconColor="text-emerald-600" 
+          trendType="up"
+          icon="account_balance"
+          iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+          iconColor="text-emerald-600"
         />
-        <KPICard 
-          title="Total Pendente" 
-          value={formatCurrency(metrics.totalPending)} 
+        <KPICard
+          title="Total Pendente"
+          value={formatCurrency(metrics.totalPending)}
           trend={`${metrics.pendingCount} faturas pendentes`}
-          trendType="neutral" 
-          icon="pending_actions" 
-          iconBg="bg-amber-100 dark:bg-amber-900/30" 
-          iconColor="text-amber-600" 
+          trendType="neutral"
+          icon="pending_actions"
+          iconBg="bg-amber-100 dark:bg-amber-900/30"
+          iconColor="text-amber-600"
         />
-        <KPICard 
-          title="Implementação" 
-          value={formatCurrency(metrics.implementationPaid)} 
+        <KPICard
+          title="Implementação"
+          value={formatCurrency(metrics.implementationPaid)}
           trend={`de ${formatCurrency(metrics.implementationTotal)} total`}
-          trendType="up" 
-          icon="construction" 
-          iconBg="bg-blue-100 dark:bg-blue-900/30" 
-          iconColor="text-blue-600" 
+          trendType="up"
+          icon="construction"
+          iconBg="bg-blue-100 dark:bg-blue-900/30"
+          iconColor="text-blue-600"
         />
-        <KPICard 
-          title="Mensalidades" 
-          value={formatCurrency(metrics.recurringPaid)} 
+        <KPICard
+          title="Mensalidades"
+          value={formatCurrency(metrics.recurringPaid)}
           trend={`de ${formatCurrency(metrics.recurringTotal)} total`}
-          trendType="up" 
-          icon="autorenew" 
-          iconBg="bg-purple-100 dark:bg-purple-900/30" 
-          iconColor="text-purple-600" 
+          trendType="up"
+          icon="autorenew"
+          iconBg="bg-purple-100 dark:bg-purple-900/30"
+          iconColor="text-purple-600"
         />
       </div>
 
@@ -468,18 +468,18 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
               <AreaChart data={monthlyData}>
                 <defs>
                   <linearGradient id="colorReceived" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorPending" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `R$${(value/1000).toFixed(0)}k`} />
-                <Tooltip 
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`} />
+                <Tooltip
                   formatter={(value: number) => formatCurrency(value)}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
                 />
@@ -539,32 +539,27 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       </div>
 
       {/* Tabela de Faturas */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-slate-800/50 overflow-hidden shadow-2xl animate-fade-in" style={{ animationDelay: '300ms' }}>
+        <div className="p-8 border-b border-white/20 dark:border-slate-800/50 flex flex-wrap justify-between items-center gap-6">
           <div className="flex items-center gap-4">
-            <h3 className="text-lg font-bold">Todas as Faturas</h3>
+            <h3 className="text-xl font-black">Fluxo de Caixa</h3>
             {orphanInvoices.length > 0 && (
               <button
                 onClick={deleteOrphanInvoices}
-                className="flex items-center gap-2 px-3 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 rounded-lg text-xs font-bold hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors"
-                title={`Excluir ${orphanInvoices.length} fatura(s) órfã(s)`}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-xl text-xs font-black hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20"
               >
                 <span className="material-symbols-outlined text-sm">delete_sweep</span>
-                Limpar órfãs ({orphanInvoices.length})
+                LIMPAR ÓRFÃS ({orphanInvoices.length})
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <FilterButton label="Todas" active={selectedFilter === 'all'} onClick={() => setSelectedFilter('all')} count={filteredByPeriod.length} />
-            <FilterButton label="Pagas" active={selectedFilter === 'paid'} onClick={() => setSelectedFilter('paid')} count={filteredByPeriod.filter(i => i.status === 'Paid').length} color="emerald" />
-            <FilterButton label="Pendentes" active={selectedFilter === 'pending'} onClick={() => setSelectedFilter('pending')} count={filteredByPeriod.filter(i => i.status === 'Pending').length} color="amber" />
-            <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-            <FilterButton label="Implementação" active={selectedFilter === 'implementation'} onClick={() => setSelectedFilter('implementation')} count={filteredByPeriod.filter(i => i.number.startsWith('IMP-')).length} color="blue" />
-            <FilterButton label="Mensalidade" active={selectedFilter === 'recurring'} onClick={() => setSelectedFilter('recurring')} count={filteredByPeriod.filter(i => i.number.startsWith('REC-')).length} color="purple" />
-            <FilterButton label="Avulso" active={selectedFilter === 'normal'} onClick={() => setSelectedFilter('normal')} count={filteredByPeriod.filter(i => i.number.startsWith('INV-')).length} color="slate" />
+          <div className="flex items-center gap-2 flex-wrap bg-slate-100/50 dark:bg-slate-800/50 p-1.5 rounded-2xl backdrop-blur-md">
+            <FilterButton label="TODAS" active={selectedFilter === 'all'} onClick={() => setSelectedFilter('all')} count={filteredByPeriod.length} />
+            <FilterButton label="PAGAS" active={selectedFilter === 'paid'} onClick={() => setSelectedFilter('paid')} count={filteredByPeriod.filter(i => i.status === 'Paid').length} color="emerald" />
+            <FilterButton label="PENDENTES" active={selectedFilter === 'pending'} onClick={() => setSelectedFilter('pending')} count={filteredByPeriod.filter(i => i.status === 'Pending').length} color="amber" />
           </div>
         </div>
-        
+
         {filteredInvoices.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -583,7 +578,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   const invoiceType = getInvoiceType(invoice.number);
                   return (
                     <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                      <td 
+                      <td
                         className="px-6 py-4 cursor-pointer"
                         onClick={() => {
                           const project = projects.find(p => p.id === invoice.projectId);
@@ -610,11 +605,10 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                       <td className="px-6 py-4">
                         <button
                           onClick={() => toggleInvoiceStatus(invoice)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                            invoice.status === 'Paid' 
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200' 
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${invoice.status === 'Paid'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
                               : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
-                          }`}
+                            }`}
                         >
                           <span className="material-symbols-outlined text-sm">
                             {invoice.status === 'Paid' ? 'check_circle' : 'pending'}
@@ -641,17 +635,21 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
 };
 
 const KPICard: React.FC<{ title: string; value: string; trend: string; trendType: 'up' | 'down' | 'neutral'; icon: string; iconBg: string; iconColor: string }> = ({ title, value, trend, trendType, icon, iconBg, iconColor }) => (
-  <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800">
-    <div className="flex justify-between items-start mb-4">
-      <div className={`size-10 ${iconBg} rounded-lg flex items-center justify-center ${iconColor}`}>
-        <span className="material-symbols-outlined">{icon}</span>
+  <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg rounded-3xl p-8 border border-white/20 dark:border-slate-800/50 shadow-xl hover:scale-[1.02] transition-all group overflow-hidden relative">
+    <div className={`absolute top-0 right-0 size-32 opacity-10 blur-3xl rounded-full ${iconBg} group-hover:opacity-20 transition-opacity`} />
+    <div className="flex justify-between items-start mb-6">
+      <div className={`size-14 ${iconBg} rounded-2xl flex items-center justify-center ${iconColor} shadow-lg shadow-black/5`}>
+        <span className="material-symbols-outlined text-2xl">{icon}</span>
       </div>
-      <span className={`text-xs font-bold px-2 py-1 rounded-full ${trendType === 'up' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : trendType === 'down' ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'text-amber-600 bg-amber-50 dark:bg-amber-900/30'}`}>
+      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${trendType === 'up' ? 'text-emerald-700 bg-emerald-500/10' :
+          trendType === 'down' ? 'text-rose-700 bg-rose-500/10' :
+            'text-amber-700 bg-amber-500/10'
+        }`}>
         {trend}
-      </span>
+      </div>
     </div>
-    <p className="text-slate-500 text-sm font-medium mb-1">{title}</p>
-    <p className="text-2xl font-black tracking-tight">{value}</p>
+    <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1.5">{title}</p>
+    <p className="text-3xl font-black tracking-tighter font-display text-slate-900 dark:text-white">{value}</p>
   </div>
 );
 
@@ -668,11 +666,10 @@ const FilterButton: React.FC<{ label: string; active: boolean; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-        active 
+      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active
           ? colorClasses[color] || colorClasses.primary
           : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'
-      }`}
+        }`}
     >
       {label}
       <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] ${active ? 'bg-white/50 dark:bg-black/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
