@@ -353,6 +353,18 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  // Verificar se a fatura está vencida
+  const isOverdue = (date: Date | any): boolean => {
+    if (!date) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Zerar hora para comparar apenas data
+
+    const invoiceDate = getInvoiceDate(date);
+    invoiceDate.setHours(0, 0, 0, 0);
+
+    return invoiceDate.getTime() < today.getTime();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -660,6 +672,8 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredInvoices.map((invoice) => {
                   const invoiceType = getInvoiceType(invoice.number);
+                  const isInvoiceOverdue = isOverdue(invoice.date);
+
                   return (
                     <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                       <td
@@ -684,14 +698,18 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                           {invoiceType.label}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{formatDate(invoice.date)}</td>
+                      <td className={`px-6 py-4 text-sm ${invoice.status === 'Pending' && isInvoiceOverdue ? 'text-red-500 font-bold' : 'text-slate-500'}`}>
+                        {formatDate(invoice.date)}
+                      </td>
                       <td className="px-6 py-4 text-sm font-bold">{formatCurrency(invoice.amount)}</td>
                       <td className="px-6 py-4">
                         <button
                           onClick={() => toggleInvoiceStatus(invoice)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${invoice.status === 'Paid'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
+                              : isInvoiceOverdue
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
                             }`}
                         >
                           <span className="material-symbols-outlined text-sm">

@@ -1246,7 +1246,9 @@ export const resetProjectStageTasks = async (
       'onboarding': 'On boarding',
       'development': 'Em Desenvolvimento',
       'review': 'Em Revisão',
+      'adjustments': 'Ajustes',
       'completed': 'Concluído',
+      'adjustments-recurring': 'Ajustes',
       'maintenance-recurring': 'Manutenção',
       'finished-recurring': 'Finalizado'
     };

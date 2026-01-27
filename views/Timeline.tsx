@@ -294,6 +294,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
   // Obter label do status - usar título da etapa se disponível
   const getStatusLabel = (project: Project) => {
+    // Verificar etapa baseado no stageId
+    const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
+
+    // Se estiver na etapa Ajustes, mostrar "Ajustes"
+    if (isAdjustmentsStage) {
+      return 'Ajustes';
+    }
+
     // Buscar a etapa correspondente ao status do projeto
     const currentStage = stages.find(stage => stage.status === project.status);
 
@@ -848,18 +856,59 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             overlayWidth = temporalProgress;
                           }
 
+                          // Determinar cor baseada no status/stageId do projeto
+                          const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
+                          const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
+                          const isOnboardingStage = project.stageId?.includes('onboarding') || project.status === 'Lead';
+                          const isDevelopmentStage = project.stageId?.includes('development') || project.status === 'Active';
+
+                          // Definir classe de cor baseada no estágio do projeto
+                          const getStageColorClass = (type: 'bg' | 'border' | 'text' | 'overlay') => {
+                            if (isMaintenanceStage) {
+                              // Manutenção - marrom
+                              if (type === 'bg') return 'bg-amber-800/10';
+                              if (type === 'border') return 'border-l-4 border-l-amber-800';
+                              if (type === 'text') return 'text-amber-800';
+                              return 'bg-amber-800/40';
+                            }
+                            if (isReview && !isAdjustmentsStage) {
+                              // Em Revisão - amarelo
+                              if (type === 'bg') return 'bg-amber-500/10';
+                              if (type === 'border') return 'border-l-4 border-l-amber-500 ring-2 ring-amber-500/30';
+                              if (type === 'text') return 'text-amber-700';
+                              return 'bg-amber-500/40';
+                            }
+                            if (isAdjustmentsStage || isDevelopmentStage) {
+                              // Em Desenvolvimento ou Ajustes - azul
+                              if (type === 'bg') return 'bg-blue-500/10';
+                              if (type === 'border') return 'border-l-4 border-l-blue-500';
+                              if (type === 'text') return 'text-blue-700';
+                              return 'bg-blue-500/40';
+                            }
+                            if (isOnboardingStage) {
+                              // On-boarding - cinza
+                              if (type === 'bg') return 'bg-slate-400/10';
+                              if (type === 'border') return 'border-l-4 border-l-slate-400';
+                              if (type === 'text') return 'text-slate-600';
+                              return 'bg-slate-400/40';
+                            }
+                            if (isLate) {
+                              // Atrasado - vermelho
+                              if (type === 'bg') return 'bg-rose-500/10';
+                              if (type === 'border') return 'border-l-4 border-l-rose-500';
+                              if (type === 'text') return 'text-rose-700';
+                              return 'bg-rose-500/40';
+                            }
+                            // Fallback - azul
+                            if (type === 'bg') return 'bg-blue-500/10';
+                            if (type === 'border') return 'border-l-4 border-l-blue-500';
+                            if (type === 'text') return 'text-blue-700';
+                            return 'bg-blue-500/40';
+                          };
+
                           return (
                             <div
-                              className={`absolute top-1/2 -translate-y-1/2 h-8 ${isReview ? 'bg-amber-500/10 border-l-4 border-l-amber-500 ring-2 ring-amber-500/30' :
-                                categoryColor === 'amber' ? 'bg-amber-500/10 border-l-4 border-l-amber-500' :
-                                  categoryColor === 'blue' ? 'bg-blue-500/10 border-l-4 border-l-blue-500' :
-                                    categoryColor === 'emerald' ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' :
-                                      categoryColor === 'indigo' ? 'bg-indigo-500/10 border-l-4 border-l-indigo-500' :
-                                        categoryColor === 'purple' ? 'bg-purple-500/10 border-l-4 border-l-purple-500' :
-                                          categoryColor === 'rose' ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                                            isLate ? 'bg-rose-500/10 border-l-4 border-l-rose-500' :
-                                              'bg-blue-500/10 border-l-4 border-l-blue-500'
-                                } rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
+                              className={`absolute top-1/2 -translate-y-1/2 h-8 ${getStageColorClass('bg')} ${getStageColorClass('border')} rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
                               style={{
                                 left: `${startColumn * 100}px`,
                                 width: `${duration * 100}px`,
@@ -867,32 +916,15 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                               }}
                             >
                               <div
-                                className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${isReview ? 'bg-amber-500/40' :
-                                  categoryColor === 'amber' ? 'bg-amber-500/40' :
-                                    categoryColor === 'blue' ? 'bg-blue-500/40' :
-                                      categoryColor === 'emerald' ? 'bg-emerald-500/40' :
-                                        categoryColor === 'indigo' ? 'bg-indigo-500/40' :
-                                          categoryColor === 'purple' ? 'bg-purple-500/40' :
-                                            categoryColor === 'rose' ? 'bg-rose-500/40' :
-                                              isLate ? 'bg-rose-500/40' :
-                                                'bg-blue-500/40'
-                                  }`}
+                                className={`h-full absolute left-0 top-0 rounded-r transition-all z-0 ${getStageColorClass('overlay')}`}
                                 style={{ width: `${overlayWidth}%` }}
                                 title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
                               />
-                              <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${isReview ? 'text-amber-700' :
-                                categoryColor === 'amber' ? 'text-amber-700' :
-                                  categoryColor === 'blue' ? 'text-blue-700' :
-                                    categoryColor === 'emerald' ? 'text-emerald-700' :
-                                      categoryColor === 'indigo' ? 'text-indigo-700' :
-                                        categoryColor === 'purple' ? 'text-purple-700' :
-                                          categoryColor === 'rose' ? 'text-rose-700' :
-                                            isLate ? 'text-rose-700' :
-                                              'text-blue-700'
-                                }`}>
+                              <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${getStageColorClass('text')}`}>
                                 {getStatusLabel(project)}
                               </span>
-                              {isReview && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
+                              {isAdjustmentsStage && <span className="material-symbols-outlined text-blue-600 text-sm relative z-10 flex-shrink-0">tune</span>}
+                              {isReview && !isAdjustmentsStage && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
                               {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
                             </div>
                           );

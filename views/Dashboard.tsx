@@ -134,18 +134,20 @@ const recalculateStageProgress = (stages: DashboardStage[]): DashboardStage[] =>
 // Etapas fixas para serviços normais (sob demanda)
 const fixedStages: DashboardStage[] = [
   { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
-  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
-  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
-  { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
+  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 30, isFixed: true },
+  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'adjustments', title: 'Ajustes', status: 'Review', order: 3, progress: 75, isFixed: true },
+  { id: 'completed', title: 'Concluído', status: 'Completed', order: 4, progress: 100, isFixed: true }
 ];
 
 // Etapas fixas para serviços recorrentes
 const fixedStagesRecurring: DashboardStage[] = [
   { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
-  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
-  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished' as any, order: 4, progress: 100, isFixed: true }
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+  { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 80, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished' as any, order: 5, progress: 100, isFixed: true }
 ];
 
 export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId, searchQuery = '' }) => {
@@ -671,8 +673,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   }, [stageMenuOpen]);
 
   return (
-    <div className="flex flex-col h-full bg-background-light dark:bg-background-dark">
-      <div className="px-8 py-10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-white/20 dark:border-slate-800/50">
+    <div className="flex flex-col bg-background-light dark:bg-background-dark">
+      <div className="px-8 py-10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-white/20 dark:border-slate-800/50 flex-shrink-0">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className="animate-fade-in">
             <h2 className="text-4xl font-black tracking-tight font-display text-slate-900 dark:text-white mb-2">
@@ -702,6 +704,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 <span className="material-symbols-outlined text-[18px]">dashboard_customize</span>
                 QUADRO
               </button>
+            </div>
+
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-100/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl border border-white/20 dark:border-slate-700/30">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showCompletedProjects}
+                  onChange={(e) => {
+                    const newValue = e.target.checked;
+                    setShowCompletedProjects(newValue);
+                    localStorage.setItem(`showCompletedProjects_${currentWorkspace?.id || 'default'}`, String(newValue));
+                  }}
+                  className="sr-only"
+                />
+                <div className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${showCompletedProjects ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${showCompletedProjects ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                </div>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                  Mostrar concluídos
+                </span>
+              </label>
             </div>
 
             <button
@@ -980,7 +1003,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50 dark:bg-slate-900/20"
+        className={viewMode === 'board'
+          ? 'flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50 dark:bg-slate-900/20'
+          : 'flex-1 overflow-y-auto p-8 bg-slate-50 dark:bg-slate-900/20'}
         style={{
           scrollbarWidth: 'thin',
           WebkitOverflowScrolling: 'touch',
@@ -2500,6 +2525,8 @@ const ListView: React.FC<{
     // Verificar etapa baseado no stageId
     const isOnboardingStage = project.stageId?.includes('onboarding') || false;
     const isDevelopmentStage = project.stageId?.includes('development') || false;
+    const isReviewStage = project.stageId?.includes('review') || false;
+    const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
     const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
 
     // Verificar se é projeto recorrente
@@ -2511,6 +2538,11 @@ const ListView: React.FC<{
     // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
     if (isRecurring && project.status === 'Completed' && isMaintenanceStage) {
       return 'Gestão';
+    }
+
+    // Se estiver na etapa Ajustes, mostrar "Ajustes"
+    if (isAdjustmentsStage) {
+      return 'Ajustes';
     }
 
     // Buscar a etapa correspondente ao status do projeto
@@ -2526,6 +2558,8 @@ const ListView: React.FC<{
       return 'On-boarding';
     } else if (project.status === 'Active' && isDevelopmentStage) {
       return 'Desenvolvimento';
+    } else if (project.status === 'Review' && isReviewStage) {
+      return 'Revisão';
     } else if (project.status === 'Review') {
       return 'Revisão';
     } else if (project.status === 'Completed') {
@@ -2616,9 +2650,9 @@ const ListView: React.FC<{
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto py-8">
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="overflow-x-auto max-h-[calc(100vh-300px)] overflow-y-auto">
+        <div className="overflow-x-auto overflow-y-auto">
           <table className="w-full text-left table-fixed">
             <colgroup>
               <col className="w-[22%]" />
@@ -2732,13 +2766,14 @@ const ListView: React.FC<{
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
                     <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${getStatusLabel(project) === 'Gestão'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      project.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                        project.status === 'Active' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
-                          project.status === 'Review' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            project.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                              project.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' :
+                      getStatusLabel(project) === 'Ajustes' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        project.status === 'Lead' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
+                          project.status === 'Active' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
+                            project.status === 'Review' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                              project.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                project.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
                       }`}>
                       {getStatusLabel(project)}
                     </span>
@@ -3508,18 +3543,20 @@ const AddProjectModal: React.FC<{
   // Etapas fixas para projetos normais (usando useMemo para evitar recriação)
   const fixedStagesNormal = useMemo<Stage[]>(() => [
     { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
-    { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
-    { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
-    { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
+    { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 30, isFixed: true },
+    { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+    { id: 'adjustments', title: 'Ajustes', status: 'Review', order: 3, progress: 75, isFixed: true },
+    { id: 'completed', title: 'Concluído', status: 'Completed', order: 4, progress: 100, isFixed: true }
   ], []);
 
   // Etapas fixas para projetos recorrentes (usando useMemo para evitar recriação)
   const fixedStagesRecurringModal = useMemo<Stage[]>(() => [
     { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
     { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
-    { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
-    { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
-    { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+    { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+    { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
+    { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 80, isFixed: true },
+    { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
   ], []);
 
   // Verificar se algum dos serviços selecionados é recorrente

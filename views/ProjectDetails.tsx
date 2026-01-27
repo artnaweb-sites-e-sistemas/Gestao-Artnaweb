@@ -42,18 +42,20 @@ interface ProjectDetailsProps {
 // Etapas fixas para projetos normais
 const fixedStages: Stage[] = [
   { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
-  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 33, isFixed: true },
-  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 66, isFixed: true },
-  { id: 'completed', title: 'Concluído', status: 'Completed', order: 3, progress: 100, isFixed: true }
+  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 30, isFixed: true },
+  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'adjustments', title: 'Ajustes', status: 'Review', order: 3, progress: 75, isFixed: true },
+  { id: 'completed', title: 'Concluído', status: 'Completed', order: 4, progress: 100, isFixed: true }
 ];
 
 // Etapas fixas para projetos recorrentes
 const fixedStagesRecurring: Stage[] = [
   { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
-  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
-  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+  { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 80, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
 ];
 
 export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose }) => {
@@ -94,7 +96,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [fileToDelete, setFileToDelete] = useState<ProjectFile | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'description' | 'tasks' | 'access' | 'files'>('description');
+  const [activeTab, setActiveTab] = useState<'description' | 'tasks' | 'access' | 'files'>('tasks');
   const [activeManagementTab, setActiveManagementTab] = useState<'overview' | 'billing' | 'roadmap'>('overview');
   const [showAddCredential, setShowAddCredential] = useState(false);
   const [showEditCredential, setShowEditCredential] = useState<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string } | null>(null);
@@ -112,6 +114,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Estado para modal de confirmação de redefinir tarefas
   const [showResetTasksConfirm, setShowResetTasksConfirm] = useState(false);
   const [stageToReset, setStageToReset] = useState<Stage | null>(null);
+
+  // Estado para drag and drop de tarefas
+  const [draggedTask, setDraggedTask] = useState<ProjectStageTask | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
+
 
   /* REMOVIDO: Credenciais padrão "WP Engine Hosting" e "Shopify Storefront" conforme solicitado.
      Iniciando vazio para o usuário preencher manualmente quando necessário. */
@@ -206,10 +214,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       );
 
       // Se for recorrente, não usar etapas do Firebase, usar as fixas (definidas no useEffect separado)
+      // Para projetos normais, também usar fixedStages local para garantir consistência
       if (!isRecurring) {
-        setStages(filteredStages);
+        // Usar etapas fixas locais que incluem 'Ajustes'
+        setStages(fixedStages);
         // Carregar tarefas de cada etapa
-        filteredStages.forEach(async (stage) => {
+        fixedStages.forEach(async (stage) => {
           const tasks = await getStageTasks(stage.id);
           setStageTasks(prev => ({ ...prev, [stage.id]: tasks }));
         });
@@ -1451,11 +1461,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   {/* Etapas Timeline */}
                   <div className="flex items-center gap-1 overflow-x-auto pb-2">
                     {stages.map((stage, index) => {
-                      const currentStage = stages.find(s => s.status === currentProject.status);
-                      const currentStageOrder = currentStage?.order ?? -1;
-                      const isPast = stage.order < currentStageOrder;
-                      const isCurrent = stage.status === currentProject.status;
-                      const isFuture = stage.order > currentStageOrder;
+                      // Usar stageId para determinar a etapa atual quando disponível
+                      let currentStageIndex = stages.findIndex(s => s.id === currentProject.stageId);
+                      // Fallback para status se stageId não corresponder
+                      if (currentStageIndex === -1) {
+                        currentStageIndex = stages.findIndex(s => s.status === currentProject.status);
+                      }
+                      const isPast = index < currentStageIndex;
+                      const isCurrent = index === currentStageIndex;
+                      const isFuture = index > currentStageIndex;
 
                       return (
                         <React.Fragment key={stage.id}>
@@ -1513,12 +1527,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
                   <div className="border-b border-slate-100 dark:border-slate-800 px-6 pt-2 flex gap-10">
                     <TabLink
-                      label="Descrição"
-                      icon="description"
-                      active={activeTab === 'description'}
-                      onClick={() => setActiveTab('description')}
-                    />
-                    <TabLink
                       label="Tarefas"
                       icon="checklist"
                       active={activeTab === 'tasks'}
@@ -1539,6 +1547,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         return totalTasks > 0 ? `${progressPercentage}%` : undefined;
                       })()}
                       onClick={() => setActiveTab('tasks')}
+                    />
+                    <TabLink
+                      label="Descrição"
+                      icon="description"
+                      active={activeTab === 'description'}
+                      onClick={() => setActiveTab('description')}
                     />
                     <TabLink
                       label="Dados de Acesso"
@@ -1664,8 +1678,109 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     return (
                                       <div
                                         key={task.id}
-                                        className="flex items-center gap-3 group p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                        draggable={isCurrentStage}
+                                        onDragStart={(e) => {
+                                          setDraggedTask(task);
+                                          e.dataTransfer.effectAllowed = 'move';
+                                          e.currentTarget.style.opacity = '0.4';
+                                        }}
+                                        onDragEnd={(e) => {
+                                          setDraggedTask(null);
+                                          setDropTargetId(null);
+                                          setDropPosition(null);
+                                          e.currentTarget.style.opacity = '1';
+                                        }}
+                                        onDragOver={(e) => {
+                                          e.preventDefault();
+                                          e.dataTransfer.dropEffect = 'move';
+
+                                          if (!draggedTask || draggedTask.id === task.id || draggedTask.stageId !== task.stageId) {
+                                            return;
+                                          }
+
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const midpoint = rect.top + rect.height / 2;
+                                          const position = e.clientY < midpoint ? 'above' : 'below';
+
+                                          setDropTargetId(task.id);
+                                          setDropPosition(position);
+                                        }}
+                                        onDragLeave={(e) => {
+                                          // Opzional: limpar apenas se sair do container pai, 
+                                          // mas geralmente onDragOver dispara rápido o suficiente no próximo item.
+                                        }}
+                                        onDrop={async (e) => {
+                                          e.preventDefault();
+                                          setDropTargetId(null);
+                                          setDropPosition(null);
+                                          e.currentTarget.style.opacity = '1';
+
+                                          if (!draggedTask || draggedTask.id === task.id || draggedTask.stageId !== task.stageId) {
+                                            return;
+                                          }
+
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const midpoint = rect.top + rect.height / 2;
+                                          const position = e.clientY < midpoint ? 'above' : 'below';
+
+                                          // Logica de reordenação local e no banco
+                                          const tasksInStage = projectStageTasks
+                                            .filter(t => t.stageId === stage.id)
+                                            .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                                          const draggedIndex = tasksInStage.findIndex(t => t.id === draggedTask.id);
+                                          let targetIndex = tasksInStage.findIndex(t => t.id === task.id);
+
+                                          if (draggedIndex === -1 || targetIndex === -1) return;
+
+                                          // Ajustar targetIndex baseado na posição (above/below) e direção do movimento
+                                          // Se inserir 'abaixo', o indice alvo é +1.
+                                          // Se o item arrastado estava antes do alvo, e movemos para 'abaixo' do alvo, o alvo "sobe" virtualmente 1.
+
+                                          let insertionIndex = targetIndex;
+                                          if (position === 'below') insertionIndex = targetIndex + 1;
+
+                                          // Remover o item arrastado
+                                          const newTasksInStage = [...tasksInStage];
+                                          const [removed] = newTasksInStage.splice(draggedIndex, 1);
+
+                                          // Ajustar indice de inserção se removemos de uma posição anterior
+                                          if (draggedIndex < insertionIndex) insertionIndex--;
+
+                                          // Inserir na nova posição
+                                          newTasksInStage.splice(insertionIndex, 0, removed);
+
+                                          // Atualizar ordens
+                                          const updatedTasks = newTasksInStage.map((t, index) => ({
+                                            ...t,
+                                            order: index
+                                          }));
+
+                                          // Atualizar estado local
+                                          setProjectStageTasks(prev => {
+                                            const otherTasks = prev.filter(t => t.stageId !== stage.id);
+                                            return [...otherTasks, ...updatedTasks];
+                                          });
+
+                                          // Persistir no banco
+                                          try {
+                                            await updateProjectTasksOrder(currentProject.id, updatedTasks);
+                                          } catch (error) {
+                                            console.error('Error updating task order:', error);
+                                            setToast({ message: "Erro ao reordenar tarefas", type: 'error' });
+                                          }
+                                        }}
+                                        className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors ${isCurrentStage ? 'cursor-grab active:cursor-grabbing' : ''
+                                          } ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
                                       >
+                                        {/* Indicadores Visuais de Drop */}
+                                        {dropTargetId === task.id && dropPosition === 'above' && (
+                                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform -translate-y-[2px]"></div>
+                                        )}
+                                        {dropTargetId === task.id && dropPosition === 'below' && (
+                                          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform translate-y-[2px]"></div>
+                                        )}
+
                                         <button
                                           onClick={async () => {
                                             try {

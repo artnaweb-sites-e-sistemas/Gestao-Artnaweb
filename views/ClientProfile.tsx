@@ -154,11 +154,10 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
           <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                statusFilter === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'all'
+                ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
             >
               Todos
               <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-600/50 text-[10px]">
@@ -167,11 +166,10 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
             </button>
             <button
               onClick={() => setStatusFilter('active')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                statusFilter === 'active'
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'active'
+                ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
             >
               Ativos
               <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 text-[10px]">
@@ -180,11 +178,10 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
             </button>
             <button
               onClick={() => setStatusFilter('completed')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                statusFilter === 'completed'
-                  ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'completed'
+                ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
             >
               Concluídos
               <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 text-[10px]">
@@ -210,78 +207,78 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
           {groupedClients.map(({ client, projects: clientProjects }) => {
             // Pegar a foto do cliente do primeiro projeto que tiver avatar
             const clientAvatar = clientProjects.find(p => p.avatar)?.avatar || getClientAvatar(client);
-            
+
             return (
-            <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
-              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {/* Avatar do Cliente */}
-                    <div 
-                      className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
-                      style={{ 
-                        backgroundImage: `url('${clientAvatar}')`, 
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
-                      }}
-                    />
-                    <div>
-                      <h3 className="text-lg font-bold">{client}</h3>
-                      <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Indicador de projetos ativos/concluídos */}
-                    {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
-                      <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                        {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-
-              <div className="space-y-2">
-                {clientProjects.map(project => (
-                  <div 
-                    key={project.id} 
-                    onClick={() => onProjectClick?.(project)}
-                    className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                  >
+              <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {/* Foto do Projeto */}
-                      <div 
-                        className="size-8 rounded-lg bg-slate-200"
-                        style={{ 
-                          backgroundImage: project.projectImage 
-                            ? `url('${project.projectImage}')` 
-                            : `url('${getProjectAvatar(project.name)}')`, 
+                      {/* Avatar do Cliente */}
+                      <div
+                        className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
+                        style={{
+                          backgroundImage: `url('${clientAvatar}')`,
                           backgroundSize: 'cover',
                           backgroundPosition: 'center'
                         }}
                       />
-                      <div className="flex flex-col gap-0.5">
-                        <p className="text-sm font-bold group-hover:text-primary transition-colors">{project.name}</p>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                          <span className="material-symbols-outlined text-xs">
-                            {project.status === 'Completed' || project.status === 'Finished' ? 'check_circle' : 'progress_activity'}
-                          </span>
-                          <span>{getProjectTypes(project).join(', ')}</span>
-                        </div>
+                      <div>
+                        <h3 className="text-lg font-bold">{client}</h3>
+                        <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusBadge project={project} categories={categories} />
-                      <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">
-                        chevron_right
-                      </span>
+                      {/* Indicador de projetos ativos/concluídos */}
+                      {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
+                        <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                          {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
-                ))}
+                </div>
+
+
+                <div className="space-y-2">
+                  {clientProjects.map(project => (
+                    <div
+                      key={project.id}
+                      onClick={() => onProjectClick?.(project)}
+                      className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Foto do Projeto */}
+                        <div
+                          className="size-8 rounded-lg bg-slate-200"
+                          style={{
+                            backgroundImage: project.projectImage
+                              ? `url('${project.projectImage}')`
+                              : `url('${getProjectAvatar(project.name)}')`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                          }}
+                        />
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-sm font-bold group-hover:text-primary transition-colors">{project.name}</p>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                            <span className="material-symbols-outlined text-xs">
+                              {project.status === 'Completed' || project.status === 'Finished' ? 'check_circle' : 'progress_activity'}
+                            </span>
+                            <span>{getProjectTypes(project).join(', ')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge project={project} categories={categories} />
+                        <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">
+                          chevron_right
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          );
+            );
           })}
         </div>
       )}
@@ -291,16 +288,17 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
 
 const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ project, categories }) => {
   const status = project.status;
-  
+
   // Verificar se é um projeto recorrente (considerando múltiplos tipos)
   const projectTypes = project.types || (project.type ? [project.type] : []);
-  const isRecurring = projectTypes.some(typeName => 
+  const isRecurring = projectTypes.some(typeName =>
     categories.find(cat => cat.name === typeName && cat.isRecurring)
   );
-  
+
   // Verificar etapa baseado no stageId
   const isOnboardingStage = project.stageId?.includes('onboarding') || false;
   const isDevelopmentStage = project.stageId?.includes('development') || false;
+  const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
   const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
 
   const styles: Record<Project['status'], string> = {
@@ -314,10 +312,14 @@ const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ p
   // Determinar o label a ser exibido baseado na etapa (stageId)
   let displayLabel: string;
   let badgeStyle: string;
-  
-  // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão" em azul
+
+  // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão" em marrom
   if (status === 'Completed' && isMaintenanceStage && isRecurring) {
     displayLabel = 'Gestão';
+    badgeStyle = 'bg-amber-800/20 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+  } else if (isAdjustmentsStage) {
+    // Se estiver na etapa Ajustes - azul
+    displayLabel = 'Ajustes';
     badgeStyle = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
   } else if (status === 'Lead' && isOnboardingStage) {
     displayLabel = 'On-boarding';

@@ -31,16 +31,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Configurar SEO básico'
             ],
             'review': [
-                'Enviar link de preview para cliente',
-                'Coletar feedback do cliente',
-                'Realizar ajustes solicitados',
-                'Testar em diferentes navegadores',
-                'Verificar velocidade de carregamento',
-                'Publicar site em produção',
-                'Configurar domínio e SSL',
-                'Realizar testes finais pós-publicação',
-                'Enviar acesso ao cliente',
-                'Agendar treinamento básico'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Oferecer pacote de manutenção mensal (Upsell)',
@@ -61,8 +63,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Configurar responsividade'
             ],
             'review-recurring': [
-                'Enviar preview para cliente',
-                'Coletar e implementar feedback'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments-recurring': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'maintenance-recurring': [
                 'Monitorar uptime do site',
@@ -92,11 +104,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Versionar alterações (Git)'
             ],
             'review': [
-                'Deploy em ambiente de homologação',
-                'Validar funcionamento com cliente',
-                'Realizar ajustes de feedback',
-                'Deploy em produção',
-                'Testes finais em produção'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Solicitar feedback sobre a entrega',
@@ -124,12 +143,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Configurar e-mails transacionais'
             ],
             'review': [
-                'Realizar compra de teste completa',
-                'Testar cálculo de frete',
-                'Verificar fluxo de emails',
-                'Testar responsividade mobile',
-                'Treinamento de gestão do painel',
-                'Publicar loja oficial'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Oferecer gestão de tráfego pago (Upsell)',
@@ -157,11 +182,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Otimizar imagens para velocidade'
             ],
             'review': [
-                'Testar formulários e integrações',
-                'Verificar velocidade de carregamento (PageSpeed)',
-                'Configurar Pixel (Facebook/Google Ads)',
-                'Configurar domínio e SSL',
-                'Publicar página'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Oferecer gestão de tráfego (Upsell)',
@@ -189,11 +221,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Configurar modo offline (se aplicável)'
             ],
             'review': [
-                'Testes internos (QA)',
-                'TestFlight/Google Play Console (Beta)',
-                'Verificar diretrizes das lojas (Guidelines)',
-                'Realizar submissão para lojas',
-                'Acompanhar processo de aprovação'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Monitorar crashes e bugs em produção',
@@ -221,11 +260,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Realizar migração de dados (se necessário)'
             ],
             'review': [
-                'Testes de integração',
-                'Testes de segurança (básico)',
-                'Homologação com key-users (UAT)',
-                'Treinamento da equipe',
-                'Deploy em ambiente de produção'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Estabelecer acordo de nível de serviço (SLA)',
@@ -252,10 +298,18 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Aplicar em mockups (cartão, social media, etc)'
             ],
             'review': [
-                'Montar apresentação de defesa da marca',
-                'Apresentar conceito para cliente',
-                'Coletar feedback',
-                'Realizar refinamentos finais'
+                'Preparar material para apresentação ao cliente',
+                'Enviar primeiro conceito/entrega para o cliente',
+                'Aguardar feedback do cliente',
+                'Coletar e documentar ajustes solicitados',
+                'Enviar para segunda revisão (após ajustes)'
+            ],
+            'adjustments': [
+                'Analisar ajustes solicitados pelo cliente',
+                'Planejar implementação das alterações',
+                'Realizar alterações solicitadas',
+                'Revisar qualidade das alterações',
+                'Notificar equipe para nova revisão com cliente'
             ],
             'completed': [
                 'Fechar arquivos finais (logo, fontes, assets)',
@@ -384,6 +438,7 @@ export const DefineStageTasksModal: React.FC<DefineStageTasksModalProps> = ({ st
             const normalizedTitle = stage.title.toLowerCase().replace(/\s+/g, '');
             if (normalizedTitle.includes('onboarding')) targetKey = 'onboarding';
             else if (normalizedTitle.includes('desenvolvimento') || normalizedTitle.includes('development')) targetKey = 'development';
+            else if (normalizedTitle.includes('ajuste') || normalizedTitle.includes('adjustment')) targetKey = 'adjustments';
             else if (normalizedTitle.includes('revisão') || normalizedTitle.includes('revisao') || normalizedTitle.includes('review')) targetKey = 'review';
             else if (normalizedTitle.includes('concluído') || normalizedTitle.includes('concluido') || normalizedTitle.includes('completed')) targetKey = 'completed';
 
@@ -459,36 +514,74 @@ export const DefineStageTasksModal: React.FC<DefineStageTasksModalProps> = ({ st
                             </div>
 
                             {/* Botão Usar Sugestão */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowSuggestions(!showSuggestions)}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors"
-                                >
-                                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                                    Usar sugestão
-                                    <span className="material-symbols-outlined text-lg">{showSuggestions ? 'expand_less' : 'expand_more'}</span>
-                                </button>
+                            <button
+                                onClick={() => setShowSuggestions(true)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                                Usar sugestão
+                            </button>
 
-                                {showSuggestions && (
-                                    <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-10 overflow-hidden">
-                                        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sugestões por Serviço</p>
+                            {/* Modal de Sugestões */}
+                            {showSuggestions && (
+                                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] p-4" onClick={() => setShowSuggestions(false)}>
+                                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+                                        {/* Header */}
+                                        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                                            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Escolha o serviço</h3>
+                                            <button
+                                                onClick={() => setShowSuggestions(false)}
+                                                className="size-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-lg">close</span>
+                                            </button>
                                         </div>
-                                        <div className="max-h-60 overflow-y-auto">
-                                            {Object.entries(taskSuggestions).map(([key, value]) => (
-                                                <button
-                                                    key={key}
-                                                    onClick={() => handleApplySuggestion(key)}
-                                                    className="w-full px-4 py-3 text-left text-sm hover:bg-primary/5 transition-colors flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 last:border-0"
-                                                >
-                                                    <span className="material-symbols-outlined text-primary text-lg">web</span>
-                                                    <span className="font-medium">{value.label}</span>
-                                                </button>
-                                            ))}
+
+                                        {/* Lista de Serviços */}
+                                        <div className="p-2 max-h-80 overflow-y-auto">
+                                            {Object.entries(taskSuggestions).map(([key, value]) => {
+                                                let targetKey = stage.id;
+                                                if (!value.stages[targetKey]) {
+                                                    const normalizedTitle = stage.title.toLowerCase().replace(/\s+/g, '');
+                                                    if (normalizedTitle.includes('onboarding')) targetKey = 'onboarding';
+                                                    else if (normalizedTitle.includes('desenvolvimento') || normalizedTitle.includes('development')) targetKey = 'development';
+                                                    else if (normalizedTitle.includes('ajuste') || normalizedTitle.includes('adjustment')) targetKey = 'adjustments';
+                                                    else if (normalizedTitle.includes('revisão') || normalizedTitle.includes('revisao') || normalizedTitle.includes('review')) targetKey = 'review';
+                                                    else if (normalizedTitle.includes('concluído') || normalizedTitle.includes('concluido') || normalizedTitle.includes('completed')) targetKey = 'completed';
+                                                }
+                                                const stageTasks = value.stages[targetKey] || [];
+                                                const hasTasksForStage = stageTasks.length > 0;
+
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => hasTasksForStage && handleApplySuggestion(key)}
+                                                        disabled={!hasTasksForStage}
+                                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${hasTasksForStage
+                                                            ? 'hover:bg-primary/5 text-slate-700 dark:text-slate-200'
+                                                            : 'opacity-40 cursor-not-allowed text-slate-400'
+                                                            }`}
+                                                    >
+                                                        <span className={`material-symbols-outlined text-lg ${hasTasksForStage ? 'text-primary' : 'text-slate-300'}`}>
+                                                            {key === 'site-institucional' ? 'language' :
+                                                                key === 'sob-demanda' ? 'build' :
+                                                                    key === 'e-commerce' ? 'shopping_cart' :
+                                                                        key === 'landing-page' ? 'web' :
+                                                                            key === 'app' ? 'smartphone' :
+                                                                                key === 'sistema' ? 'dns' :
+                                                                                    key === 'identidade-visual' ? 'palette' : 'web'}
+                                                        </span>
+                                                        <span className="flex-1 text-sm font-medium">{value.label}</span>
+                                                        {hasTasksForStage && (
+                                                            <span className="text-xs text-slate-400">{stageTasks.length} tarefas</span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 {tasks.length === 0 ? (

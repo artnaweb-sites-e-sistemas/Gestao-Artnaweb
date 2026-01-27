@@ -15,11 +15,11 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
   const [currentProject, setCurrentProject] = useState<Project>(project);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  
+
   // Estado para modal de nova fatura recorrente
   const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
   const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
-  
+
   // Verificar se o projeto é recorrente
   const isProjectRecurring = () => {
     const projectCategory = categories.find(cat => cat.name === currentProject.type);
@@ -58,11 +58,11 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
   // Carregar categorias para verificar se projeto é recorrente
   useEffect(() => {
     if (!project.workspaceId) return;
-    
+
     const unsubscribe = subscribeToCategories((fetchedCategories) => {
       setCategories(fetchedCategories);
     }, project.workspaceId);
-    
+
     return () => unsubscribe();
   }, [project.workspaceId]);
 
@@ -81,14 +81,14 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
       } else {
         previousDate = new Date();
       }
-      
+
       const nextDate = new Date(previousDate);
       nextDate.setDate(nextDate.getDate() + 30);
-      
+
       // Gerar número sequencial
       const year = nextDate.getFullYear();
       const count = invoices.length + 1;
-      
+
       await addInvoice({
         projectId: currentProject.id,
         workspaceId: currentProject.workspaceId,
@@ -110,6 +110,29 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
     return `INV-${year}-${count.toString().padStart(3, '0')}`;
   };
 
+  // Verificar se a fatura está vencida
+  const isOverdue = (date: Date | any): boolean => {
+    if (!date) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Zerar hora para comparar apenas data
+
+    // Converter para objeto Date se necessário
+    let invoiceDate: Date;
+    if (date instanceof Date) {
+      invoiceDate = date;
+    } else if (typeof date === 'string' && date.includes('-')) {
+      const [year, month, day] = date.split('-').map(Number);
+      invoiceDate = new Date(year, month - 1, day);
+    } else if (date?.toDate) {
+      invoiceDate = date.toDate();
+    } else {
+      invoiceDate = new Date(date);
+    }
+
+    invoiceDate.setHours(0, 0, 0, 0);
+    return invoiceDate.getTime() < today.getTime();
+  };
+
   return (
     <div className="flex h-full">
       <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
@@ -117,8 +140,8 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
               <div className="bg-primary/10 rounded-xl p-2">
-                <div 
-                  className="size-12 rounded-lg bg-slate-200" 
+                <div
+                  className="size-12 rounded-lg bg-slate-200"
                   style={{ backgroundImage: `url(${project.avatar})`, backgroundSize: 'cover' }}
                 ></div>
               </div>
@@ -128,31 +151,29 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
-                project.status === 'Active' ? 'bg-green-100 text-green-700' :
-                project.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                project.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
-                'bg-indigo-100 text-indigo-700'
-              }`}>
-                {project.status === 'Lead' ? 'Proposta Enviada' : 
-                 project.status === 'Active' ? 'Em Desenvolvimento' :
-                 project.status === 'Completed' ? 'Concluído' : 'Em Revisão'}
+              <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${project.status === 'Active' ? 'bg-green-100 text-green-700' :
+                  project.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                    project.status === 'Lead' ? 'bg-amber-100 text-amber-700' :
+                      'bg-indigo-100 text-indigo-700'
+                }`}>
+                {project.status === 'Lead' ? 'Proposta Enviada' :
+                  project.status === 'Active' ? 'Em Desenvolvimento' :
+                    project.status === 'Completed' ? 'Concluído' : 'Em Revisão'}
               </span>
               <div className="flex flex-wrap gap-1">
                 {(project.types && project.types.length > 0 ? project.types : (project.type ? [project.type] : ['Sem categoria'])).map((typeName, idx) => (
-                  <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${
-                    project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                    project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                    project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                    'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-                  }`}>
+                  <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
+                      project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
+                        project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
+                          'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                    }`}>
                     {typeName}
                   </span>
                 ))}
               </div>
             </div>
           </div>
-          
+
           <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
             <div className="flex flex-col gap-1">
               <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">
@@ -164,11 +185,11 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                 </p>
                 <div className="flex items-baseline gap-1.5">
                   <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {currentProject.budget ? 
-                      new Intl.NumberFormat('pt-BR', { 
-                        style: 'currency', 
-                        currency: 'BRL' 
-                      }).format(currentProject.budget) 
+                    {currentProject.budget ?
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                      }).format(currentProject.budget)
                       : 'R$ 0,00'}
                   </p>
                   {!isProjectRecurring() && invoices.length > 1 && (
@@ -197,11 +218,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           console.error("Error updating implementation status:", error);
                         }
                       }}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                        currentProject.isImplementationPaid
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isImplementationPaid
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-xs">check_circle</span>
                       Pago
@@ -223,11 +243,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           console.error("Error updating implementation status:", error);
                         }
                       }}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                        !currentProject.isImplementationPaid
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isImplementationPaid
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-xs">pending</span>
                       Pendente
@@ -240,11 +259,11 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                 <div className="py-2">
                   <p className="text-slate-500 text-xs mb-1">Valor da Mensalidade</p>
                   <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                    {currentProject.recurringAmount ? 
-                      new Intl.NumberFormat('pt-BR', { 
-                        style: 'currency', 
-                        currency: 'BRL' 
-                      }).format(currentProject.recurringAmount) 
+                    {currentProject.recurringAmount ?
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                      }).format(currentProject.recurringAmount)
                       : 'R$ 0,00'}
                   </p>
                   {/* Status de pagamento da mensalidade */}
@@ -259,7 +278,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                             // Marcar a fatura mais recente como paga
                             const latestRecurring = recurringInvoices[0];
                             await updateInvoice(latestRecurring.id, { status: 'Paid' });
-                            
+
                             // Mostrar modal para criar próxima fatura
                             setPaidInvoiceForRecurring(latestRecurring);
                             setShowRecurringConfirm(true);
@@ -270,11 +289,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           console.error("Error updating recurring status:", error);
                         }
                       }}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                        currentProject.isRecurringPaid
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isRecurringPaid
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-xs">check_circle</span>
                       Pago
@@ -296,11 +314,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           console.error("Error updating recurring status:", error);
                         }
                       }}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                        !currentProject.isRecurringPaid
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isRecurringPaid
                           ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
+                        }`}
                     >
                       <span className="material-symbols-outlined text-xs">pending</span>
                       Pendente
@@ -310,67 +327,65 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
               )}
               {/* Status de pagamento geral apenas para projetos normais */}
               {!isProjectRecurring() && (
-              <div className="py-2">
-                <p className="text-slate-500 text-xs mb-1">Status de Pagamento</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      if (currentProject.isPaid) return;
-                      try {
-                        // Atualizar status geral do projeto
-                        await updateProjectInFirebase(currentProject.id, { isPaid: true });
-                        setCurrentProject({ ...currentProject, isPaid: true });
-                        
-                        // Atualizar todas as faturas pendentes para Pago
-                        const pendingInvoices = invoices.filter(inv => inv.status !== 'Paid');
-                        for (const invoice of pendingInvoices) {
-                          await updateInvoice(invoice.id, { status: 'Paid' });
+                <div className="py-2">
+                  <p className="text-slate-500 text-xs mb-1">Status de Pagamento</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (currentProject.isPaid) return;
+                        try {
+                          // Atualizar status geral do projeto
+                          await updateProjectInFirebase(currentProject.id, { isPaid: true });
+                          setCurrentProject({ ...currentProject, isPaid: true });
+
+                          // Atualizar todas as faturas pendentes para Pago
+                          const pendingInvoices = invoices.filter(inv => inv.status !== 'Paid');
+                          for (const invoice of pendingInvoices) {
+                            await updateInvoice(invoice.id, { status: 'Paid' });
+                          }
+                        } catch (error) {
+                          console.error("Error updating payment status:", error);
                         }
-                      } catch (error) {
-                        console.error("Error updating payment status:", error);
-                      }
-                    }}
-                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                      currentProject.isPaid
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">check_circle</span>
-                    Pago
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!currentProject.isPaid) return;
-                      try {
-                        // Atualizar status geral do projeto
-                        await updateProjectInFirebase(currentProject.id, { isPaid: false });
-                        setCurrentProject({ ...currentProject, isPaid: false });
-                        
-                        // Atualizar todas as faturas pagas para Pendente
-                        const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
-                        for (const invoice of paidInvoices) {
-                          await updateInvoice(invoice.id, { status: 'Pending' });
+                      }}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.isPaid
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
+                        }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">check_circle</span>
+                      Pago
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!currentProject.isPaid) return;
+                        try {
+                          // Atualizar status geral do projeto
+                          await updateProjectInFirebase(currentProject.id, { isPaid: false });
+                          setCurrentProject({ ...currentProject, isPaid: false });
+
+                          // Atualizar todas as faturas pagas para Pendente
+                          const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
+                          for (const invoice of paidInvoices) {
+                            await updateInvoice(invoice.id, { status: 'Pending' });
+                          }
+                        } catch (error) {
+                          console.error("Error updating payment status:", error);
                         }
-                      } catch (error) {
-                        console.error("Error updating payment status:", error);
-                      }
-                    }}
-                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                      !currentProject.isPaid
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">pending</span>
-                    Pendente
-                  </button>
+                      }}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${!currentProject.isPaid
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
+                        }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">pending</span>
+                      Pendente
+                    </button>
+                  </div>
                 </div>
-              </div>
               )}
             </div>
           </div>
-          
+
           <nav className="flex flex-col gap-1">
             <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
             <NavBtn icon="description" label="Visão Geral" onClick={() => onNavigate?.('ProjectDetails')} />
@@ -378,7 +393,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
             <NavBtn icon="rocket_launch" label="Roteiro do Projeto" onClick={() => onNavigate?.('ProjectRoadmap')} />
           </nav>
         </div>
-        <button 
+        <button
           onClick={onClose}
           className="flex w-full cursor-pointer items-center justify-center rounded-lg h-11 px-4 bg-primary text-white text-sm font-bold shadow-lg shadow-primary/20 hover:bg-blue-700 transition-all mt-8"
         >
@@ -389,7 +404,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
       <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10 p-8">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-2 text-slate-500 mb-4">
-            <button 
+            <button
               onClick={onClose}
               className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             >
@@ -404,7 +419,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
               <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
               <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
             </div>
-            <button 
+            <button
               onClick={() => setShowAddInvoice(true)}
               className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
             >
@@ -455,7 +470,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           <p className="text-sm font-medium">{invoice.description}</p>
                           <p className="text-[10px] text-slate-400">{invoice.number}</p>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-500">
+                        <td className={`px-6 py-4 text-sm ${invoice.status === 'Pending' && isOverdue(invoice.date) ? 'text-red-500 font-bold' : 'text-slate-500'}`}>
                           {(() => {
                             if (!invoice.date) return '-';
                             let dateObj: Date;
@@ -482,9 +497,9 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                               <span className="text-[10px] font-normal text-slate-500">
                                 {(() => {
                                   // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
-                                  const sameTypeInvoices = sortedInvoices.filter(inv => 
-                                    invoice.number.startsWith('IMP-') 
-                                      ? inv.number.startsWith('IMP-') 
+                                  const sameTypeInvoices = sortedInvoices.filter(inv =>
+                                    invoice.number.startsWith('IMP-')
+                                      ? inv.number.startsWith('IMP-')
                                       : inv.number.startsWith('INV-')
                                   );
                                   const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
@@ -501,10 +516,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                                 if (invoice.status === 'Paid') return;
                                 try {
                                   await updateInvoice(invoice.id, { status: 'Paid' });
-                                  const updatedInvoices = invoices.map(inv => 
+                                  const updatedInvoices = invoices.map(inv =>
                                     inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
                                   );
-                                  
+
                                   // Atualizar status específico baseado no tipo de fatura
                                   if (isProjectRecurring()) {
                                     if (invoice.number.startsWith('IMP-')) {
@@ -534,11 +549,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                                   console.error("Error updating invoice:", error);
                                 }
                               }}
-                              className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                                invoice.status === 'Paid'
+                              className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
                                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
-                              }`}
+                                }`}
                             >
                               <span className="material-symbols-outlined text-xs">check_circle</span>
                               Pago
@@ -548,10 +562,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                                 if (invoice.status === 'Pending') return;
                                 try {
                                   await updateInvoice(invoice.id, { status: 'Pending' });
-                                  const updatedInvoices = invoices.map(inv => 
+                                  const updatedInvoices = invoices.map(inv =>
                                     inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
                                   );
-                                  
+
                                   // Atualizar status específico baseado no tipo de fatura
                                   if (isProjectRecurring()) {
                                     if (invoice.number.startsWith('IMP-')) {
@@ -579,11 +593,12 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                                   console.error("Error updating invoice:", error);
                                 }
                               }}
-                              className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                                invoice.status === 'Pending'
-                                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-red-100 hover:text-red-700 hover:border-red-300'
-                              }`}
+                              className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Pending'
+                                  ? (isOverdue(invoice.date)
+                                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
+                                    : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700')
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-100 hover:text-amber-700 hover:border-amber-300'
+                                }`}
                             >
                               <span className="material-symbols-outlined text-xs">pending</span>
                               Pendente
@@ -663,11 +678,11 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                   <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
                 </div>
               </div>
-              
+
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
                 Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
               </p>
-              
+
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
@@ -697,7 +712,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                   </span>
                 </div>
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -731,11 +746,10 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
 };
 
 const NavBtn: React.FC<{ icon: string; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-      active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-    }`}
+    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
+      }`}
   >
     <span className="material-symbols-outlined text-[20px]">{icon}</span>
     {label}
@@ -812,7 +826,7 @@ const AddInvoiceModal: React.FC<{
     // Remove tudo que não é dígito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
-    
+
     // Converte para número e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
     // Formata como número brasileiro (sem o símbolo R$)
@@ -826,11 +840,11 @@ const AddInvoiceModal: React.FC<{
     const inputValue = e.target.value;
     // Remove tudo que não é dígito
     const numbers = inputValue.replace(/\D/g, '');
-    
+
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
-    
+
     // Extrai o valor numérico (divide por 100 porque estamos trabalhando com centavos)
     const numericValue = numbers ? parseFloat(numbers) / 100 : 0;
     setFormData({ ...formData, amount: numericValue.toString() });
@@ -843,7 +857,7 @@ const AddInvoiceModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.description || !amountDisplay || amountDisplay === '0,00') {
       return;
     }
@@ -851,11 +865,11 @@ const AddInvoiceModal: React.FC<{
     try {
       // Converte o valor formatado para número
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
-      
+
       // Parse da data sem problemas de timezone
       const [year, month, day] = formData.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day);
-      
+
       await onSave({
         projectId,
         workspaceId,
@@ -894,11 +908,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('custom')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'custom'
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'custom'
                       ? 'bg-blue-500 text-white'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">receipt</span>
                   Personalizada
@@ -906,11 +919,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('implementation')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'implementation'
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'implementation'
                       ? 'bg-indigo-500 text-white'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">build</span>
                   Implementação
@@ -918,11 +930,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('recurring')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'recurring'
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'recurring'
                       ? 'bg-amber-500 text-white'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">autorenew</span>
                   Mensalidade
@@ -985,11 +996,11 @@ const AddInvoiceModal: React.FC<{
                   className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                    {formData.date 
+                    {formData.date
                       ? (() => {
-                          const [year, month, day] = formData.date.split('-').map(Number);
-                          return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-                        })()
+                        const [year, month, day] = formData.date.split('-').map(Number);
+                        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                      })()
                       : 'Selecione uma data'
                     }
                   </span>
@@ -1067,7 +1078,7 @@ const EditInvoiceModal: React.FC<{
     // Remove tudo que não é dígito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
-    
+
     // Converte para número e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
     // Formata como número brasileiro (sem o símbolo R$)
@@ -1122,11 +1133,11 @@ const EditInvoiceModal: React.FC<{
     const inputValue = e.target.value;
     // Remove tudo que não é dígito
     const numbers = inputValue.replace(/\D/g, '');
-    
+
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
-    
+
     // Atualiza formData com o valor formatado para manter consistência
     setFormData({ ...formData, amount: formatted });
   };
@@ -1138,7 +1149,7 @@ const EditInvoiceModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.description || !amountDisplay || amountDisplay === '0,00') {
       return;
     }
@@ -1146,11 +1157,11 @@ const EditInvoiceModal: React.FC<{
     try {
       // Converte o valor formatado para número
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
-      
+
       // Parse da data sem problemas de timezone
       const [year, month, day] = formData.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day);
-      
+
       await onSave({
         number: formData.number,
         description: formData.description,
@@ -1228,11 +1239,11 @@ const EditInvoiceModal: React.FC<{
                   className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                    {formData.date 
+                    {formData.date
                       ? (() => {
-                          const [year, month, day] = formData.date.split('-').map(Number);
-                          return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-                        })()
+                        const [year, month, day] = formData.date.split('-').map(Number);
+                        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                      })()
                       : 'Selecione uma data'
                     }
                   </span>
@@ -1298,15 +1309,15 @@ const EditInvoiceModal: React.FC<{
 const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   const today = new Date();
-  
+
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  
+
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startingDayOfWeek = firstDayOfMonth.getDay();
   const daysInMonth = lastDayOfMonth.getDate();
-  
+
   const days: (Date | null)[] = [];
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -1314,39 +1325,39 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
   for (let i = 1; i <= daysInMonth; i++) {
     days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
   }
-  
+
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
-  
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
-  
+
   const isToday = (date: Date | null) => {
     if (!date) return false;
     return date.getFullYear() === today.getFullYear() &&
-           date.getMonth() === today.getMonth() &&
-           date.getDate() === today.getDate();
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
   };
-  
+
   const isSelected = (date: Date | null) => {
     if (!date || !selectedDate) return false;
     return date.getFullYear() === selectedDate.getFullYear() &&
-           date.getMonth() === selectedDate.getMonth() &&
-           date.getDate() === selectedDate.getDate();
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
   };
-  
+
   const handleDateClick = (date: Date | null) => {
     if (date) {
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       onSelectDate(localDate);
     }
   };
-  
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[100]" onClick={onClose}>
-      <div 
+      <div
         className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 w-72"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1369,7 +1380,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1 mb-2">
           {weekDays.map((day) => (
             <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
@@ -1377,7 +1388,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             </div>
           ))}
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1">
           {days.map((date, index) => (
             <button
@@ -1389,10 +1400,10 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
                 aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
                 ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
                 ${date && isToday(date) ? 'ring-2 ring-primary' : ''}
-                ${date && isSelected(date) 
-                  ? 'bg-primary text-white hover:bg-primary/90' 
-                  : date 
-                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
+                ${date && isSelected(date)
+                  ? 'bg-primary text-white hover:bg-primary/90'
+                  : date
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary'
                     : 'text-transparent'
                 }
               `}
@@ -1401,7 +1412,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             </button>
           ))}
         </div>
-        
+
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"

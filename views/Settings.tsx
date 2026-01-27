@@ -9,13 +9,23 @@ interface SettingsProps {
   userId?: string | null;
 }
 
+// Etapas fixas para serviços padrão (não recorrentes)
+const fixedStages: Stage[] = [
+  { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
+  { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
+  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+  { id: 'adjustments', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
+  { id: 'completed', title: 'Concluído', status: 'Completed', order: 4, progress: 100, isFixed: true }
+];
+
 // Etapas fixas para serviços recorrentes (copiado do Dashboard)
 const fixedStagesRecurring: Stage[] = [
   { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
-  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
-  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+  { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 80, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
 ];
 
 export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId }) => {
@@ -598,8 +608,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   {(() => {
                     const selectedCategory = categories.find(c => c.id === selectedServiceId);
                     const isRecurring = selectedCategory?.isRecurring;
-                    // Se for recorrente, usa fixedStagesRecurring. Se não (ou se for 'all'), usa stages padrão.
-                    const currentStages = isRecurring ? fixedStagesRecurring : stages;
+                    // Se for recorrente, usa fixedStagesRecurring. Se não (ou se for 'all'), usa fixedStages padrão.
+                    const currentStages = isRecurring ? fixedStagesRecurring : fixedStages;
 
                     return currentStages.map((stage) => (
                       <div key={stage.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary/30 transition-colors">
@@ -641,7 +651,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   {(() => {
                     const selectedCategory = categories.find(c => c.id === selectedServiceId);
                     const isRecurring = selectedCategory?.isRecurring;
-                    const currentStages = isRecurring ? fixedStagesRecurring : stages;
+                    const currentStages = isRecurring ? fixedStagesRecurring : fixedStages;
                     return currentStages.length === 0;
                   })() && (
                       <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
