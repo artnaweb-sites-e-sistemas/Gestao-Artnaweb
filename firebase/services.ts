@@ -1,29 +1,29 @@
-import { 
-  collection, 
-  doc, 
-  getDocs, 
+import {
+  collection,
+  doc,
+  getDocs,
   getDoc,
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
+  addDoc,
+  updateDoc,
+  deleteDoc,
   deleteField,
   setDoc,
-  query, 
+  query,
   orderBy,
   where,
   onSnapshot,
-  enableIndexedDbPersistence 
+  enableIndexedDbPersistence
 } from "firebase/firestore";
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
   deleteObject,
-  StorageReference 
+  StorageReference
 } from "firebase/storage";
-import { 
-  GoogleAuthProvider, 
-  signInWithPopup, 
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User
@@ -75,28 +75,28 @@ export const getProjects = async (): Promise<Project[]> => {
 export const subscribeToProjects = (callback: (projects: Project[]) => void, workspaceId?: string | null, userId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Filtrar por userId e workspaceId
   let q;
   const conditions: any[] = [];
-  
+
   if (userId) {
     conditions.push(where("userId", "==", userId));
   }
-  
+
   if (workspaceId) {
     conditions.push(where("workspaceId", "==", workspaceId));
   }
-  
+
   if (conditions.length > 0) {
     q = query(collection(db, PROJECTS_COLLECTION), ...conditions);
   } else {
     // Se não houver filtros, usar orderBy
     q = query(collection(db, PROJECTS_COLLECTION), orderBy("createdAt", "desc"));
   }
-  
+
   return onSnapshot(q, (querySnapshot) => {
     const projects = querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -107,7 +107,7 @@ export const subscribeToProjects = (callback: (projects: Project[]) => void, wor
         updatedAt: data.updatedAt?.toDate?.() || data.updatedAt
       };
     }) as Project[];
-    
+
     // Se houver workspaceId, filtrar no cliente (caso haja projetos sem workspaceId)
     let filteredProjects = projects;
     if (workspaceId) {
@@ -119,7 +119,7 @@ export const subscribeToProjects = (callback: (projects: Project[]) => void, wor
         return dateB - dateA; // Descendente
       });
     }
-    
+
     callback(filteredProjects);
   }, (error) => {
     console.error("Error in projects subscription:", error);
@@ -158,24 +158,24 @@ export const addProject = async (project: Omit<Project, "id">, workspaceId?: str
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     // Adicionar workspaceId se fornecido
     if (workspaceId) {
       projectData.workspaceId = workspaceId;
     }
-    
+
     // Adicionar userId se fornecido
     if (userId) {
       projectData.userId = userId;
     }
-    
+
     // Remover campos undefined (Firestore não aceita undefined)
     Object.keys(projectData).forEach(key => {
       if (projectData[key] === undefined) {
         delete projectData[key];
       }
     });
-    
+
     const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), projectData);
     return docRef.id;
   } catch (error) {
@@ -191,14 +191,14 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
       ...updates,
       updatedAt: new Date()
     };
-    
+
     // Remover campos undefined (Firestore não aceita undefined)
     Object.keys(updateData).forEach(key => {
       if (updateData[key] === undefined) {
         delete updateData[key];
       }
     });
-    
+
     await updateDoc(projectRef, updateData);
   } catch (error) {
     console.error("Error updating project:", error);
@@ -214,11 +214,11 @@ export const updateClientAvatarInAllProjects = async (clientName: string, avatar
     }
 
     const conditions: any[] = [where("client", "==", clientName)];
-    
+
     if (workspaceId) {
       conditions.push(where("workspaceId", "==", workspaceId));
     }
-    
+
     if (userId) {
       conditions.push(where("userId", "==", userId));
     }
@@ -227,8 +227,8 @@ export const updateClientAvatarInAllProjects = async (clientName: string, avatar
     const querySnapshot = await getDocs(q);
 
     // Atualizar todos os projetos do mesmo cliente
-    const updatePromises = querySnapshot.docs.map(docRef => 
-      updateDoc(docRef.ref, { 
+    const updatePromises = querySnapshot.docs.map(docRef =>
+      updateDoc(docRef.ref, {
         avatar: avatarUrl,
         updatedAt: new Date()
       })
@@ -288,9 +288,9 @@ export const deleteProject = async (projectId: string): Promise<void> => {
       where("projectId", "==", projectId)
     );
     const invoicesSnapshot = await getDocs(invoicesQuery);
-    
+
     // Excluir todas as faturas encontradas
-    const deleteInvoicePromises = invoicesSnapshot.docs.map(invoiceDoc => 
+    const deleteInvoicePromises = invoicesSnapshot.docs.map(invoiceDoc =>
       deleteDoc(doc(db, INVOICES_COLLECTION, invoiceDoc.id))
     );
     await Promise.all(deleteInvoicePromises);
@@ -318,29 +318,29 @@ export const getCategories = async (): Promise<string[]> => {
 export const subscribeToCategories = (callback: (categories: Category[]) => void, workspaceId?: string | null, userId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Filtrar ESTRITAMENTE por workspaceId - só retorna categorias do workspace específico
   let q;
-  
+
   if (workspaceId) {
     // Buscar APENAS categorias que pertencem a este workspace
     q = query(
-      collection(db, CATEGORIES_COLLECTION), 
+      collection(db, CATEGORIES_COLLECTION),
       where("workspaceId", "==", workspaceId)
     );
   } else if (userId) {
     // Se não tem workspaceId mas tem userId, buscar todas do usuário
     q = query(
-      collection(db, CATEGORIES_COLLECTION), 
+      collection(db, CATEGORIES_COLLECTION),
       where("userId", "==", userId)
     );
   } else {
     // Sem filtros - não deveria acontecer em produção
     q = query(collection(db, CATEGORIES_COLLECTION));
   }
-  
+
   return onSnapshot(q, (querySnapshot) => {
     const categories = querySnapshot.docs
       .map((doc) => {
@@ -354,7 +354,7 @@ export const subscribeToCategories = (callback: (categories: Category[]) => void
           createdAt: data.createdAt
         };
       }) as Category[];
-    
+
     // Ordenar por order (menor primeiro), depois por createdAt para estabilidade
     categories.sort((a, b) => {
       const orderA = a.order ?? 999;
@@ -367,7 +367,7 @@ export const subscribeToCategories = (callback: (categories: Category[]) => void
       const dateB = b.createdAt?.toDate?.() || new Date(0);
       return dateA.getTime() - dateB.getTime();
     });
-    
+
     // Retornar as categorias encontradas (pode ser vazio se todas foram deletadas)
     callback(categories);
   }, (error) => {
@@ -390,7 +390,7 @@ export const addCategory = async (categoryName: string, workspaceId?: string | n
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Calcular o próximo order baseado nas categorias existentes
     let maxOrder = 0;
     const conditions: any[] = [];
@@ -400,7 +400,7 @@ export const addCategory = async (categoryName: string, workspaceId?: string | n
     if (userId) {
       conditions.push(where("userId", "==", userId));
     }
-    
+
     if (conditions.length > 0) {
       const q = query(collection(db, CATEGORIES_COLLECTION), ...conditions);
       const snapshot = await getDocs(q);
@@ -410,8 +410,8 @@ export const addCategory = async (categoryName: string, workspaceId?: string | n
         if (order > maxOrder) maxOrder = order;
       });
     }
-    
-    const categoryData: any = { 
+
+    const categoryData: any = {
       name: categoryName,
       isRecurring: isRecurring,
       order: maxOrder + 1,
@@ -477,7 +477,7 @@ export const deleteCategory = async (categoryName: string, workspaceId?: string 
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Usar apenas workspaceId na query para evitar índice composto, filtrar nome no cliente
     let q;
     if (workspaceId) {
@@ -490,7 +490,7 @@ export const deleteCategory = async (categoryName: string, workspaceId?: string 
       // Se não houver workspaceId, buscar todas
       q = query(collection(db, CATEGORIES_COLLECTION));
     }
-    
+
     const querySnapshot = await getDocs(q);
     const categoryDoc = querySnapshot.docs.find(doc => {
       const data = doc.data();
@@ -504,7 +504,7 @@ export const deleteCategory = async (categoryName: string, workspaceId?: string 
       }
       return true;
     });
-    
+
     if (categoryDoc) {
       await deleteDoc(doc(db, CATEGORIES_COLLECTION, categoryDoc.id));
       console.log(`✅ Categoria "${categoryName}" excluída com sucesso`);
@@ -521,7 +521,7 @@ export const deleteCategory = async (categoryName: string, workspaceId?: string 
 export const getProjectActivities = async (projectId: string): Promise<Activity[]> => {
   try {
     const q = query(
-      collection(db, ACTIVITIES_COLLECTION), 
+      collection(db, ACTIVITIES_COLLECTION),
       where("projectId", "==", projectId)
     );
     const querySnapshot = await getDocs(q);
@@ -547,7 +547,7 @@ export const getProjectActivities = async (projectId: string): Promise<Activity[
 
 export const subscribeToProjectActivities = (projectId: string, callback: (activities: Activity[]) => void) => {
   const q = query(
-    collection(db, ACTIVITIES_COLLECTION), 
+    collection(db, ACTIVITIES_COLLECTION),
     where("projectId", "==", projectId)
   );
   return onSnapshot(q, (querySnapshot) => {
@@ -614,7 +614,7 @@ export const addActivity = async (activity: Omit<Activity, "id">): Promise<strin
 export const getProjectTeamMembers = async (projectId: string): Promise<TeamMember[]> => {
   try {
     const q = query(
-      collection(db, TEAM_MEMBERS_COLLECTION), 
+      collection(db, TEAM_MEMBERS_COLLECTION),
       where("projectId", "==", projectId)
     );
     const querySnapshot = await getDocs(q);
@@ -640,7 +640,7 @@ export const getProjectTeamMembers = async (projectId: string): Promise<TeamMemb
 
 export const subscribeToProjectTeamMembers = (projectId: string, callback: (members: TeamMember[]) => void) => {
   const q = query(
-    collection(db, TEAM_MEMBERS_COLLECTION), 
+    collection(db, TEAM_MEMBERS_COLLECTION),
     where("projectId", "==", projectId)
   );
   return onSnapshot(q, (querySnapshot) => {
@@ -721,33 +721,33 @@ export const getStages = async (): Promise<Stage[]> => {
 export const subscribeToStages = (callback: (stages: Stage[]) => void, workspaceId?: string | null, userId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Filtrar por userId e workspaceId
   let q;
   const conditions: any[] = [];
-  
+
   if (userId) {
     conditions.push(where("userId", "==", userId));
   }
-  
+
   if (workspaceId) {
     conditions.push(where("workspaceId", "==", workspaceId));
   }
-  
+
   if (conditions.length > 0) {
     q = query(collection(db, STAGES_COLLECTION), ...conditions);
   } else {
     q = query(collection(db, STAGES_COLLECTION), orderBy("order", "asc"));
   }
-  
+
   return onSnapshot(q, (querySnapshot) => {
     const stages = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     })) as Stage[];
-    
+
     // Filtrar no cliente se necessário
     let filteredStages = stages;
     if (workspaceId) {
@@ -756,12 +756,12 @@ export const subscribeToStages = (callback: (stages: Stage[]) => void, workspace
         return s.workspaceId === workspaceId || !s.workspaceId;
       });
     }
-    
+
     // Sempre ordenar no cliente quando há workspaceId (ou se não há orderBy)
     if (workspaceId || !q || !q._query || !q._query.explicitOrderBy) {
       filteredStages.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
-    
+
     callback(filteredStages);
   }, (error) => {
     console.error("Error in stages subscription:", error);
@@ -808,25 +808,25 @@ export const deleteStage = async (stageId: string): Promise<void> => {
 export const saveStages = async (stages: Stage[], workspaceId?: string | null, userId?: string | null): Promise<void> => {
   try {
     console.log("saveStages: Iniciando salvamento de", stages.length, "etapas para workspace:", workspaceId);
-    
+
     // Primeiro, deletar todas as etapas existentes do workspace
     const existingStages = await getStages();
-    const stagesToDelete = workspaceId 
-      ? existingStages.filter(s => 
-          (s.workspaceId === workspaceId || (!s.workspaceId && workspaceId)) &&
-          (!userId || (s as any).userId === userId)
-        )
+    const stagesToDelete = workspaceId
+      ? existingStages.filter(s =>
+        (s.workspaceId === workspaceId || (!s.workspaceId && workspaceId)) &&
+        (!userId || (s as any).userId === userId)
+      )
       : existingStages.filter(s => !userId || (s as any).userId === userId);
-    
+
     console.log("saveStages: Etapas existentes no Firebase para deletar:", stagesToDelete.length);
-    
+
     if (stagesToDelete.length > 0) {
       await Promise.all(stagesToDelete.map(stage => {
         console.log("saveStages: Deletando etapa:", stage.id);
         return deleteStage(stage.id);
       }));
     }
-    
+
     // Depois, adicionar as novas etapas com workspaceId
     // IMPORTANTE: Para etapas fixas (isFixed: true), usar setDoc com ID explícito
     // para preservar os IDs como 'onboarding', 'development', 'review', 'completed'
@@ -835,12 +835,12 @@ export const saveStages = async (stages: Stage[], workspaceId?: string | null, u
       if (workspaceId) {
         (stageData as any).workspaceId = workspaceId;
       }
-      
+
       // Adicionar userId se fornecido
       if (userId) {
         (stageData as any).userId = userId;
       }
-      
+
       // Se é uma etapa fixa com ID predefinido, usar setDoc para preservar o ID
       if (stage.isFixed && id) {
         // Criar ID único combinando o ID da etapa com o workspaceId para evitar conflitos
@@ -849,11 +849,11 @@ export const saveStages = async (stages: Stage[], workspaceId?: string | null, u
         const stageRef = doc(db, STAGES_COLLECTION, uniqueId);
         return setDoc(stageRef, { ...stageData, originalId: id });
       }
-      
+
       console.log("saveStages: Adicionando etapa:", stageData.title, "workspaceId:", workspaceId, "userId:", userId);
       return addDoc(collection(db, STAGES_COLLECTION), stageData);
     });
-    
+
     await Promise.all(promises);
     console.log("saveStages: Todas as etapas foram salvas com sucesso");
   } catch (error) {
@@ -863,7 +863,7 @@ export const saveStages = async (stages: Stage[], workspaceId?: string | null, u
 };
 
 // Stage Tasks
-export const getStageTasks = async (stageId: string): Promise<StageTask[]> => {
+export const getStageTasks = async (stageId: string, categoryId?: string): Promise<StageTask[]> => {
   try {
     if (!db) {
       console.warn("Firebase não está inicializado");
@@ -871,17 +871,38 @@ export const getStageTasks = async (stageId: string): Promise<StageTask[]> => {
     }
     // Remover orderBy para evitar necessidade de índice composto
     // Ordenar no cliente
-    const q = query(
-      collection(db, STAGE_TASKS_COLLECTION),
-      where("stageId", "==", stageId)
-    );
+    const conditions: any[] = [where("stageId", "==", stageId)];
+
+    // Se categoryId for fornecido, filtrar por ele
+    // Se não, buscar tarefas sem categoryId (padrão global antigo ou quando não especificado)
+    // Para simplificar, vamos assumir que categoryId é opcional.
+    // Mas o Firestore não suporta "where field is null" diretamente de forma simples misturado.
+    // Melhor estratégia: Se categoryId fornecido, busca exato.
+    // Se não fornecido, busca onde o campo não existe ou é null? 
+    // Por enquanto, vamos suportar apenas a busca EXATA se o parametro for passado.
+    // Se categoryId for 'all' ou undefined, talvez devêssemos buscar as "padrão".
+
+    // Se categoryId for fornecido, filtrar por ele
+    // Se não, buscar tarefas sem categoryId (padrão global antigo ou quando não especificado)
+
+    if (categoryId && categoryId !== 'all') {
+      conditions.push(where("categoryId", "==", categoryId));
+    } else if (categoryId === 'all') {
+      // Se for explicitamente 'all', pode ser que queira filtrar
+      conditions.push(where("categoryId", "==", "all"));
+    } else {
+      // Se não passado (undefined), por compatibilidade não filtramos?
+      // Ou filtramos para onde categoryId não existe?
+      // Vamos manter a lógica anterior: se não passar, busca tudo (para compatibilidade)
+    }
+    const q = query(collection(db, STAGE_TASKS_COLLECTION), ...conditions);
     const querySnapshot = await getDocs(q);
     const tasks = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt
     })) as StageTask[];
-    
+
     // Ordenar no cliente por ordem
     return tasks.sort((a, b) => (a.order || 0) - (b.order || 0));
   } catch (error) {
@@ -890,26 +911,30 @@ export const getStageTasks = async (stageId: string): Promise<StageTask[]> => {
   }
 };
 
-export const subscribeToStageTasks = (stageId: string, callback: (tasks: StageTask[]) => void) => {
+export const subscribeToStageTasks = (stageId: string, callback: (tasks: StageTask[]) => void, categoryId?: string) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Remover orderBy para evitar necessidade de índice composto
   // Ordenar no cliente
-  const q = query(
-    collection(db, STAGE_TASKS_COLLECTION),
-    where("stageId", "==", stageId)
-  );
-  
+  const conditions: any[] = [where("stageId", "==", stageId)];
+  if (categoryId && categoryId !== 'all') {
+    conditions.push(where("categoryId", "==", categoryId));
+  } else if (categoryId === 'all') {
+    conditions.push(where("categoryId", "==", "all"));
+  }
+
+  const q = query(collection(db, STAGE_TASKS_COLLECTION), ...conditions);
+
   return onSnapshot(q, (snapshot) => {
     const tasks = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt
     })) as StageTask[];
-    
+
     // Ordenar no cliente por ordem
     const sortedTasks = tasks.sort((a, b) => (a.order || 0) - (b.order || 0));
     callback(sortedTasks);
@@ -958,31 +983,32 @@ export const deleteStageTask = async (taskId: string): Promise<void> => {
   }
 };
 
-export const saveStageTasks = async (stageId: string, tasks: Omit<StageTask, "id" | "createdAt">[]): Promise<void> => {
+export const saveStageTasks = async (stageId: string, tasks: Omit<StageTask, "id" | "createdAt">[], categoryId: string = 'all'): Promise<void> => {
   try {
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Buscar tarefas existentes
-    const existingTasks = await getStageTasks(stageId);
-    
+    // Buscar tarefas existentes com o mesmo categoryId
+    const existingTasks = await getStageTasks(stageId, categoryId);
+
     // Deletar tarefas que não estão mais na lista
     const tasksToKeep = tasks.map(t => t.title);
     const tasksToDelete = existingTasks.filter(t => !tasksToKeep.includes(t.title));
-    
+
     await Promise.all(tasksToDelete.map(t => deleteStageTask(t.id)));
-    
+
     // Adicionar ou atualizar tarefas
     const promises = tasks.map(async (task, index) => {
       const existing = existingTasks.find(t => t.title === task.title);
       if (existing) {
         await updateStageTask(existing.id, { order: index });
       } else {
-        await addStageTask({ ...task, stageId, order: index, createdAt: new Date() });
+        await addStageTask({ ...task, stageId, order: index, createdAt: new Date(), categoryId });
       }
     });
-    
+
     await Promise.all(promises);
   } catch (error) {
     console.error("Error saving stage tasks:", error);
@@ -1017,14 +1043,14 @@ export const getProjectStageTasks = async (projectId: string): Promise<ProjectSt
 export const subscribeToProjectStageTasks = (projectId: string, callback: (tasks: ProjectStageTask[]) => void) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   const q = query(
     collection(db, PROJECT_STAGE_TASKS_COLLECTION),
     where("projectId", "==", projectId)
   );
-  
+
   return onSnapshot(q, (snapshot) => {
     const tasks = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -1043,7 +1069,7 @@ export const toggleProjectStageTask = async (projectId: string, stageTaskId: str
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Verificar se já existe
     const q = query(
       collection(db, PROJECT_STAGE_TASKS_COLLECTION),
@@ -1051,7 +1077,7 @@ export const toggleProjectStageTask = async (projectId: string, stageTaskId: str
       where("stageTaskId", "==", stageTaskId)
     );
     const snapshot = await getDocs(q);
-    
+
     if (snapshot.empty) {
       // Criar novo
       await addDoc(collection(db, PROJECT_STAGE_TASKS_COLLECTION), {
@@ -1076,15 +1102,40 @@ export const toggleProjectStageTask = async (projectId: string, stageTaskId: str
   }
 };
 
-export const initializeProjectStageTasks = async (projectId: string, stageId: string): Promise<void> => {
+export const initializeProjectStageTasks = async (projectId: string, stageId: string, categoryId?: string): Promise<void> => {
   try {
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Buscar tarefas da etapa
-    const stageTasks = await getStageTasks(stageId);
-    
+    // Buscar tarefas da etapa para essa categoria (ou geral se não tiver)
+    // Tenta buscar específicas primeiro
+    let stageTasks: StageTask[] = [];
+
+    if (categoryId) {
+      stageTasks = await getStageTasks(stageId, categoryId);
+    }
+
+    // Se não achar específicas (ou se categoria não foi passada), busca as globais ('all')
+    if (stageTasks.length === 0) {
+      const globalTasks = await getStageTasks(stageId, 'all');
+      // Se ainda não achar, tenta buscar sem filtro (legado)
+      if (globalTasks.length === 0) {
+        const allTasks = await getStageTasks(stageId);
+        // Filtrar as que não tem categoryId (legado)
+        stageTasks = allTasks.filter(t => !t.categoryId);
+      } else {
+        stageTasks = globalTasks;
+      }
+    }
+
+    if (stageTasks.length === 0 && categoryId) {
+      // Fallback: se não tem tasks específicas nem globais 'all', tenta as legadas
+      const allTasks = await getStageTasks(stageId);
+      stageTasks = allTasks.filter(t => !t.categoryId || t.categoryId === 'all');
+    }
+
     // Criar tarefas do projeto para cada tarefa da etapa
     const promises = stageTasks.map(async (stageTask) => {
       const q = query(
@@ -1093,21 +1144,248 @@ export const initializeProjectStageTasks = async (projectId: string, stageId: st
         where("stageTaskId", "==", stageTask.id)
       );
       const snapshot = await getDocs(q);
-      
+
       if (snapshot.empty) {
         await addDoc(collection(db, PROJECT_STAGE_TASKS_COLLECTION), {
           projectId,
           stageTaskId: stageTask.id,
           stageId,
+          title: stageTask.title, // Copiar título do template
+          order: stageTask.order, // Copiar ordem do template
           completed: false,
           createdAt: new Date()
         });
       }
     });
-    
+
     await Promise.all(promises);
   } catch (error) {
     console.error("Error initializing project stage tasks:", error);
+    throw error;
+  }
+};
+
+// Adicionar tarefa manualmente a um projeto
+export const addProjectTask = async (
+  projectId: string,
+  stageId: string,
+  title: string,
+  order: number
+): Promise<string> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    const docRef = await addDoc(collection(db, PROJECT_STAGE_TASKS_COLLECTION), {
+      projectId,
+      stageTaskId: '', // Vazio para tarefas manuais
+      stageId,
+      title,
+      order,
+      completed: false,
+      createdAt: new Date()
+    });
+
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding project task:", error);
+    throw error;
+  }
+};
+
+// Remover tarefa de um projeto
+export const removeProjectTask = async (taskId: string): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    await deleteDoc(doc(db, PROJECT_STAGE_TASKS_COLLECTION, taskId));
+  } catch (error) {
+    console.error("Error removing project task:", error);
+    throw error;
+  }
+};
+
+// Atualizar ordem das tarefas de um projeto
+export const updateProjectTasksOrder = async (
+  tasks: Array<{ id: string; order: number }>
+): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    const promises = tasks.map(task =>
+      updateDoc(doc(db, PROJECT_STAGE_TASKS_COLLECTION, task.id), { order: task.order })
+    );
+
+    await Promise.all(promises);
+  } catch (error) {
+    console.error("Error updating project tasks order:", error);
+    throw error;
+  }
+};
+
+// Redefinir tarefas de uma etapa para o padrão do template
+export const resetProjectStageTasks = async (
+  projectId: string,
+  stageId: string,
+  categoryId?: string
+): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    console.log('resetProjectStageTasks called with:', { projectId, stageId, categoryId });
+
+    // Mapeamento de stageId fixo para títulos (usado em fixedStages)
+    const fixedStageMap: { [key: string]: string } = {
+      'onboarding': 'On boarding',
+      'development': 'Em Desenvolvimento',
+      'review': 'Em Revisão',
+      'completed': 'Concluído',
+      'maintenance-recurring': 'Manutenção',
+      'finished-recurring': 'Finalizado'
+    };
+
+    // 1. Buscar todos os stages do Firestore para encontrar o ID correto
+    let firestoreStageIds: string[] = [stageId]; // Começar com o stageId passado
+
+    const stagesSnapshot = await getDocs(collection(db, STAGES_COLLECTION));
+    const firestoreStages = stagesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      title: doc.data().title as string
+    }));
+
+    console.log('Firestore stages found:', firestoreStages.map(s => ({ id: s.id, title: s.title })));
+
+    // Se o stageId for um ID fixo, encontrar o stage correspondente no Firestore pelo título
+    const fixedTitle = fixedStageMap[stageId];
+    if (fixedTitle) {
+      const matchingStage = firestoreStages.find(s => s.title === fixedTitle);
+      if (matchingStage) {
+        console.log(`Found matching Firestore stage for "${fixedTitle}":`, matchingStage.id);
+        firestoreStageIds.push(matchingStage.id);
+      }
+    }
+
+    // Também verificar se algum stage tem o mesmo ID (caso seja ID Firestore)
+    const directMatch = firestoreStages.find(s => s.id === stageId);
+    if (directMatch) {
+      console.log('Direct ID match found:', directMatch.id);
+    }
+
+    // 2. DEBUG: Buscar TODAS as stageTasks para ver que stageIds existem
+    const allStageTasksSnapshot = await getDocs(collection(db, STAGE_TASKS_COLLECTION));
+    const allStageTasks = allStageTasksSnapshot.docs.map(doc => ({
+      id: doc.id,
+      stageId: doc.data().stageId as string,
+      title: doc.data().title as string,
+      categoryId: doc.data().categoryId as string | undefined,
+      order: doc.data().order as number | undefined
+    }));
+    console.log('DEBUG - All stageTasks in database:', allStageTasks.map(t => ({ stageId: t.stageId, title: t.title, categoryId: t.categoryId, order: t.order })));
+
+    // Extrair stageIds únicos das tasks
+    const uniqueStageIdsInTasks = [...new Set(allStageTasks.map(t => t.stageId))];
+    console.log('DEBUG - Unique stageIds in stageTasks:', uniqueStageIdsInTasks);
+
+    // Tentar extrair base do stageId composto (ex: "onboarding-pFiTgBJXn1owxfpppJ04" -> tentar "onboarding")
+    const baseStageId = stageId.split('-')[0]; // Ex: "onboarding"
+    console.log('DEBUG - Base stageId extracted:', baseStageId);
+
+    // Adicionar stageIds que podem corresponder ao encontrado nas tasks
+    const matchingStageIdsInTasks = uniqueStageIdsInTasks.filter(taskStageId => {
+      const taskBaseId = taskStageId.split('-')[0];
+      return taskBaseId === baseStageId || taskStageId === stageId;
+    });
+    console.log('DEBUG - Matching stageIds found in tasks:', matchingStageIdsInTasks);
+
+    // Adicionar os stageIds encontrados na busca
+    for (const matchId of matchingStageIdsInTasks) {
+      if (!firestoreStageIds.includes(matchId)) {
+        firestoreStageIds.push(matchId);
+      }
+    }
+
+    console.log('All stageIds to try:', firestoreStageIds);
+
+    // 3. USAR OS DADOS JÁ BUSCADOS - filtrar por stageId diretamente
+    // Primeiro tentar encontrar tasks específicas da categoria
+    let matchedTasks = allStageTasks.filter(t =>
+      firestoreStageIds.includes(t.stageId) && t.categoryId === categoryId
+    );
+    console.log('Found category-specific tasks from allStageTasks:', matchedTasks.length);
+
+    // Se não encontrou específicas, buscar globais ('all')
+    if (matchedTasks.length === 0) {
+      matchedTasks = allStageTasks.filter(t =>
+        firestoreStageIds.includes(t.stageId) && t.categoryId === 'all'
+      );
+      console.log('Found global (all) tasks from allStageTasks:', matchedTasks.length);
+    }
+
+    // Se ainda não encontrou, buscar qualquer task do stageId (legado - sem categoryId ou com qualquer categoryId)
+    if (matchedTasks.length === 0) {
+      matchedTasks = allStageTasks.filter(t =>
+        firestoreStageIds.includes(t.stageId)
+      );
+      console.log('Found ANY tasks for stageId from allStageTasks:', matchedTasks.length);
+    }
+
+    // Ordenar pelo campo order antes de converter
+    matchedTasks.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    // Converter para StageTask format
+    const stageTasks: StageTask[] = matchedTasks.map((t, index) => ({
+      id: t.id,
+      stageId: t.stageId,
+      title: t.title,
+      order: t.order ?? index, // Usar order do Firestore ou fallback para index
+      categoryId: t.categoryId,
+      createdAt: new Date()
+    }));
+
+    // Se não encontrou nenhum template, lançar erro ao invés de apagar tudo
+    if (stageTasks.length === 0) {
+      console.warn('No template tasks found for stage:', stageId, 'tried:', firestoreStageIds);
+      throw new Error('Nenhum template de tarefas encontrado para esta etapa. Configure as tarefas em Configurações > Etapas e Tarefas.');
+    }
+
+    console.log('Will create tasks:', stageTasks.map(t => t.title));
+
+    // 3. AGORA podemos remover as tarefas atuais dessa etapa no projeto
+    const currentTasksQuery = query(
+      collection(db, PROJECT_STAGE_TASKS_COLLECTION),
+      where("projectId", "==", projectId),
+      where("stageId", "==", stageId)
+    );
+    const currentTasksSnapshot = await getDocs(currentTasksQuery);
+    console.log('Deleting existing tasks:', currentTasksSnapshot.docs.length);
+
+    const deletePromises = currentTasksSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+
+    // 4. Criar novas tarefas do projeto baseadas no template
+    const createPromises = stageTasks.map(stageTask =>
+      addDoc(collection(db, PROJECT_STAGE_TASKS_COLLECTION), {
+        projectId,
+        stageTaskId: stageTask.id,
+        stageId,
+        title: stageTask.title,
+        order: stageTask.order,
+        completed: false,
+        createdAt: new Date()
+      })
+    );
+
+    await Promise.all(createPromises);
+    console.log('Successfully created', stageTasks.length, 'tasks');
+  } catch (error) {
+    console.error("Error resetting project stage tasks:", error);
     throw error;
   }
 };
@@ -1118,7 +1396,7 @@ const getFileType = (fileName: string, mimeType: string): 'image' | 'document' |
   const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
   const videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm'];
   const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'];
-  
+
   if (mimeType.startsWith('image/') || imageExtensions.includes(extension)) {
     return 'image';
   }
@@ -1132,8 +1410,8 @@ const getFileType = (fileName: string, mimeType: string): 'image' | 'document' |
 };
 
 export const uploadProjectFile = async (
-  projectId: string, 
-  file: File, 
+  projectId: string,
+  file: File,
   uploadedBy?: string,
   userId?: string | null
 ): Promise<string> => {
@@ -1141,19 +1419,19 @@ export const uploadProjectFile = async (
     if (!storage) {
       throw new Error("Firebase Storage não está inicializado");
     }
-    
+
     // Criar referência no Storage com isolamento por usuário
-    const path = userId 
+    const path = userId
       ? `users/${userId}/projects/${projectId}/${Date.now()}_${file.name}`
       : `projects/${projectId}/${Date.now()}_${file.name}`;
     const fileRef = ref(storage, path);
-    
+
     // Fazer upload do arquivo
     const snapshot = await uploadBytes(fileRef, file);
-    
+
     // Obter URL de download
     const downloadURL = await getDownloadURL(snapshot.ref);
-    
+
     // Salvar metadados no Firestore
     const fileData = {
       projectId,
@@ -1164,7 +1442,7 @@ export const uploadProjectFile = async (
       uploadedBy: uploadedBy || 'Usuário',
       uploadedAt: new Date()
     };
-    
+
     const docRef = await addDoc(collection(db, PROJECT_FILES_COLLECTION), fileData);
     return docRef.id;
   } catch (error) {
@@ -1191,7 +1469,7 @@ export const getProjectFiles = async (projectId: string): Promise<ProjectFile[]>
       ...doc.data(),
       uploadedAt: doc.data().uploadedAt?.toDate?.() || doc.data().uploadedAt
     })) as ProjectFile[];
-    
+
     // Ordenar no cliente por data de upload (mais recente primeiro)
     return files.sort((a, b) => {
       const dateA = a.uploadedAt?.toDate ? a.uploadedAt.toDate() : new Date(a.uploadedAt);
@@ -1207,29 +1485,29 @@ export const getProjectFiles = async (projectId: string): Promise<ProjectFile[]>
 export const subscribeToProjectFiles = (projectId: string, callback: (files: ProjectFile[]) => void) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Remover orderBy para evitar necessidade de índice composto
   const q = query(
     collection(db, PROJECT_FILES_COLLECTION),
     where("projectId", "==", projectId)
   );
-  
+
   return onSnapshot(q, (snapshot) => {
     const files = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       uploadedAt: doc.data().uploadedAt?.toDate?.() || doc.data().uploadedAt
     })) as ProjectFile[];
-    
+
     // Ordenar no cliente por data de upload (mais recente primeiro)
     const sortedFiles = files.sort((a, b) => {
       const dateA = a.uploadedAt?.toDate ? a.uploadedAt.toDate() : new Date(a.uploadedAt);
       const dateB = b.uploadedAt?.toDate ? b.uploadedAt.toDate() : new Date(b.uploadedAt);
       return dateB.getTime() - dateA.getTime();
     });
-    
+
     callback(sortedFiles);
   }, (error) => {
     console.error("Error in project files subscription:", error);
@@ -1241,7 +1519,7 @@ export const deleteProjectFile = async (fileId: string, fileUrl: string): Promis
     if (!storage || !db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Deletar do Storage
     // Extrair o caminho do arquivo da URL do Firebase Storage
     try {
@@ -1258,7 +1536,7 @@ export const deleteProjectFile = async (fileId: string, fileUrl: string): Promis
         console.warn("Error deleting file from storage:", error);
       }
     }
-    
+
     // Deletar do Firestore
     await deleteDoc(doc(db, PROJECT_FILES_COLLECTION, fileId));
   } catch (error) {
@@ -1273,16 +1551,16 @@ export const uploadProjectAvatar = async (projectId: string, file: File): Promis
     if (!storage) {
       throw new Error("Firebase Storage não está inicializado");
     }
-    
+
     // Criar referência no Storage
     const fileRef = ref(storage, `projects/${projectId}/avatar/${Date.now()}_${file.name}`);
-    
+
     // Fazer upload do arquivo
     const snapshot = await uploadBytes(fileRef, file);
-    
+
     // Obter URL de download
     const downloadURL = await getDownloadURL(snapshot.ref);
-    
+
     return downloadURL;
   } catch (error) {
     console.error("Error uploading project avatar:", error);
@@ -1295,19 +1573,19 @@ export const uploadProjectImage = async (projectId: string, file: File, userId?:
     if (!storage) {
       throw new Error("Firebase Storage não está inicializado");
     }
-    
+
     // Criar referência no Storage para a imagem do projeto com isolamento por usuário
     const path = userId
       ? `users/${userId}/projects/${projectId}/project-image/${Date.now()}_${file.name}`
       : `projects/${projectId}/project-image/${Date.now()}_${file.name}`;
     const fileRef = ref(storage, path);
-    
+
     // Fazer upload do arquivo
     const snapshot = await uploadBytes(fileRef, file);
-    
+
     // Obter URL de download
     const downloadURL = await getDownloadURL(snapshot.ref);
-    
+
     return downloadURL;
   } catch (error) {
     console.error("Error uploading project image:", error);
@@ -1330,14 +1608,14 @@ export const getWorkspaces = async (): Promise<Workspace[]> => {
       createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
       updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
     })) as Workspace[];
-    
+
     // Ordenar no cliente por data de criação (mais recente primeiro)
     workspaces.sort((a, b) => {
       const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
       const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
       return dateB - dateA;
     });
-    
+
     return workspaces;
   } catch (error) {
     console.error("Error getting workspaces:", error);
@@ -1349,9 +1627,9 @@ export const getWorkspaces = async (): Promise<Workspace[]> => {
 export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => void, userId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   try {
     // Filtrar por userId se fornecido
     let q;
@@ -1363,7 +1641,7 @@ export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => voi
     } else {
       q = query(collection(db, WORKSPACES_COLLECTION));
     }
-    return onSnapshot(q, 
+    return onSnapshot(q,
       (querySnapshot) => {
         const workspaces = querySnapshot.docs.map(doc => ({
           id: doc.id,
@@ -1371,34 +1649,34 @@ export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => voi
           createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
           updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
         })) as Workspace[];
-        
+
         // Ordenar no cliente por data de criação (mais recente primeiro)
         workspaces.sort((a, b) => {
           const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
           const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
           return dateB - dateA;
         });
-        
+
         callback(workspaces);
-      }, 
+      },
       (error) => {
         console.error("Error in workspaces subscription:", error);
         console.error("Error code:", error?.code);
         console.error("Error message:", error?.message);
-        
+
         // Se for erro de permissão, tentar novamente após um delay
         if (error?.code === 'permission-denied') {
           console.warn("⚠️ Erro de permissão detectado. Verifique as regras do Firestore no Firebase Console.");
           console.warn("⚠️ As regras devem permitir leitura/escrita para a coleção 'workspaces'");
         }
-        
+
         // Retornar array vazio em caso de erro para não quebrar a UI
         callback([]);
       }
     );
   } catch (error: any) {
     console.error("Error setting up workspaces subscription:", error);
-    return () => {};
+    return () => { };
   }
 };
 
@@ -1414,31 +1692,31 @@ export const addWorkspace = async (workspace: Omit<Workspace, "id">, userId?: st
       console.error("Firebase não está inicializado - db é", db);
       throw new Error("Firebase não está inicializado");
     }
-    
+
     if (!workspace.name || !workspace.name.trim()) {
       throw new Error("Nome do workspace é obrigatório");
     }
-    
+
     const workspaceData: any = {
       name: workspace.name.trim(),
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     // Adicionar userId se fornecido
     if (userId) {
       workspaceData.userId = userId;
     }
-    
+
     console.log("Adicionando workspace:", workspaceData);
     const docRef = await addDoc(collection(db, WORKSPACES_COLLECTION), workspaceData);
     const workspaceId = docRef.id;
     console.log("Workspace adicionado com ID:", workspaceId);
-    
+
     // Criar serviços padrão para o novo workspace
     try {
       console.log("Criando serviços padrão para o workspace:", workspaceId);
-      const defaultCategoriesPromises = DEFAULT_CATEGORIES.map(category => 
+      const defaultCategoriesPromises = DEFAULT_CATEGORIES.map(category =>
         addCategory(category.name, workspaceId, category.isRecurring, workspace.userId)
       );
       await Promise.all(defaultCategoriesPromises);
@@ -1447,7 +1725,7 @@ export const addWorkspace = async (workspace: Omit<Workspace, "id">, userId?: st
       console.error("⚠️ Erro ao criar serviços padrão (workspace já foi criado):", error);
       // Não lançar erro aqui - o workspace já foi criado, apenas logar o erro
     }
-    
+
     return workspaceId;
   } catch (error: any) {
     console.error("Error adding workspace:", error);
@@ -1479,19 +1757,19 @@ export const uploadWorkspaceAvatar = async (workspaceId: string, file: File, use
     if (!storage) {
       throw new Error("Firebase Storage não está inicializado");
     }
-    
+
     // Criar referência no Storage para o avatar do workspace com isolamento por usuário
     const path = userId
       ? `users/${userId}/workspaces/${workspaceId}/avatar/${Date.now()}_${file.name}`
       : `workspaces/${workspaceId}/avatar/${Date.now()}_${file.name}`;
     const fileRef = ref(storage, path);
-    
+
     // Fazer upload do arquivo
     const snapshot = await uploadBytes(fileRef, file);
-    
+
     // Obter URL de download
     const downloadURL = await getDownloadURL(snapshot.ref);
-    
+
     return downloadURL;
   } catch (error) {
     console.error("Error uploading workspace avatar:", error);
@@ -1515,24 +1793,24 @@ export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
 export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId?: string, userId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
-    return () => {};
+    return () => { };
   }
-  
+
   // Filtrar por projectId e userId
   const conditions: any[] = [];
-  
+
   if (projectId) {
     conditions.push(where("projectId", "==", projectId));
   }
-  
+
   if (userId) {
     conditions.push(where("userId", "==", userId));
   }
-  
+
   const q = conditions.length > 0
     ? query(collection(db, INVOICES_COLLECTION), ...conditions)
     : query(collection(db, INVOICES_COLLECTION));
-  
+
   return onSnapshot(q, (querySnapshot) => {
     const invoices = querySnapshot.docs.map(doc => ({
       id: doc.id,
@@ -1541,16 +1819,16 @@ export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, pro
       createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
       updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
     })) as Invoice[];
-    
+
     console.log(`📋 [subscribeToInvoices] Carregadas ${invoices.length} faturas para projectId: ${projectId}`);
-    
+
     // Ordenar no cliente por data (mais recente primeiro)
     invoices.sort((a, b) => {
       const dateA = a.date instanceof Date ? a.date : new Date(a.date);
       const dateB = b.date instanceof Date ? b.date : new Date(b.date);
       return dateB.getTime() - dateA.getTime();
     });
-    
+
     callback(invoices);
   }, (error) => {
     console.error("❌ [subscribeToInvoices] Erro ao buscar faturas:", error);
@@ -1564,7 +1842,7 @@ export const addInvoice = async (invoice: Omit<Invoice, "id">, userId?: string |
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     console.log(`💰 [addInvoice] Criando fatura:`, {
       projectId: invoice.projectId,
       description: invoice.description,
@@ -1572,34 +1850,34 @@ export const addInvoice = async (invoice: Omit<Invoice, "id">, userId?: string |
       number: invoice.number,
       userId
     });
-    
+
     const invoiceData: any = {
       ...invoice,
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     // Adicionar userId se fornecido
     if (userId) {
       invoiceData.userId = userId;
     }
-    
+
     // Remover campos undefined
     Object.keys(invoiceData).forEach(key => {
       if (invoiceData[key as keyof typeof invoiceData] === undefined) {
         delete invoiceData[key as keyof typeof invoiceData];
       }
     });
-    
+
     const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoiceData);
-    
+
     console.log(`✅ [addInvoice] Fatura criada com sucesso! ID: ${docRef.id}`);
-    
+
     // Atualizar o budget do projeto (somar apenas faturas de implementação, não de mensalidade)
     const invoicesSnapshot = await getDocs(
       query(collection(db, INVOICES_COLLECTION), where("projectId", "==", invoice.projectId))
     );
-    
+
     // Somar apenas faturas que NÃO são de mensalidade (REC-*)
     const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
       const invoiceNumber = doc.data().number || '';
@@ -1609,13 +1887,13 @@ export const addInvoice = async (invoice: Omit<Invoice, "id">, userId?: string |
       }
       return sum + (doc.data().amount || 0);
     }, 0);
-    
+
     const projectRef = doc(db, PROJECTS_COLLECTION, invoice.projectId);
     await updateDoc(projectRef, {
       budget: totalAmount,
       updatedAt: new Date()
     });
-    
+
     return docRef.id;
   } catch (error) {
     console.error("Error adding invoice:", error);
@@ -1628,32 +1906,32 @@ export const updateInvoice = async (invoiceId: string, updates: Partial<Invoice>
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
     const updateData = {
       ...updates,
       updatedAt: new Date()
     };
-    
+
     // Remover campos undefined
     Object.keys(updateData).forEach(key => {
       if (updateData[key as keyof typeof updateData] === undefined) {
         delete updateData[key as keyof typeof updateData];
       }
     });
-    
+
     await updateDoc(invoiceRef, updateData);
-    
+
     // Buscar o projectId para atualizar o budget
     const invoiceDoc = await getDoc(doc(db, INVOICES_COLLECTION, invoiceId));
     if (invoiceDoc.exists()) {
       const projectId = invoiceDoc.data().projectId;
-      
+
       // Recalcular o budget total (excluindo faturas de mensalidade REC-*)
       const invoicesSnapshot = await getDocs(
         query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
       );
-      
+
       // Somar apenas faturas que NÃO são de mensalidade (REC-*)
       const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
         const invoiceNumber = doc.data().number || '';
@@ -1663,7 +1941,7 @@ export const updateInvoice = async (invoiceId: string, updates: Partial<Invoice>
         }
         return sum + (doc.data().amount || 0);
       }, 0);
-      
+
       const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
       await updateDoc(projectRef, {
         budget: totalAmount,
@@ -1681,23 +1959,23 @@ export const deleteInvoice = async (invoiceId: string): Promise<void> => {
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
-    
+
     // Buscar o projectId antes de deletar
     const invoiceDoc = await getDoc(doc(db, INVOICES_COLLECTION, invoiceId));
     let projectId: string | null = null;
-    
+
     if (invoiceDoc.exists()) {
       projectId = invoiceDoc.data().projectId;
     }
-    
+
     await deleteDoc(doc(db, INVOICES_COLLECTION, invoiceId));
-    
+
     // Recalcular o budget total (excluindo faturas de mensalidade REC-*)
     if (projectId) {
       const invoicesSnapshot = await getDocs(
         query(collection(db, INVOICES_COLLECTION), where("projectId", "==", projectId))
       );
-      
+
       // Somar apenas faturas que NÃO são de mensalidade (REC-*)
       const totalAmount = invoicesSnapshot.docs.reduce((sum, doc) => {
         const invoiceNumber = doc.data().number || '';
@@ -1707,7 +1985,7 @@ export const deleteInvoice = async (invoiceId: string): Promise<void> => {
         }
         return sum + (doc.data().amount || 0);
       }, 0);
-      
+
       const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
       await updateDoc(projectRef, {
         budget: totalAmount,

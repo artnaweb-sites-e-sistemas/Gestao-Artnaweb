@@ -1,12 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Workspace, Category } from '../types';
 import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase, Stage } from '../firebase/services';
+import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
   onWorkspaceUpdate?: (workspace: Workspace) => void;
   userId?: string | null;
 }
+
+// Etapas fixas para serviços recorrentes (copiado do Dashboard)
+const fixedStagesRecurring: Stage[] = [
+  { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
+  { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
+  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 3, progress: 100, isFixed: true },
+  { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 4, progress: 100, isFixed: true }
+];
 
 export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId }) => {
   const [activeSection, setActiveSection] = useState<'general' | 'services' | 'appearance' | 'danger'>('general');
@@ -18,7 +28,9 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
+  const [stageToEditTasks, setStageToEditTasks] = useState<Stage | null>(null);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('all');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Cores predefinidas para o workspace
@@ -45,7 +57,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
   useEffect(() => {
     if (!currentWorkspace?.id) return;
-    
+
     const unsubscribe = subscribeToCategories((fetchedCategories) => {
       const workspaceCategories = fetchedCategories.filter(c => c.workspaceId === currentWorkspace.id);
       setCategories(workspaceCategories);
@@ -56,7 +68,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
   useEffect(() => {
     if (!currentWorkspace?.id) return;
-    
+
     const unsubscribe = subscribeToStages((fetchedStages) => {
       const workspaceStages = fetchedStages.filter(s => (s as any).workspaceId === currentWorkspace.id);
       // Ordenar por order
@@ -73,14 +85,14 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
   const handleSaveGeneral = async () => {
     if (!currentWorkspace?.id) return;
-    
+
     setSaving(true);
     try {
       await updateWorkspace(currentWorkspace.id, {
         name: workspaceName,
         description: workspaceDescription,
       });
-      
+
       if (onWorkspaceUpdate) {
         onWorkspaceUpdate({
           ...currentWorkspace,
@@ -88,7 +100,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
           description: workspaceDescription,
         });
       }
-      
+
       setToast({ message: 'Configurações salvas com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
@@ -102,20 +114,20 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
   const handleSaveAppearance = async () => {
     if (!currentWorkspace?.id) return;
-    
+
     setSaving(true);
     try {
       await updateWorkspace(currentWorkspace.id, {
         color: workspaceColor,
       });
-      
+
       if (onWorkspaceUpdate) {
         onWorkspaceUpdate({
           ...currentWorkspace,
           color: workspaceColor,
         });
       }
-      
+
       setToast({ message: 'Aparência salva com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
@@ -129,19 +141,19 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
   const handleAvatarUpload = async (file: File) => {
     if (!currentWorkspace?.id) return;
-    
+
     setUploadingAvatar(true);
     try {
       const avatarUrl = await uploadWorkspaceAvatar(currentWorkspace.id, file, userId);
       await updateWorkspace(currentWorkspace.id, { avatar: avatarUrl });
-      
+
       if (onWorkspaceUpdate) {
         onWorkspaceUpdate({
           ...currentWorkspace,
           avatar: avatarUrl,
         });
       }
-      
+
       setToast({ message: 'Foto atualizada com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
@@ -160,7 +172,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     if (!confirm('Tem certeza que deseja excluir este serviço? Todos os projetos vinculados perderão a categoria.')) {
       return;
     }
-    
+
     try {
       await deleteCategoryById(categoryId);
       setToast({ message: 'Serviço excluído com sucesso!', type: 'success' });
@@ -176,7 +188,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     if (!confirm(`Tem certeza que deseja excluir a etapa "${stageTitle}"? Os projetos nesta etapa serão movidos para a primeira etapa disponível.`)) {
       return;
     }
-    
+
     try {
       await deleteStageFromFirebase(stageId);
       setToast({ message: 'Etapa excluída com sucesso!', type: 'success' });
@@ -199,6 +211,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
   const menuItems = [
     { id: 'general', icon: 'tune', label: 'Geral' },
     { id: 'services', icon: 'category', label: 'Serviços' },
+    { id: 'stages', icon: 'checklist', label: 'Etapas e Tarefas' },
     { id: 'appearance', icon: 'palette', label: 'Aparência' },
     { id: 'danger', icon: 'warning', label: 'Zona de Perigo' },
   ];
@@ -218,11 +231,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     <div className="flex h-full bg-slate-50 dark:bg-slate-900/20">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-right ${
-          toast.type === 'success' 
-            ? 'bg-emerald-500 text-white' 
-            : 'bg-red-500 text-white'
-        }`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-right ${toast.type === 'success'
+          ? 'bg-emerald-500 text-white'
+          : 'bg-red-500 text-white'
+          }`}>
           <span className="material-symbols-outlined text-lg">
             {toast.type === 'success' ? 'check_circle' : 'error'}
           </span>
@@ -242,11 +254,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
             <button
               key={item.id}
               onClick={() => setActiveSection(item.id as any)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeSection === item.id
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              } ${item.id === 'danger' ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20' : ''}`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeSection === item.id
+                ? 'bg-primary/10 text-primary'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                } ${item.id === 'danger' ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20' : ''}`}
             >
               <span className={`material-symbols-outlined text-xl ${item.id === 'danger' && activeSection !== 'danger' ? 'text-red-500' : ''}`}>
                 {item.icon}
@@ -260,7 +271,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
       {/* Conteúdo principal */}
       <main className="flex-1 overflow-y-auto p-8">
         <div className="max-w-3xl mx-auto">
-          
+
           {/* Seção Geral */}
           {activeSection === 'general' && (
             <div className="space-y-8">
@@ -274,16 +285,16 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Foto do Workspace</h4>
                 <div className="flex items-center gap-6">
                   <div className="relative group">
-                    <div 
+                    <div
                       className="size-24 rounded-2xl bg-slate-200 ring-4 ring-slate-100 dark:ring-slate-800 shadow-lg cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ 
-                        backgroundImage: `url('${getWorkspaceAvatar()}')`, 
+                      style={{
+                        backgroundImage: `url('${getWorkspaceAvatar()}')`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center'
                       }}
                       onClick={() => avatarInputRef.current?.click()}
                     />
-                    <div 
+                    <div
                       className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       onClick={() => avatarInputRef.current?.click()}
                     >
@@ -380,8 +391,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
                     <p className="text-xs text-slate-500 mb-1">Criado em</p>
                     <p className="text-sm text-slate-700 dark:text-slate-300">
-                      {currentWorkspace.createdAt?.toDate?.()?.toLocaleDateString('pt-BR') || 
-                       new Date(currentWorkspace.createdAt).toLocaleDateString('pt-BR')}
+                      {currentWorkspace.createdAt?.toDate?.()?.toLocaleDateString('pt-BR') ||
+                        new Date(currentWorkspace.createdAt).toLocaleDateString('pt-BR')}
                     </p>
                   </div>
                 </div>
@@ -415,19 +426,18 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   <div className="space-y-3">
                     {categories.map((category) => {
                       const isExpanded = expandedServiceId === category.id;
-                      
+
                       return (
                         <div key={category.id} className="space-y-2">
-                          <div 
+                          <div
                             className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                             onClick={() => setExpandedServiceId(isExpanded ? null : category.id)}
                           >
                             <div className="flex items-center gap-4 flex-1">
-                              <div className={`size-10 rounded-xl flex items-center justify-center ${
-                                category.isRecurring 
-                                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                                  : 'bg-primary/10 text-primary'
-                              }`}>
+                              <div className={`size-10 rounded-xl flex items-center justify-center ${category.isRecurring
+                                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                                : 'bg-primary/10 text-primary'
+                                }`}>
                                 <span className="material-symbols-outlined">
                                   {category.isRecurring ? 'autorenew' : 'inventory_2'}
                                 </span>
@@ -454,7 +464,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                               </button>
                             </div>
                           </div>
-                          
+
                           {/* Etapas expandidas */}
                           {isExpanded && (
                             <div className="ml-4 pl-4 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
@@ -462,7 +472,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                                 // Filtrar etapas customizadas: isFixed !== true (inclui false e undefined)
                                 const customStages = stages.filter(s => s.isFixed !== true);
                                 console.log(`🔍 [Settings] Serviço "${category.name}": ${customStages.length} etapas customizadas`, customStages.map(s => s.title));
-                                
+
                                 return customStages.length === 0 ? (
                                   <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
                                     <p className="text-xs text-slate-500 text-center">
@@ -484,7 +494,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                                     const statusColor = statusColors[stage.status] || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
 
                                     return (
-                                      <div 
+                                      <div
                                         key={stage.id}
                                         className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700"
                                       >
@@ -492,10 +502,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                                           <div className={`size-8 rounded-lg flex items-center justify-center ${statusColor}`}>
                                             <span className="material-symbols-outlined text-sm">
                                               {stage.status === 'Lead' ? 'play_arrow' :
-                                               stage.status === 'Active' ? 'progress_activity' :
-                                               stage.status === 'Review' ? 'rate_review' :
-                                               stage.status === 'Completed' ? 'check_circle' :
-                                               'done_all'}
+                                                stage.status === 'Active' ? 'progress_activity' :
+                                                  stage.status === 'Review' ? 'rate_review' :
+                                                    stage.status === 'Completed' ? 'check_circle' :
+                                                      'done_all'}
                                             </span>
                                           </div>
                                           <div className="flex-1">
@@ -537,13 +547,110 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   <div>
                     <p className="text-sm font-bold text-blue-700 dark:text-blue-300">Dica</p>
                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                      Para adicionar novos serviços, use o botão "Novo Serviço" no painel principal. 
+                      Para adicionar novos serviços, use o botão "Novo Serviço" no painel principal.
                       Você pode reordenar os serviços arrastando as abas.
                     </p>
                   </div>
                 </div>
               </div>
 
+            </div>
+          )}
+
+
+          {/* Seção Etapas e Tarefas */}
+          {activeSection === 'stages' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div>
+                <h3 className="text-2xl font-black tracking-tight mb-2">Etapas e Tarefas</h3>
+                <p className="text-slate-500 text-sm">Configure as tarefas padrão para cada etapa do fluxo de trabalho</p>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                    Selecione o Serviço para Configurar
+                  </label>
+                  <select
+                    value={selectedServiceId}
+                    onChange={(e) => setSelectedServiceId(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all cursor-pointer"
+                  >
+                    <option value="all">Padrão (Configuração Global)</option>
+                    <optgroup label="Serviços Padrão">
+                      {categories.filter(c => !c.isRecurring).map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Serviços Recorrentes">
+                      {categories.filter(c => c.isRecurring).map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {selectedServiceId === 'all'
+                      ? "Estas tarefas serão aplicadas a todos os serviços que não tiverem uma configuração específica."
+                      : "Defina tarefas específicas para este serviço. Se vazio, o sistema usará a configuração global."}
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  {(() => {
+                    const selectedCategory = categories.find(c => c.id === selectedServiceId);
+                    const isRecurring = selectedCategory?.isRecurring;
+                    // Se for recorrente, usa fixedStagesRecurring. Se não (ou se for 'all'), usa stages padrão.
+                    const currentStages = isRecurring ? fixedStagesRecurring : stages;
+
+                    return currentStages.map((stage) => (
+                      <div key={stage.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary/30 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="size-10 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300">
+                            {stage.order + 1}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{stage.title}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${stage.status === 'Completed' || stage.status === 'Finished'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : stage.status === 'Review'
+                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                }`}>
+                                {stage.status}
+                              </span>
+                              {stage.isFixed && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  FIXA
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setStageToEditTasks(stage)}
+                          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-primary hover:border-primary transition-all shadow-sm hover:shadow-md"
+                        >
+                          <span className="material-symbols-outlined text-lg">checklist</span>
+                          Definir Tarefas
+                        </button>
+                      </div>
+                    ));
+                  })()}
+
+                  {(() => {
+                    const selectedCategory = categories.find(c => c.id === selectedServiceId);
+                    const isRecurring = selectedCategory?.isRecurring;
+                    const currentStages = isRecurring ? fixedStagesRecurring : stages;
+                    return currentStages.length === 0;
+                  })() && (
+                      <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+                        <span className="material-symbols-outlined text-4xl mb-2">playlist_remove</span>
+                        <p>Nenhuma etapa encontrada neste workspace.</p>
+                      </div>
+                    )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -558,17 +665,16 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Cor do Tema</h4>
                 <p className="text-xs text-slate-500 mb-4">Escolha uma cor para identificar seu workspace</p>
-                
+
                 <div className="flex flex-wrap gap-3 mb-6">
                   {presetColors.map((color) => (
                     <button
                       key={color}
                       onClick={() => setWorkspaceColor(color)}
-                      className={`size-10 rounded-xl transition-all ${
-                        workspaceColor === color 
-                          ? 'ring-4 ring-offset-2 ring-slate-300 dark:ring-slate-600 scale-110' 
-                          : 'hover:scale-105'
-                      }`}
+                      className={`size-10 rounded-xl transition-all ${workspaceColor === color
+                        ? 'ring-4 ring-offset-2 ring-slate-300 dark:ring-slate-600 scale-110'
+                        : 'hover:scale-105'
+                        }`}
                       style={{ backgroundColor: color }}
                     />
                   ))}
@@ -599,7 +705,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
                   <p className="text-xs text-slate-500 mb-3">Preview</p>
                   <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                    <div 
+                    <div
                       className="size-12 rounded-xl"
                       style={{ backgroundColor: workspaceColor }}
                     />
@@ -649,7 +755,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   <div className="flex-1">
                     <h4 className="text-sm font-bold text-red-700 dark:text-red-400">Excluir Workspace</h4>
                     <p className="text-xs text-red-600 dark:text-red-400/80 mt-1 mb-4">
-                      Esta ação irá excluir permanentemente o workspace e todos os seus dados, incluindo projetos, 
+                      Esta ação irá excluir permanentemente o workspace e todos os seus dados, incluindo projetos,
                       faturas e arquivos. Esta ação não pode ser desfeita.
                     </p>
                     <button
@@ -678,7 +784,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   <div>
                     <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Atenção</p>
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                      Antes de excluir, considere exportar seus dados. Uma vez excluído, não será possível recuperar 
+                      Antes de excluir, considere exportar seus dados. Uma vez excluído, não será possível recuperar
                       nenhuma informação deste workspace.
                     </p>
                   </div>
@@ -688,6 +794,15 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
           )}
         </div>
       </main>
+
+      {/* Modal de Definir Tarefas */}
+      {stageToEditTasks && (
+        <DefineStageTasksModal
+          stage={stageToEditTasks}
+          onClose={() => setStageToEditTasks(null)}
+          categoryId={selectedServiceId}
+        />
+      )}
     </div>
   );
 };

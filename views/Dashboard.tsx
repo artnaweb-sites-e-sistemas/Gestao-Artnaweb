@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, Stage, Workspace, Category } from '../types';
+import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 import {
   subscribeToProjects,
   subscribeToCategories,
@@ -31,6 +32,7 @@ interface DashboardProps {
   openAddProjectModal?: boolean;
   onAddProjectModalClose?: () => void;
   userId?: string | null;
+  searchQuery?: string;
 }
 
 type ViewMode = 'board' | 'list';
@@ -146,7 +148,7 @@ const fixedStagesRecurring: DashboardStage[] = [
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished' as any, order: 4, progress: 100, isFixed: true }
 ];
 
-export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId, searchQuery = '' }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedFilter, setSelectedFilter] = useState<string>(initialFilter || 'all');
   const [showCompletedProjects, setShowCompletedProjects] = useState<boolean>(() => {
@@ -188,7 +190,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
     }
   }, [openAddProjectModal]);
 
-  // Carregar preferência de mostrar concluídos quando o workspace mudar
   useEffect(() => {
     const saved = localStorage.getItem(`showCompletedProjects_${currentWorkspace?.id || 'default'}`);
     if (saved !== null) {
@@ -197,6 +198,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
       setShowCompletedProjects(true); // Padrão: true
     }
   }, [currentWorkspace?.id]);
+
+  // Resetar filtro de categoria quando houver busca
+  useEffect(() => {
+    if (searchQuery && searchQuery.trim() !== '') {
+      setSelectedFilter('all');
+    }
+  }, [searchQuery]);
 
   // Notificar quando o modal fechar
   const handleCloseAddProject = () => {
@@ -1032,54 +1040,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             return project.type ? [project.type] : [];
           };
 
-          const filteredProjects = selectedFilter === 'all'
-            ? projects
-            : selectedFilter === 'sem-categoria'
-              ? projects.filter(p => {
-                const types = getProjectTypesLocal(p);
-                return types.length === 0 || types.includes('Sem categoria');
-              })
-              : projects.filter(p => {
-                const selectedCategory = categories.find(cat => cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter);
-                if (selectedCategory) {
-                  // Normalizar strings para comparação (remover espaços extras, converter para lowercase, remover acentos opcionalmente)
-                  const normalizeString = (str: string) => {
-                    return str.toLowerCase()
-                      .trim()
-                      .replace(/\s+/g, ' ')
-                      .normalize('NFD')
-                      .replace(/[\u0300-\u036f]/g, ''); // Remove acentos
-                  };
+          const filteredProjects = (() => {
+            let projectsToFilter = projects;
 
-                  const categoryNameNormalized = normalizeString(selectedCategory.name);
+            // 1. Filtro de Busca (Global)
+            if (searchQuery && searchQuery.trim() !== '') {
+              const query = searchQuery.toLowerCase().trim();
+              projectsToFilter = projectsToFilter.filter(p =>
+                p.name.toLowerCase().includes(query) ||
+                p.client.toLowerCase().includes(query) ||
+                (p.description && p.description.toLowerCase().includes(query)) ||
+                (p.type && p.type.toLowerCase().includes(query)) ||
+                (p.types && p.types.some(t => t.toLowerCase().includes(query)))
+              );
+            }
 
-                  // Verificar se ALGUM dos tipos do projeto corresponde à categoria selecionada
-                  const projectTypes = getProjectTypesLocal(p);
-                  return projectTypes.some(typeName => {
-                    const projectTypeNormalized = normalizeString(typeName);
+            return selectedFilter === 'all'
+              ? projectsToFilter
+              : selectedFilter === 'sem-categoria'
+                ? projects.filter(p => {
+                  const types = getProjectTypesLocal(p);
+                  return types.length === 0 || types.includes('Sem categoria');
+                })
+                : projects.filter(p => {
+                  const selectedCategory = categories.find(cat => cat.name.toLowerCase().replace(/\s+/g, '-') === selectedFilter);
+                  if (selectedCategory) {
+                    // Normalizar strings para comparação (remover espaços extras, converter para lowercase, remover acentos opcionalmente)
+                    const normalizeString = (str: string) => {
+                      return str.toLowerCase()
+                        .trim()
+                        .replace(/\s+/g, ' ')
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, ''); // Remove acentos
+                    };
 
-                    // Comparação exata primeiro (mais precisa)
-                    if (projectTypeNormalized === categoryNameNormalized) {
-                      return true;
-                    }
+                    const categoryNameNormalized = normalizeString(selectedCategory.name);
 
-                    // Comparação sem acentos também
-                    const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const projectTypeNoAccent = typeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    if (projectTypeNoAccent === categoryNameNoAccent ||
-                      projectTypeNoAccent.includes(categoryNameNoAccent) ||
-                      categoryNameNoAccent.includes(projectTypeNoAccent)) {
-                      return true;
-                    }
+                    // Verificar se ALGUM dos tipos do projeto corresponde à categoria selecionada
+                    const projectTypes = getProjectTypesLocal(p);
+                    return projectTypes.some(typeName => {
+                      const projectTypeNormalized = normalizeString(typeName);
 
-                    // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
-                    return projectTypeNormalized.includes(categoryNameNormalized) ||
-                      categoryNameNormalized.includes(projectTypeNormalized) ||
-                      projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
-                  });
-                }
-                return true;
-              });
+                      // Comparação exata primeiro (mais precisa)
+                      if (projectTypeNormalized === categoryNameNormalized) {
+                        return true;
+                      }
+
+                      // Comparação sem acentos também
+                      const categoryNameNoAccent = selectedCategory.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                      const projectTypeNoAccent = typeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                      if (projectTypeNoAccent === categoryNameNoAccent ||
+                        projectTypeNoAccent.includes(categoryNameNoAccent) ||
+                        categoryNameNoAccent.includes(projectTypeNoAccent)) {
+                        return true;
+                      }
+
+                      // Fallback: verificar se contém o nome completo ou primeira palavra (com e sem acentos)
+                      return projectTypeNormalized.includes(categoryNameNormalized) ||
+                        categoryNameNormalized.includes(projectTypeNormalized) ||
+                        projectTypeNormalized.includes(categoryNameNormalized.split(' ')[0]);
+                    });
+                  }
+                  return true;
+                });
+          })();
 
           // Aplicar filtro de projetos concluídos/finalizados
           const finalFilteredProjects = showCompletedProjects
@@ -1088,14 +1112,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // Verificar se está em etapa final
               const isCompleted = p.status === 'Completed';
               const isFinished = p.status === 'Finished';
-              const isMaintenanceStage = p.stageId?.includes('maintenance') || false;
               const projectTypes = getProjectTypesLocal(p);
               const isRecurring = projectTypes.some(typeName =>
                 categories.find(cat => cat.name === typeName && cat.isRecurring)
               );
-              const isInMaintenance = isRecurring && isCompleted && isMaintenanceStage;
-
               // Manter projetos em Manutenção sempre visíveis
+              // Se é recorrente e está Concluído, é considerado Manutenção (ativo)
+              const isInMaintenance = isRecurring && isCompleted;
+
               if (isInMaintenance) {
                 return true;
               }
@@ -1392,7 +1416,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               categories={categories}
             />;
           }
-        })()}
+        })()
+        }
       </div>
 
       {/* Modal Adicionar Projeto */}
@@ -4314,222 +4339,4 @@ const DeleteStageModal: React.FC<{
   );
 };
 
-const DefineStageTasksModal: React.FC<{
-  stage: Stage;
-  onClose: () => void;
-}> = ({ stage, onClose }) => {
-  const [tasks, setTasks] = useState<Array<{ title: string; order: number }>>([]);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [draggedTaskIndex, setDraggedTaskIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  useEffect(() => {
-    const loadTasks = async () => {
-      try {
-        const existingTasks = await getStageTasks(stage.id);
-        setTasks(existingTasks.map(t => ({ title: t.title, order: t.order })));
-      } catch (error) {
-        console.error("Error loading tasks:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadTasks();
-  }, [stage.id]);
-
-  const handleAddTask = () => {
-    if (newTaskTitle.trim()) {
-      setTasks([...tasks, { title: newTaskTitle.trim(), order: tasks.length }]);
-      setNewTaskTitle('');
-    }
-  };
-
-  const handleRemoveTask = (index: number) => {
-    setTasks(tasks.filter((_, i) => i !== index).map((t, i) => ({ ...t, order: i })));
-  };
-
-  const handleTaskDragStart = (index: number) => {
-    setDraggedTaskIndex(index);
-  };
-
-  const handleTaskDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedTaskIndex === null || draggedTaskIndex === index) return;
-    setDragOverIndex(index);
-  };
-
-  const handleTaskDragLeave = () => {
-    setDragOverIndex(null);
-  };
-
-  const handleTaskDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    if (draggedTaskIndex === null || draggedTaskIndex === dropIndex) {
-      setDraggedTaskIndex(null);
-      setDragOverIndex(null);
-      return;
-    }
-
-    const newTasks = [...tasks];
-    const draggedTask = newTasks[draggedTaskIndex];
-
-    // Remove a tarefa da posição original
-    newTasks.splice(draggedTaskIndex, 1);
-
-    // Insere a tarefa na nova posição
-    newTasks.splice(dropIndex, 0, draggedTask);
-
-    // Atualiza a ordem
-    const reorderedTasks = newTasks.map((t, i) => ({ ...t, order: i }));
-    setTasks(reorderedTasks);
-
-    setDraggedTaskIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleTaskDragEnd = () => {
-    setDraggedTaskIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleSave = async () => {
-    try {
-      await saveStageTasks(stage.id, tasks);
-      setToast({ message: "Tarefas salvas com sucesso!", type: 'success' });
-      setTimeout(() => {
-        setToast(null);
-        onClose();
-      }, 2000);
-    } catch (error) {
-      console.error("Error saving tasks:", error);
-      setToast({ message: "Erro ao salvar tarefas. Tente novamente.", type: 'error' });
-      setTimeout(() => setToast(null), 3000);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-          <div>
-            <h3 className="text-xl font-bold">Definir Tarefas - {stage.title}</h3>
-            <p className="text-sm text-slate-500 mt-1">As tarefas definidas aqui aparecerão em todos os projetos desta etapa</p>
-          </div>
-          <button onClick={onClose} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          {loading ? (
-            <div className="text-center py-8 text-slate-500">Carregando...</div>
-          ) : (
-            <>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
-                  placeholder="Digite o nome da tarefa..."
-                  className="flex-1 px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
-                />
-                <button
-                  onClick={handleAddTask}
-                  className="px-6 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
-                >
-                  Adicionar
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {tasks.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-sm">
-                    Nenhuma tarefa definida. Adicione tarefas acima.
-                  </div>
-                ) : (
-                  tasks.map((task, index) => (
-                    <div
-                      key={index}
-                      draggable
-                      onDragStart={() => handleTaskDragStart(index)}
-                      onDragOver={(e) => handleTaskDragOver(e, index)}
-                      onDragLeave={handleTaskDragLeave}
-                      onDrop={(e) => handleTaskDrop(e, index)}
-                      onDragEnd={handleTaskDragEnd}
-                      className={`flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-move transition-all ${draggedTaskIndex === index ? 'opacity-50' : ''
-                        } ${dragOverIndex === index ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'hover:border-primary/50'
-                        }`}
-                    >
-                      <span className="material-symbols-outlined text-slate-400 text-lg">drag_handle</span>
-                      <span className="text-slate-400 text-sm font-bold">{index + 1}.</span>
-                      <span className="flex-1 text-sm font-medium text-slate-900 dark:text-slate-100">{task.title}</span>
-                      <button
-                        onClick={() => handleRemoveTask(index)}
-                        className="text-rose-600 hover:text-rose-700 transition-colors"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all"
-          >
-            Salvar Tarefas
-          </button>
-        </div>
-      </div>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
-          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${toast.type === 'success'
-            ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50'
-            : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
-            }`}>
-            <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${toast.type === 'success'
-              ? 'bg-emerald-100 dark:bg-emerald-900/30'
-              : 'bg-amber-100 dark:bg-amber-900/30'
-              }`}>
-              <span className={`material-symbols-outlined text-xl ${toast.type === 'success'
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-amber-600 dark:text-amber-400'
-                }`}>
-                {toast.type === 'success' ? 'check_circle' : 'warning'}
-              </span>
-            </div>
-            <p className={`text-sm font-semibold flex-1 leading-relaxed ${toast.type === 'success'
-              ? 'text-emerald-900 dark:text-emerald-100'
-              : 'text-amber-900 dark:text-amber-100'
-              }`}>
-              {toast.message}
-            </p>
-            <button
-              onClick={() => setToast(null)}
-              className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Fechar"
-            >
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 

@@ -1,9 +1,9 @@
 
-export type ViewState = 
-  | 'Dashboard' 
-  | 'Financial' 
-  | 'Clients' 
-  | 'Settings' 
+export type ViewState =
+  | 'Dashboard'
+  | 'Financial'
+  | 'Clients'
+  | 'Settings'
   | 'Timeline'
   | 'ProjectDetails'
   | 'ProjectBilling'
@@ -112,13 +112,16 @@ export interface StageTask {
   title: string;
   order: number;
   createdAt: Date | any;
+  categoryId?: string; // ID da categoria/serviço específico (opcional)
 }
 
 export interface ProjectStageTask {
   id: string;
   projectId: string;
-  stageTaskId: string;
+  stageTaskId: string; // Referência ao template original (pode ser vazio se tarefa foi adicionada manualmente)
   stageId: string;
+  title: string; // Título da tarefa (cópia do template, editável por projeto)
+  order: number; // Ordem da tarefa dentro do projeto
   completed: boolean;
   completedAt?: Date | any;
   createdAt: Date | any;

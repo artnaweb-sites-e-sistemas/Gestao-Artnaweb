@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Invoice, Project, Workspace } from '../types';
-import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects } from '../firebase/services';
+import { Invoice, Project, Workspace, Category } from '../types';
+import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects, subscribeToCategories, addInvoice, updateProject } from '../firebase/services';
 
 interface FinancialProps {
   currentWorkspace?: Workspace | null;
@@ -15,6 +15,9 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'paid' | 'pending' | 'implementation' | 'recurring' | 'normal'>('all');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
+  const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Filtro de período (mês/ano)
@@ -47,9 +50,14 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       setProjects(workspaceProjects);
     }, currentWorkspace.id);
 
+    const unsubscribeCategories = subscribeToCategories((fetchedCategories) => {
+      setCategories(fetchedCategories);
+    }, currentWorkspace.id);
+
     return () => {
       unsubscribeInvoices();
       unsubscribeProjects();
+      unsubscribeCategories();
     };
   }, [currentWorkspace?.id]);
 
@@ -251,12 +259,88 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     return { label: 'Avulso', color: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' };
   };
 
+  // Criar nova fatura recorrente (+30 dias)
+  const createRecurringInvoice = async (previousInvoice: Invoice) => {
+    try {
+      // Calcular data da próxima fatura (+30 dias)
+      let previousDate: Date;
+      if (previousInvoice.date instanceof Date) {
+        previousDate = previousInvoice.date;
+      } else if (typeof previousInvoice.date === 'string' && previousInvoice.date.includes('-')) {
+        const [year, month, day] = previousInvoice.date.split('-').map(Number);
+        previousDate = new Date(year, month - 1, day);
+      } else if (previousInvoice.date?.toDate) {
+        previousDate = previousInvoice.date.toDate();
+      } else {
+        previousDate = new Date();
+      }
+
+      const nextDate = new Date(previousDate);
+      nextDate.setDate(nextDate.getDate() + 30);
+
+      // Gerar número sequencial baseado nas faturas do PROJETO
+      const projectInvoices = invoices.filter(inv => inv.projectId === previousInvoice.projectId);
+      const year = nextDate.getFullYear();
+      const count = projectInvoices.length + 1;
+
+      await addInvoice({
+        projectId: previousInvoice.projectId,
+        workspaceId: previousInvoice.workspaceId,
+        number: `REC-${year}-${String(count).padStart(3, '0')}`,
+        description: 'Mensalidade - Recorrência',
+        amount: previousInvoice.amount,
+        date: nextDate,
+        status: 'Pending'
+      });
+
+      setToast({ message: "Nova fatura recorrente criada com sucesso!", type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error("Error creating recurring invoice:", error);
+      setToast({ message: "Erro ao criar fatura recorrente", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
   // Atualizar status da fatura
   const toggleInvoiceStatus = async (invoice: Invoice) => {
     try {
       const newStatus = invoice.status === 'Paid' ? 'Pending' : 'Paid';
       await updateInvoice(invoice.id, { status: newStatus });
       setToast({ message: `Fatura marcada como ${newStatus === 'Paid' ? 'paga' : 'pendente'}`, type: 'success' });
+
+      // Lógica para projetos recorrentes
+      if (newStatus === 'Paid') {
+        const project = projects.find(p => p.id === invoice.projectId);
+
+        if (project) {
+          // Verificar se é recorrente (mesma lógica do ProjectDetails)
+          const projTypes = project.types || (project.type ? [project.type] : []);
+          const isRecurring = projTypes.some(typeName =>
+            categories.find(cat => cat.name === typeName && cat.isRecurring)
+          );
+
+          // Se for recorrente e não for implementação, oferecer criar nova fatura
+          if (isRecurring && !invoice.number.startsWith('IMP-')) {
+            await updateProject(project.id, { isRecurringPaid: true });
+            setPaidInvoiceForRecurring(invoice);
+            setShowRecurringConfirm(true);
+          }
+        }
+      } else if (newStatus === 'Pending') {
+        // Se voltou para pendente, resetar flag se for recorrente
+        const project = projects.find(p => p.id === invoice.projectId);
+        if (project) {
+          const projTypes = project.types || (project.type ? [project.type] : []);
+          const isRecurring = projTypes.some(typeName =>
+            categories.find(cat => cat.name === typeName && cat.isRecurring)
+          );
+          if (isRecurring && !invoice.number.startsWith('IMP-')) {
+            await updateProject(project.id, { isRecurringPaid: false });
+          }
+        }
+      }
+
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
       console.error('Error updating invoice:', error);
@@ -369,8 +453,8 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                     setSelectedYear(currentDate.getFullYear());
                   }}
                   className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === currentDate.getMonth() && selectedYear === currentDate.getFullYear()
-                      ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                 >
                   Este mês
@@ -381,8 +465,8 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                     setSelectedYear(currentDate.getFullYear());
                   }}
                   className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === 'all' && selectedYear === currentDate.getFullYear()
-                      ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                 >
                   Este ano
@@ -606,8 +690,8 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                         <button
                           onClick={() => toggleInvoiceStatus(invoice)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${invoice.status === 'Paid'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
                             }`}
                         >
                           <span className="material-symbols-outlined text-sm">
@@ -630,6 +714,84 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
           </div>
         )}
       </div>
+
+      {/* Modal Confirmar Nova Fatura Recorrente */}
+      {showRecurringConfirm && paidInvoiceForRecurring && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
+                  <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+              </p>
+
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                    {(() => {
+                      let previousDate: Date;
+                      if (paidInvoiceForRecurring.date instanceof Date) {
+                        previousDate = paidInvoiceForRecurring.date;
+                      } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
+                        const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
+                        previousDate = new Date(year, month - 1, day);
+                      } else if (paidInvoiceForRecurring.date?.toDate) {
+                        previousDate = paidInvoiceForRecurring.date.toDate();
+                      } else {
+                        previousDate = new Date();
+                      }
+                      const nextDate = new Date(previousDate);
+                      nextDate.setDate(nextDate.getDate() + 30);
+                      return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    })()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRecurringConfirm(false);
+                    setPaidInvoiceForRecurring(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Não, obrigado
+                </button>
+                <button
+                  onClick={async () => {
+                    if (paidInvoiceForRecurring) {
+                      await createRecurringInvoice(paidInvoiceForRecurring);
+                    }
+                    setShowRecurringConfirm(false);
+                    setPaidInvoiceForRecurring(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">add_circle</span>
+                  Sim, criar fatura
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -642,8 +804,8 @@ const KPICard: React.FC<{ title: string; value: string; trend: string; trendType
         <span className="material-symbols-outlined text-2xl">{icon}</span>
       </div>
       <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${trendType === 'up' ? 'text-emerald-700 bg-emerald-500/10' :
-          trendType === 'down' ? 'text-rose-700 bg-rose-500/10' :
-            'text-amber-700 bg-amber-500/10'
+        trendType === 'down' ? 'text-rose-700 bg-rose-500/10' :
+          'text-amber-700 bg-amber-500/10'
         }`}>
         {trend}
       </div>
@@ -667,8 +829,8 @@ const FilterButton: React.FC<{ label: string; active: boolean; onClick: () => vo
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${active
-          ? colorClasses[color] || colorClasses.primary
-          : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'
+        ? colorClasses[color] || colorClasses.primary
+        : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'
         }`}
     >
       {label}

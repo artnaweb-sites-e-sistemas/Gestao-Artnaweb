@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice } from '../types';
-import { 
-  subscribeToProjectActivities, 
+import {
+  subscribeToProjectActivities,
   subscribeToProjectTeamMembers,
   addActivity,
   addTeamMember,
@@ -27,7 +27,11 @@ import {
   addInvoice,
   updateInvoice,
   updateClientAvatarInAllProjects,
-  getCurrentUser
+  getCurrentUser,
+  addProjectTask,
+  removeProjectTask,
+  updateProjectTasksOrder,
+  resetProjectStageTasks
 } from '../firebase/services';
 
 interface ProjectDetailsProps {
@@ -60,7 +64,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAddMember, setShowAddMember] = useState(false);
   const [showAllMembers, setShowAllMembers] = useState(false);
   const [showShareProject, setShowShareProject] = useState(false);
-  
+
   // Estados para edição inline
   const [editingClient, setEditingClient] = useState(false);
   const [editingNameSidebar, setEditingNameSidebar] = useState(false);
@@ -100,15 +104,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
-  
+
   // Estado para modal de nova fatura recorrente
   const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
   const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
-  
-  const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([
-    { id: '1', title: 'WP Engine Hosting', sub: 'Servidor de Produção', icon: 'dns', url: 'wpengine.example.com', user: 'admin_user', password: '••••••••' },
-    { id: '2', title: 'Shopify Storefront', sub: 'Acesso Admin API', icon: 'data_object', url: 'store.myshopify.com', user: 'api_key_...', password: '••••••••' }
-  ]);
+
+  // Estado para modal de confirmação de redefinir tarefas
+  const [showResetTasksConfirm, setShowResetTasksConfirm] = useState(false);
+  const [stageToReset, setStageToReset] = useState<Stage | null>(null);
+
+  /* REMOVIDO: Credenciais padrão "WP Engine Hosting" e "Shopify Storefront" conforme solicitado.
+     Iniciando vazio para o usuário preencher manualmente quando necessário. */
+  const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([]);
 
   // Sincroniza o estado local quando o projeto prop mudar
   useEffect(() => {
@@ -156,7 +163,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }
 
     console.log("Subscribing to project, activities and members for project:", currentProject.id);
-    
+
     // Subscrever atualizações do projeto em tempo real
     const unsubscribeProject = subscribeToProject(currentProject.id, (updatedProject) => {
       if (updatedProject) {
@@ -188,16 +195,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
       // Filtrar etapas pelo workspaceId do projeto
-      const filteredStages = currentProject.workspaceId 
+      const filteredStages = currentProject.workspaceId
         ? firebaseStages.filter(stage => (stage as any).workspaceId === currentProject.workspaceId)
         : firebaseStages;
-      
+
       // Verificar se o projeto é recorrente usando o ref para evitar loop (considerando múltiplos tipos)
       const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-      const isRecurring = currentTypes.some(typeName => 
+      const isRecurring = currentTypes.some(typeName =>
         categoriesRef.current.find(cat => cat.name === typeName && cat.isRecurring)
       );
-      
+
       // Se for recorrente, não usar etapas do Firebase, usar as fixas (definidas no useEffect separado)
       if (!isRecurring) {
         setStages(filteredStages);
@@ -227,7 +234,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }, currentProject.id);
 
     // Inicializar tarefas do projeto para a etapa atual
-    initializeProjectStageTasks(currentProject.id, currentProject.status).catch(console.error);
+    const categoryName = currentProject.types?.[0] || currentProject.type;
+    const category = categoriesRef.current.find(c => c.name === categoryName);
+    // Prefer stageId over status, as status is an enum but stageId is the DB ID
+    const targetStageId = currentProject.stageId || currentProject.status;
+
+    initializeProjectStageTasks(currentProject.id, targetStageId, category?.id).catch(console.error);
 
     return () => {
       unsubscribeProject();
@@ -245,13 +257,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   useEffect(() => {
     // Só processar se tivermos categorias carregadas
     if (categories.length === 0) return;
-    
+
     // Verificar se o projeto é recorrente (considerando múltiplos tipos)
     const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-    const isRecurring = projTypes.some(typeName => 
+    const isRecurring = projTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
-    
+
     // Se for recorrente, usar etapas fixas recorrentes
     if (isRecurring) {
       setStages(fixedStagesRecurring);
@@ -267,7 +279,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Verificar se o projeto é recorrente (considerando múltiplos tipos)
   const isProjectRecurring = () => {
     const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-    return projTypes.some(typeName => 
+    return projTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
   };
@@ -287,14 +299,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       } else {
         previousDate = new Date();
       }
-      
+
       const nextDate = new Date(previousDate);
       nextDate.setDate(nextDate.getDate() + 30);
-      
+
       // Gerar número sequencial
       const year = nextDate.getFullYear();
       const count = invoices.length + 1;
-      
+
       await addInvoice({
         projectId: currentProject.id,
         workspaceId: currentProject.workspaceId,
@@ -304,7 +316,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         date: nextDate,
         status: 'Pending'
       });
-      
+
       setToast({ message: "Nova fatura recorrente criada com sucesso!", type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
@@ -320,7 +332,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     const activityDate = date.toDate ? date.toDate() : new Date(date);
     const diffInMs = now.getTime() - activityDate.getTime();
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffInDays === 0) return 'hoje';
     if (diffInDays === 1) return 'ontem';
     if (diffInDays < 7) return `há ${diffInDays} dias`;
@@ -387,7 +399,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   const confirmRemoveMember = async () => {
     if (!memberToRemove) return;
-    
+
     try {
       await removeTeamMember(memberToRemove.id);
       setToast({ message: "Membro removido com sucesso!", type: 'success' });
@@ -404,7 +416,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const getCategoryColor = (projectType: string) => {
     const categoryIndex = categories.findIndex(cat => cat.name === projectType);
     if (categoryIndex === -1) return 'blue'; // Cor padrão se não encontrar
-    
+
     const colorMap: { [key: number]: string } = {
       0: 'amber',
       1: 'blue',
@@ -413,7 +425,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       4: 'rose',
       5: 'emerald', // Verde só aparece depois de outras cores
     };
-    
+
     return colorMap[categoryIndex % 6] || 'blue';
   };
 
@@ -433,2084 +445,2166 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   return (
     <>
-    <div className="flex h-full">
-      {/* Coluna do Meio - Informações do Projeto */}
-      <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-4">
-              <div className="bg-primary/10 rounded-xl p-2 relative group">
-                {currentProject.avatar ? (
-                  <div 
-                    className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity" 
-                    style={{ backgroundImage: `url(${currentProject.avatar})`, backgroundSize: 'cover' }}
-                    onClick={() => avatarInputRef.current?.click()}
-                    title="Alterar foto de perfil"
-                  ></div>
-                ) : (
-                  <button
-                    onClick={() => avatarInputRef.current?.click()}
-                    className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
-                    title="Adicionar foto do cliente"
-                  >
-                    <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
-                  </button>
-                )}
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    
-                    setUploadingAvatar(true);
-                    try {
-                      const avatarUrl = await uploadProjectAvatar(currentProject.id, file);
-                      const user = getCurrentUser();
-                      
-                      // Atualizar avatar em todos os projetos do mesmo cliente
-                      await updateClientAvatarInAllProjects(
-                        currentProject.client,
-                        avatarUrl,
-                        currentProject.workspaceId,
-                        user?.uid || null
-                      );
-                      
-                      setToast({ message: "Foto do cliente atualizada em todos os projetos!", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
-                    } catch (error) {
-                      console.error("Error uploading avatar:", error);
-                      setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    } finally {
-                      setUploadingAvatar(false);
-                      if (avatarInputRef.current) {
-                        avatarInputRef.current.value = '';
-                      }
-                    }
-                  }}
-                />
-                {uploadingAvatar && (
-                  <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                    <span className="material-symbols-outlined text-white animate-spin">sync</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                {/* Cliente - Edição Inline */}
-                {editingClient ? (
-                  <input
-                    type="text"
-                    value={tempClient}
-                    onChange={(e) => setTempClient(e.target.value)}
-                    onBlur={async () => {
-                      if (tempClient.trim() && tempClient !== currentProject.client) {
-                        try {
-                          await updateProject(currentProject.id, { client: tempClient.trim() });
-                          setToast({ message: "Cliente atualizado", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        } catch (error) {
-                          console.error("Error updating client:", error);
-                          setToast({ message: "Erro ao atualizar cliente", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }
-                      setEditingClient(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.currentTarget.blur();
-                      } else if (e.key === 'Escape') {
-                        setEditingClient(false);
-                      }
-                    }}
-                    className="text-lg font-bold leading-tight uppercase bg-transparent border-b-2 border-primary outline-none w-full"
-                    autoFocus
-                  />
-                ) : (
-                  <div className="flex items-center gap-1 group/client">
-                    <h1 className="text-lg font-bold leading-tight uppercase truncate">{currentProject.client}</h1>
+      <div className="flex h-full">
+        {/* Coluna do Meio - Informações do Projeto */}
+        <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4">
+                <div className="bg-primary/10 rounded-xl p-2 relative group">
+                  {currentProject.avatar ? (
+                    <div
+                      className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ backgroundImage: `url(${currentProject.avatar})`, backgroundSize: 'cover' }}
+                      onClick={() => avatarInputRef.current?.click()}
+                      title="Alterar foto de perfil"
+                    ></div>
+                  ) : (
                     <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTempClient(currentProject.client);
-                        setEditingClient(true);
-                      }}
-                      className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                      title="Editar cliente"
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                      title="Adicionar foto do cliente"
                     >
-                      <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
-                    </button>
-                  </div>
-                )}
-                
-                {/* Nome do Projeto - Edição Inline */}
-                {editingNameSidebar ? (
-                  <input
-                    type="text"
-                    value={tempNameSidebar}
-                    onChange={(e) => setTempNameSidebar(e.target.value)}
-                    onBlur={async () => {
-                      if (tempNameSidebar.trim() && tempNameSidebar !== currentProject.name) {
-                        try {
-                          await updateProject(currentProject.id, { name: tempNameSidebar.trim() });
-                          setToast({ message: "Nome atualizado", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        } catch (error) {
-                          console.error("Error updating name:", error);
-                          setToast({ message: "Erro ao atualizar nome", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }
-                      setEditingNameSidebar(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.currentTarget.blur();
-                      } else if (e.key === 'Escape') {
-                        setEditingNameSidebar(false);
-                      }
-                    }}
-                    className="text-slate-500 text-xs font-medium capitalize tracking-wider bg-transparent border-b-2 border-primary outline-none w-full"
-                    autoFocus
-                  />
-                ) : (
-                  <div className="flex items-center gap-1 group/name">
-                    <p className="text-slate-500 text-xs font-medium capitalize tracking-wider truncate">{currentProject.name}</p>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTempNameSidebar(currentProject.name);
-                        setEditingNameSidebar(true);
-                      }}
-                      className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                      title="Editar nome"
-                    >
-                      <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-            <div className="flex flex-col gap-1">
-            <div className="py-2">
-              <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
-              <div className="flex items-center gap-2">
-                <div className="relative date-picker-container flex-1">
-                  <button
-                    ref={datePickerButtonRef}
-                    onClick={() => setShowDatePicker(!showDatePicker)}
-                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
-                  >
-                    <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                      {currentProject.deadline 
-                        ? new Date(currentProject.deadline).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                        : 'Selecione uma data'
-                      }
-                    </span>
-                    <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
-                  </button>
-                  {showDatePicker && (
-                    <DatePicker
-                      selectedDate={currentProject.deadline ? new Date(currentProject.deadline) : null}
-                      onSelectDate={async (date) => {
-                        const newDeadline = date ? date.toISOString() : null;
-                        try {
-                          await updateProject(currentProject.id, { deadline: newDeadline });
-                          setToast({ message: "Data de entrega atualizada", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                          setShowDatePicker(false);
-                        } catch (error) {
-                          console.error("Error updating deadline:", error);
-                          setToast({ message: "Erro ao atualizar data de entrega", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }}
-                      onClose={() => setShowDatePicker(false)}
-                      buttonRef={datePickerButtonRef}
-                    />
-                  )}
-                </div>
-              </div>
-              
-              {/* Botão Pendente - aparece logo após Data de Entrega */}
-              {currentProject.status === 'Completed' && (
-                <div className="mt-2 w-full">
-                  <button
-                    onClick={async () => {
-                      try {
-                        // Buscar a etapa "Em Desenvolvimento" para voltar
-                        const activeStage = stages.find(s => s.status === 'Active') || 
-                                            stages.find(s => s.status === 'Review') || 
-                                            stages.find(s => s.status === 'Lead') ||
-                                            stages[Math.max(0, stages.length - 2)];
-                        await updateProject(currentProject.id, { 
-                          status: (activeStage?.status || 'Active') as Project['status'],
-                          stageId: activeStage?.id, // Atualizar stageId
-                          progress: activeStage ? activeStage.progress : 50
-                        });
-                        setToast({ message: "Projeto marcado como pendente", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error marking project as pending:", error);
-                        setToast({ message: "Erro ao marcar projeto como pendente", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className="w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
-                    title="Marcar como pendente"
-                  >
-                    <span className="material-symbols-outlined text-sm">pending</span>
-                    <span className="hidden sm:inline">Pendente</span>
-                  </button>
-                </div>
-              )}
-              
-              {/* Campos de data para projetos recorrentes em Manutenção */}
-              {(() => {
-                const pTypesForMaint = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                const isRecurringService = pTypesForMaint.some(typeName => 
-                  categories.find(cat => cat.name === typeName && cat.isRecurring)
-                );
-                const isInMaintenance = isRecurringService && currentProject.status === 'Completed';
-                
-                if (!isInMaintenance) return null;
-                
-                return (
-                  <>
-                    <div className="py-2 mt-2">
-                      <p className="text-slate-500 text-xs mb-1">Data da Manutenção</p>
-                      <div className="flex items-center gap-2">
-                        <div className="relative date-picker-container flex-1">
-                          <button
-                            ref={maintenanceDatePickerButtonRef}
-                            onClick={() => setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
-                          >
-                            <span className={currentProject.maintenanceDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                              {currentProject.maintenanceDate 
-                                ? new Date(currentProject.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                                : 'Selecione uma data'
-                              }
-                            </span>
-                            <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
-                          </button>
-                          {showMaintenanceDatePicker && (
-                            <DatePicker
-                              selectedDate={currentProject.maintenanceDate ? new Date(currentProject.maintenanceDate) : null}
-                              onSelectDate={async (date) => {
-                                const newDate = date ? date.toISOString() : null;
-                                try {
-                                  await updateProject(currentProject.id, { maintenanceDate: newDate });
-                                  setToast({ message: "Data da Manutenção atualizada", type: 'success' });
-                                  setTimeout(() => setToast(null), 3000);
-                                  setShowMaintenanceDatePicker(false);
-                                } catch (error) {
-                                  console.error("Error updating maintenance date:", error);
-                                  setToast({ message: "Erro ao atualizar data da manutenção", type: 'error' });
-                                  setTimeout(() => setToast(null), 3000);
-                                }
-                              }}
-                              onClose={() => setShowMaintenanceDatePicker(false)}
-                              buttonRef={maintenanceDatePickerButtonRef}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="py-2">
-                      <p className="text-slate-500 text-xs mb-1">Data do Relatório</p>
-                      <div className="flex items-center gap-2">
-                        <div className="relative date-picker-container flex-1">
-                          <button
-                            ref={reportDatePickerButtonRef}
-                            onClick={() => setShowReportDatePicker(!showReportDatePicker)}
-                            className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
-                          >
-                            <span className={currentProject.reportDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                              {currentProject.reportDate 
-                                ? new Date(currentProject.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                                : 'Selecione uma data'
-                              }
-                            </span>
-                            <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
-                          </button>
-                          {showReportDatePicker && (
-                            <DatePicker
-                              selectedDate={currentProject.reportDate ? new Date(currentProject.reportDate) : null}
-                              onSelectDate={async (date) => {
-                                const newDate = date ? date.toISOString() : null;
-                                try {
-                                  await updateProject(currentProject.id, { reportDate: newDate });
-                                  setToast({ message: "Data do Relatório atualizada", type: 'success' });
-                                  setTimeout(() => setToast(null), 3000);
-                                  setShowReportDatePicker(false);
-                                } catch (error) {
-                                  console.error("Error updating report date:", error);
-                                  setToast({ message: "Erro ao atualizar data do relatório", type: 'error' });
-                                  setTimeout(() => setToast(null), 3000);
-                                }
-                              }}
-                              onClose={() => setShowReportDatePicker(false)}
-                              buttonRef={reportDatePickerButtonRef}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-              
-              {/* Botões Concluir e Revisar */}
-              {currentProject.status !== 'Completed' && (
-                <div className="flex items-center gap-2 mt-2 w-full">
-                  <button
-                    onClick={async () => {
-                      try {
-                        // Buscar a etapa "Concluído"
-                        const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
-                        await updateProject(currentProject.id, { 
-                          status: 'Completed' as Project['status'],
-                          stageId: completedStage?.id, // Atualizar stageId
-                          progress: completedStage ? completedStage.progress : 100
-                        });
-                        setToast({ message: "Projeto marcado como concluído", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error marking project as completed:", error);
-                        setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                      currentProject.status === 'Completed'
-                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                    }`}
-                    title="Marcar como concluído"
-                  >
-                    <span className="material-symbols-outlined text-sm">check_circle</span>
-                    <span className="hidden sm:inline">Concluir</span>
-                  </button>
-                  {currentProject.status !== 'Completed' && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Buscar a etapa "Em Revisão"
-                          const reviewStage = stages.find(s => s.status === 'Review');
-                          await updateProject(currentProject.id, { 
-                            status: 'Review' as Project['status'],
-                            stageId: reviewStage?.id, // Atualizar stageId
-                            progress: reviewStage ? reviewStage.progress : 75,
-                            updatedAt: new Date()
-                          });
-                          setToast({ message: "Projeto enviado para revisão", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        } catch (error) {
-                          console.error("Error marking project as review:", error);
-                          setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }}
-                      className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${
-                        currentProject.status === 'Review'
-                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                      }`}
-                      title="Enviar para revisão"
-                    >
-                      <span className="material-symbols-outlined text-sm">rate_review</span>
-                      <span className="hidden sm:inline">Revisar</span>
+                      <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
                     </button>
                   )}
-                </div>
-              )}
-            </div>
-            </div>
-          </div>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
 
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-            <div className="flex flex-col gap-1">
-              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">
-                {isProjectRecurring() ? 'Financeiro' : 'Implementação'}
-              </p>
-            <div className="py-2">
-              <p className="text-slate-500 text-xs mb-1">
-                {isProjectRecurring() ? 'Valor da Implementação' : 'Valor do Projeto'}
-              </p>
-              <p className="text-lg font-bold text-slate-900 dark:text-white">
-                {currentProject.budget ? 
-                  new Intl.NumberFormat('pt-BR', { 
-                    style: 'currency', 
-                    currency: 'BRL' 
-                  }).format(currentProject.budget) 
-                  : 'R$ 0,00'}
-              </p>
-              {/* Status de pagamento da implementação apenas para projetos recorrentes */}
-              {isProjectRecurring() && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={async () => {
-                      if (currentProject.isImplementationPaid) return;
+                      setUploadingAvatar(true);
                       try {
-                        // Atualizar apenas faturas de implementação (IMP-*)
-                        const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
-                        for (const invoice of implementationInvoices) {
-                          if (invoice.status !== 'Paid') {
-                            await updateInvoice(invoice.id, { status: 'Paid' });
-                          }
-                        }
-                        await updateProject(currentProject.id, { isImplementationPaid: true });
-                        setToast({ message: "Implementação marcada como paga", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error updating implementation status:", error);
-                        setToast({ message: "Erro ao atualizar status", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                      currentProject.isImplementationPaid
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                    Pago
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!currentProject.isImplementationPaid) return;
-                      try {
-                        // Atualizar apenas faturas de implementação (IMP-*)
-                        const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
-                        for (const invoice of implementationInvoices) {
-                          if (invoice.status === 'Paid') {
-                            await updateInvoice(invoice.id, { status: 'Pending' });
-                          }
-                        }
-                        await updateProject(currentProject.id, { isImplementationPaid: false });
-                        setToast({ message: "Implementação marcada como pendente", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error updating implementation status:", error);
-                        setToast({ message: "Erro ao atualizar status", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                      !currentProject.isImplementationPaid
-                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-xs">pending</span>
-                    Pendente
-                  </button>
-                </div>
-              )}
-            </div>
-            {/* Campo de Mensalidade apenas para projetos recorrentes */}
-            {isProjectRecurring() && (
-              <div className="py-2">
-                <p className="text-slate-500 text-xs mb-1">Valor da Mensalidade</p>
-                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                  {currentProject.recurringAmount ? 
-                    new Intl.NumberFormat('pt-BR', { 
-                      style: 'currency', 
-                      currency: 'BRL' 
-                    }).format(currentProject.recurringAmount) 
-                    : 'R$ 0,00'}
-                </p>
-                {/* Status de pagamento da mensalidade */}
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={async () => {
-                      if (currentProject.isRecurringPaid) return;
-                      try {
-                        // Encontrar a fatura de mensalidade mais recente pendente (REC-*)
-                        const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-') && inv.status !== 'Paid');
-                        if (recurringInvoices.length > 0) {
-                          // Marcar a fatura mais recente como paga
-                          const latestRecurring = recurringInvoices[0];
-                          await updateInvoice(latestRecurring.id, { status: 'Paid' });
-                          
-                          // Mostrar modal para criar próxima fatura
-                          setPaidInvoiceForRecurring(latestRecurring);
-                          setShowRecurringConfirm(true);
-                        }
-                        await updateProject(currentProject.id, { isRecurringPaid: true });
-                        setToast({ message: "Mensalidade marcada como paga", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error updating recurring status:", error);
-                        setToast({ message: "Erro ao atualizar status", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                      currentProject.isRecurringPaid
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                    Pago
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!currentProject.isRecurringPaid) return;
-                      try {
-                        // Atualizar apenas faturas de mensalidade (REC-*)
-                        const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-'));
-                        for (const invoice of recurringInvoices) {
-                          if (invoice.status === 'Paid') {
-                            await updateInvoice(invoice.id, { status: 'Pending' });
-                          }
-                        }
-                        await updateProject(currentProject.id, { isRecurringPaid: false });
-                        setToast({ message: "Mensalidade marcada como pendente", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } catch (error) {
-                        console.error("Error updating recurring status:", error);
-                        setToast({ message: "Erro ao atualizar status", type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                      !currentProject.isRecurringPaid
-                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-xs">pending</span>
-                    Pendente
-                  </button>
-                </div>
-              </div>
-            )}
-            {/* Status de pagamento geral apenas para projetos normais */}
-            {!isProjectRecurring() && (
-            <div className="py-2">
-              <p className="text-slate-500 text-xs mb-1">Status de Pagamento</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    if (currentProject.isPaid) return;
-                    try {
-                      // Atualizar status geral do projeto
-                      await updateProject(currentProject.id, { isPaid: true });
-                      
-                      // Atualizar todas as faturas pendentes para Pago
-                      const pendingInvoices = invoices.filter(inv => inv.status !== 'Paid');
-                      for (const invoice of pendingInvoices) {
-                        await updateInvoice(invoice.id, { status: 'Paid' });
-                      }
-                      
-                      setToast({ message: "Todas as faturas marcadas como pagas", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
-                    } catch (error) {
-                      console.error("Error updating payment status:", error);
-                      setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                    currentProject.isPaid
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                  Pago
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!currentProject.isPaid) return;
-                    try {
-                      // Atualizar status geral do projeto
-                      await updateProject(currentProject.id, { isPaid: false });
-                      
-                      // Atualizar todas as faturas pagas para Pendente
-                      const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
-                      for (const invoice of paidInvoices) {
-                        await updateInvoice(invoice.id, { status: 'Pending' });
-                      }
-                      
-                      setToast({ message: "Todas as faturas marcadas como pendentes", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
-                    } catch (error) {
-                      console.error("Error updating payment status:", error);
-                      setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                    !currentProject.isPaid
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-sm">pending</span>
-                  Pendente
-                </button>
-              </div>
-            </div>
-            )}
-            </div>
-          </div>
+                        const avatarUrl = await uploadProjectAvatar(currentProject.id, file);
+                        const user = getCurrentUser();
 
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest">Equipe</p>
-              <button
-                onClick={() => setShowAddMember(true)}
-                className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
-                title="Adicionar membro"
-              >
-                <span className="material-symbols-outlined text-base">add</span>
-              </button>
-            </div>
-            {teamMembers.length > 0 ? (
-              <>
-                <div className="flex -space-x-2 mb-3 flex-wrap">
-                  {teamMembers.slice(0, 5).map((member) => (
-                    <div 
-                      key={member.id}
-                      className="size-10 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 relative group"
-                      style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
-                      title={member.name}
-                    >
-                      <button
-                        onClick={() => handleRemoveMember(member.id)}
-                        className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        title="Remover membro"
-                      >
-                        <span className="material-symbols-outlined text-xs">close</span>
-                      </button>
+                        // Atualizar avatar em todos os projetos do mesmo cliente
+                        await updateClientAvatarInAllProjects(
+                          currentProject.client,
+                          avatarUrl,
+                          currentProject.workspaceId,
+                          user?.uid || null
+                        );
+
+                        setToast({ message: "Foto do cliente atualizada em todos os projetos!", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } catch (error) {
+                        console.error("Error uploading avatar:", error);
+                        setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      } finally {
+                        setUploadingAvatar(false);
+                        if (avatarInputRef.current) {
+                          avatarInputRef.current.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  {uploadingAvatar && (
+                    <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                      <span className="material-symbols-outlined text-white animate-spin">sync</span>
                     </div>
-                  ))}
+                  )}
                 </div>
-                <button 
-                  onClick={() => setShowAllMembers(true)}
-                  className="text-sm font-semibold text-primary hover:underline text-left"
-                >
-                  {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
-                </button>
-              </>
-            ) : (
-              <div className="text-center py-2">
-                <p className="text-xs text-slate-500 mb-2">Nenhum membro</p>
-                <button
-                  onClick={() => setShowAddMember(true)}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Adicionar membro
-                </button>
-              </div>
-            )}
-            </div>
-          </div>
-
-          <nav className="border-t border-slate-200 dark:border-slate-800 pt-8 pb-8 flex flex-col gap-1">
-            <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
-            <NavBtn 
-              icon="description" 
-              label="Visão Geral" 
-              active={activeManagementTab === 'overview'} 
-              onClick={() => setActiveManagementTab('overview')} 
-            />
-            <NavBtn 
-              icon="payments" 
-              label="Faturamento e Notas" 
-              active={activeManagementTab === 'billing'} 
-              onClick={() => setActiveManagementTab('billing')} 
-            />
-            <NavBtn 
-              icon="rocket_launch" 
-              label="Roteiro do Projeto" 
-              active={activeManagementTab === 'roadmap'} 
-              onClick={() => setActiveManagementTab('roadmap')} 
-            />
-          </nav>
-        </div>
-        <div className="border-t border-slate-200 dark:border-slate-800 pt-8 mt-auto space-y-3">
-          <button
-            onClick={onClose}
-            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-          >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
-            Voltar ao Painel
-          </button>
-          <button
-            onClick={() => setShowDeleteProjectConfirm(true)}
-            className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
-          >
-            <span className="material-symbols-outlined text-lg">delete</span>
-            Excluir Projeto
-          </button>
-        </div>
-      </aside>
-
-      {/* Coluna Direita - Conteúdo Principal */}
-      <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10">
-        {activeManagementTab === 'overview' && (
-          <div className="p-8">
-            <div className="max-w-5xl mx-auto flex flex-col gap-6">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
-                <button 
-                  onClick={onClose}
-                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">arrow_back</span>
-                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-              </div>
-              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6">
-                <div className="flex items-center gap-4">
-                  {/* Foto do Projeto */}
-                  <div className="relative group">
-                    {currentProject.projectImage ? (
-                      <div 
-                        className="size-16 rounded-xl bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity shadow-md" 
-                        style={{ backgroundImage: `url(${currentProject.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                        onClick={() => projectImageInputRef.current?.click()}
-                        title="Alterar foto do projeto"
-                      ></div>
-                    ) : (
-                      <button
-                        onClick={() => projectImageInputRef.current?.click()}
-                        className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
-                        title="Adicionar foto do projeto"
-                      >
-                        <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
-                      </button>
-                    )}
+                <div className="flex-1 min-w-0">
+                  {/* Cliente - Edição Inline */}
+                  {editingClient ? (
                     <input
-                      ref={projectImageInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        setUploadingProjectImage(true);
-                        try {
-                          const imageUrl = await uploadProjectImage(currentProject.id, file);
-                          await updateProject(currentProject.id, { projectImage: imageUrl });
-                          setToast({ message: "Foto do projeto atualizada com sucesso!", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        } catch (error) {
-                          console.error("Error uploading project image:", error);
-                          setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        } finally {
-                          setUploadingProjectImage(false);
-                          if (projectImageInputRef.current) {
-                            projectImageInputRef.current.value = '';
+                      type="text"
+                      value={tempClient}
+                      onChange={(e) => setTempClient(e.target.value)}
+                      onBlur={async () => {
+                        if (tempClient.trim() && tempClient !== currentProject.client) {
+                          try {
+                            await updateProject(currentProject.id, { client: tempClient.trim() });
+                            setToast({ message: "Cliente atualizado", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating client:", error);
+                            setToast({ message: "Erro ao atualizar cliente", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
                           }
                         }
+                        setEditingClient(false);
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur();
+                        } else if (e.key === 'Escape') {
+                          setEditingClient(false);
+                        }
+                      }}
+                      className="text-lg font-bold leading-tight uppercase bg-transparent border-b-2 border-primary outline-none w-full"
+                      autoFocus
                     />
-                    {uploadingProjectImage && (
-                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
-                        <span className="material-symbols-outlined text-white animate-spin">sync</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {/* Nome do Projeto - Edição Inline */}
-                    {editingNameHeader ? (
-                      <input
-                        type="text"
-                        value={tempNameHeader}
-                        onChange={(e) => setTempNameHeader(e.target.value)}
-                        onBlur={async () => {
-                          if (tempNameHeader.trim() && tempNameHeader !== currentProject.name) {
+                  ) : (
+                    <div className="flex items-center gap-1 group/client">
+                      <h1 className="text-lg font-bold leading-tight uppercase truncate">{currentProject.client}</h1>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTempClient(currentProject.client);
+                          setEditingClient(true);
+                        }}
+                        className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                        title="Editar cliente"
+                      >
+                        <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Nome do Projeto - Edição Inline */}
+                  {editingNameSidebar ? (
+                    <input
+                      type="text"
+                      value={tempNameSidebar}
+                      onChange={(e) => setTempNameSidebar(e.target.value)}
+                      onBlur={async () => {
+                        if (tempNameSidebar.trim() && tempNameSidebar !== currentProject.name) {
+                          try {
+                            await updateProject(currentProject.id, { name: tempNameSidebar.trim() });
+                            setToast({ message: "Nome atualizado", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating name:", error);
+                            setToast({ message: "Erro ao atualizar nome", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }
+                        setEditingNameSidebar(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur();
+                        } else if (e.key === 'Escape') {
+                          setEditingNameSidebar(false);
+                        }
+                      }}
+                      className="text-slate-500 text-xs font-medium capitalize tracking-wider bg-transparent border-b-2 border-primary outline-none w-full"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1 group/name">
+                      <p className="text-slate-500 text-xs font-medium capitalize tracking-wider truncate">{currentProject.name}</p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTempNameSidebar(currentProject.name);
+                          setEditingNameSidebar(true);
+                        }}
+                        className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                        title="Editar nome"
+                      >
+                        <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+              <div className="flex flex-col gap-1">
+                <div className="py-2">
+                  <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
+                  <div className="flex items-center gap-2">
+                    <div className="relative date-picker-container flex-1">
+                      <button
+                        ref={datePickerButtonRef}
+                        onClick={() => setShowDatePicker(!showDatePicker)}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                      >
+                        <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                          {currentProject.deadline
+                            ? new Date(currentProject.deadline).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            : 'Selecione uma data'
+                          }
+                        </span>
+                        <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                      </button>
+                      {showDatePicker && (
+                        <DatePicker
+                          selectedDate={currentProject.deadline ? new Date(currentProject.deadline) : null}
+                          onSelectDate={async (date) => {
+                            const newDeadline = date ? date.toISOString() : null;
                             try {
-                              await updateProject(currentProject.id, { name: tempNameHeader.trim() });
-                              setToast({ message: "Nome atualizado", type: 'success' });
+                              await updateProject(currentProject.id, { deadline: newDeadline });
+                              setToast({ message: "Data de entrega atualizada", type: 'success' });
                               setTimeout(() => setToast(null), 3000);
+                              setShowDatePicker(false);
                             } catch (error) {
-                              console.error("Error updating name:", error);
-                              setToast({ message: "Erro ao atualizar nome", type: 'error' });
+                              console.error("Error updating deadline:", error);
+                              setToast({ message: "Erro ao atualizar data de entrega", type: 'error' });
                               setTimeout(() => setToast(null), 3000);
                             }
-                          }
-                          setEditingNameHeader(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.currentTarget.blur();
-                          } else if (e.key === 'Escape') {
-                            setEditingNameHeader(false);
-                          }
-                        }}
-                        className="text-3xl font-black leading-tight tracking-tight bg-transparent border-b-2 border-primary outline-none"
-                        autoFocus
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2 group/header-name">
-                        <p className="text-3xl font-black leading-tight tracking-tight">{currentProject.name}</p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTempNameHeader(currentProject.name);
-                            setEditingNameHeader(true);
                           }}
-                          className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                          title="Editar nome"
-                        >
-                          <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
-                        </button>
-                      </div>
-                    )}
-                    <div className="flex gap-2 flex-wrap items-center">
-                      {/* Tipo/Serviço - Dropdown para múltiplos serviços */}
-                      <div className="relative" ref={typeDropdownRef}>
-                        {/* Exibir badges dos serviços selecionados */}
-                        {(currentProject.types && currentProject.types.length > 0 ? currentProject.types : (currentProject.type ? [currentProject.type] : [])).map((typeName, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mr-1 mb-1 ${getCategoryBadgeClasses(typeName)}`}
-                            title="Alterar serviços"
-                          >
-                            {typeName || 'Sem categoria'}
-                          </button>
-                        ))}
-                        {/* Botão para adicionar serviço se não tiver nenhum */}
-                        {(!currentProject.types || currentProject.types.length === 0) && !currentProject.type && (
-                          <button
-                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 text-slate-500 dark:bg-slate-800"
-                            title="Adicionar serviços"
-                          >
-                            Sem categoria
-                            <span className="material-symbols-outlined text-[10px] ml-1 align-middle">expand_more</span>
-                          </button>
-                        )}
-                        {/* Botão de adicionar mais serviços */}
-                        <button
-                          onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                          className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
-                          title="Adicionar/remover serviços"
-                        >
-                          <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
-                        </button>
-                        {showTypeDropdown && (
-                          <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
-                            <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">Selecione os serviços</span>
+                          onClose={() => setShowDatePicker(false)}
+                          buttonRef={datePickerButtonRef}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Botão Pendente - aparece logo após Data de Entrega */}
+                  {currentProject.status === 'Completed' && (
+                    <div className="mt-2 w-full">
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Buscar a etapa "Em Desenvolvimento" para voltar
+                            const activeStage = stages.find(s => s.status === 'Active') ||
+                              stages.find(s => s.status === 'Review') ||
+                              stages.find(s => s.status === 'Lead') ||
+                              stages[Math.max(0, stages.length - 2)];
+                            await updateProject(currentProject.id, {
+                              status: (activeStage?.status || 'Active') as Project['status'],
+                              stageId: activeStage?.id, // Atualizar stageId
+                              progress: activeStage ? activeStage.progress : 50
+                            });
+                            setToast({ message: "Projeto marcado como pendente", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error marking project as pending:", error);
+                            setToast({ message: "Erro ao marcar projeto como pendente", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                        title="Marcar como pendente"
+                      >
+                        <span className="material-symbols-outlined text-sm">pending</span>
+                        <span className="hidden sm:inline">Pendente</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Campos de data para projetos recorrentes em Manutenção */}
+                  {(() => {
+                    const pTypesForMaint = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                    const isRecurringService = pTypesForMaint.some(typeName =>
+                      categories.find(cat => cat.name === typeName && cat.isRecurring)
+                    );
+                    const isInMaintenance = isRecurringService && currentProject.status === 'Completed';
+
+                    if (!isInMaintenance) return null;
+
+                    return (
+                      <>
+                        <div className="py-2 mt-2">
+                          <p className="text-slate-500 text-xs mb-1">Data da Manutenção</p>
+                          <div className="flex items-center gap-2">
+                            <div className="relative date-picker-container flex-1">
+                              <button
+                                ref={maintenanceDatePickerButtonRef}
+                                onClick={() => setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                              >
+                                <span className={currentProject.maintenanceDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                                  {currentProject.maintenanceDate
+                                    ? new Date(currentProject.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                    : 'Selecione uma data'
+                                  }
+                                </span>
+                                <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                              </button>
+                              {showMaintenanceDatePicker && (
+                                <DatePicker
+                                  selectedDate={currentProject.maintenanceDate ? new Date(currentProject.maintenanceDate) : null}
+                                  onSelectDate={async (date) => {
+                                    const newDate = date ? date.toISOString() : null;
+                                    try {
+                                      await updateProject(currentProject.id, { maintenanceDate: newDate });
+                                      setToast({ message: "Data da Manutenção atualizada", type: 'success' });
+                                      setTimeout(() => setToast(null), 3000);
+                                      setShowMaintenanceDatePicker(false);
+                                    } catch (error) {
+                                      console.error("Error updating maintenance date:", error);
+                                      setToast({ message: "Erro ao atualizar data da manutenção", type: 'error' });
+                                      setTimeout(() => setToast(null), 3000);
+                                    }
+                                  }}
+                                  onClose={() => setShowMaintenanceDatePicker(false)}
+                                  buttonRef={maintenanceDatePickerButtonRef}
+                                />
+                              )}
                             </div>
-                            {categories.map((cat) => {
-                              const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                              const isSelected = projectTypes.includes(cat.name);
-                              return (
-                                <label
-                                  key={cat.id}
-                                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors border-b border-slate-50 dark:border-slate-800 last:border-b-0 ${
-                                    isSelected ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={async () => {
-                                      try {
-                                        const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                                        let newTypes: string[];
-                                        
-                                        if (isSelected) {
-                                          // Removendo o serviço
-                                          newTypes = currentTypes.filter(t => t !== cat.name && t !== 'Sem categoria');
-                                          // Se não sobrar nenhum serviço, adicionar "Sem categoria"
-                                          if (newTypes.length === 0) {
-                                            newTypes = ['Sem categoria'];
-                                          }
-                                        } else {
-                                          // Adicionando o serviço - remover "Sem categoria" se existir
-                                          newTypes = [...currentTypes.filter(t => t !== 'Sem categoria'), cat.name];
-                                        }
-                                        
-                                        await updateProject(currentProject.id, { 
-                                          types: newTypes,
-                                          type: newTypes[0] || '' // Manter compatibilidade
-                                        });
-                                        setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
-                                        setTimeout(() => setToast(null), 3000);
-                                      } catch (error) {
-                                        console.error("Error updating types:", error);
-                                      }
-                                    }}
-                                    className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
-                                  />
-                                  <span className="text-xs flex-1">{cat.name}</span>
-                                  {cat.isRecurring && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 rounded font-bold">Recorrente</span>
-                                  )}
-                                </label>
-                              );
-                            })}
                           </div>
-                        )}
-                      </div>
-                      <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
-                        (() => {
+                        </div>
+
+                        <div className="py-2">
+                          <p className="text-slate-500 text-xs mb-1">Data do Relatório</p>
+                          <div className="flex items-center gap-2">
+                            <div className="relative date-picker-container flex-1">
+                              <button
+                                ref={reportDatePickerButtonRef}
+                                onClick={() => setShowReportDatePicker(!showReportDatePicker)}
+                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                              >
+                                <span className={currentProject.reportDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                                  {currentProject.reportDate
+                                    ? new Date(currentProject.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                    : 'Selecione uma data'
+                                  }
+                                </span>
+                                <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                              </button>
+                              {showReportDatePicker && (
+                                <DatePicker
+                                  selectedDate={currentProject.reportDate ? new Date(currentProject.reportDate) : null}
+                                  onSelectDate={async (date) => {
+                                    const newDate = date ? date.toISOString() : null;
+                                    try {
+                                      await updateProject(currentProject.id, { reportDate: newDate });
+                                      setToast({ message: "Data do Relatório atualizada", type: 'success' });
+                                      setTimeout(() => setToast(null), 3000);
+                                      setShowReportDatePicker(false);
+                                    } catch (error) {
+                                      console.error("Error updating report date:", error);
+                                      setToast({ message: "Erro ao atualizar data do relatório", type: 'error' });
+                                      setTimeout(() => setToast(null), 3000);
+                                    }
+                                  }}
+                                  onClose={() => setShowReportDatePicker(false)}
+                                  buttonRef={reportDatePickerButtonRef}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                  {/* Botões Concluir e Revisar */}
+                  {currentProject.status !== 'Completed' && (
+                    <div className="flex items-center gap-2 mt-2 w-full">
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Buscar a etapa "Concluído"
+                            const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
+                            await updateProject(currentProject.id, {
+                              status: 'Completed' as Project['status'],
+                              stageId: completedStage?.id, // Atualizar stageId
+                              progress: completedStage ? completedStage.progress : 100
+                            });
+                            setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error marking project as completed:", error);
+                            setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Completed'
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
+                          }`}
+                        title="Marcar como concluído"
+                      >
+                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                        <span className="hidden sm:inline">Concluir</span>
+                      </button>
+                      {currentProject.status !== 'Completed' && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              // Buscar a etapa "Em Revisão"
+                              const reviewStage = stages.find(s => s.status === 'Review');
+                              await updateProject(currentProject.id, {
+                                status: 'Review' as Project['status'],
+                                stageId: reviewStage?.id, // Atualizar stageId
+                                progress: reviewStage ? reviewStage.progress : 75,
+                                updatedAt: new Date()
+                              });
+                              setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                              setTimeout(() => setToast(null), 3000);
+                            } catch (error) {
+                              console.error("Error marking project as review:", error);
+                              setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                              setTimeout(() => setToast(null), 3000);
+                            }
+                          }}
+                          className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Review'
+                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
+                            }`}
+                          title="Enviar para revisão"
+                        >
+                          <span className="material-symbols-outlined text-sm">rate_review</span>
+                          <span className="hidden sm:inline">Revisar</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+              <div className="flex flex-col gap-1">
+                <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">
+                  {isProjectRecurring() ? 'Financeiro' : 'Implementação'}
+                </p>
+                <div className="py-2">
+                  <p className="text-slate-500 text-xs mb-1">
+                    {isProjectRecurring() ? 'Valor da Implementação' : 'Valor do Projeto'}
+                  </p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">
+                    {currentProject.budget ?
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                      }).format(currentProject.budget)
+                      : 'R$ 0,00'}
+                  </p>
+                  {/* Status de pagamento da implementação apenas para projetos recorrentes */}
+                  {isProjectRecurring() && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={async () => {
+                          if (currentProject.isImplementationPaid) return;
+                          try {
+                            // Atualizar apenas faturas de implementação (IMP-*)
+                            const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
+                            for (const invoice of implementationInvoices) {
+                              if (invoice.status !== 'Paid') {
+                                await updateInvoice(invoice.id, { status: 'Paid' });
+                              }
+                            }
+                            await updateProject(currentProject.id, { isImplementationPaid: true });
+                            setToast({ message: "Implementação marcada como paga", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating implementation status:", error);
+                            setToast({ message: "Erro ao atualizar status", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isImplementationPaid
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-xs">check_circle</span>
+                        Pago
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!currentProject.isImplementationPaid) return;
+                          try {
+                            // Atualizar apenas faturas de implementação (IMP-*)
+                            const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
+                            for (const invoice of implementationInvoices) {
+                              if (invoice.status === 'Paid') {
+                                await updateInvoice(invoice.id, { status: 'Pending' });
+                              }
+                            }
+                            await updateProject(currentProject.id, { isImplementationPaid: false });
+                            setToast({ message: "Implementação marcada como pendente", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating implementation status:", error);
+                            setToast({ message: "Erro ao atualizar status", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isImplementationPaid
+                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-xs">pending</span>
+                        Pendente
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Campo de Mensalidade apenas para projetos recorrentes */}
+                {isProjectRecurring() && (
+                  <div className="py-2">
+                    <p className="text-slate-500 text-xs mb-1">Valor da Mensalidade</p>
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                      {currentProject.recurringAmount ?
+                        new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL'
+                        }).format(currentProject.recurringAmount)
+                        : 'R$ 0,00'}
+                    </p>
+                    {/* Status de pagamento da mensalidade */}
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={async () => {
+                          if (currentProject.isRecurringPaid) return;
+                          try {
+                            // Encontrar a fatura de mensalidade mais recente pendente (REC-*)
+                            const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-') && inv.status !== 'Paid');
+                            if (recurringInvoices.length > 0) {
+                              // Marcar a fatura mais recente como paga
+                              const latestRecurring = recurringInvoices[0];
+                              await updateInvoice(latestRecurring.id, { status: 'Paid' });
+
+                              // Mostrar modal para criar próxima fatura
+                              setPaidInvoiceForRecurring(latestRecurring);
+                              setShowRecurringConfirm(true);
+                            }
+                            await updateProject(currentProject.id, { isRecurringPaid: true });
+                            setToast({ message: "Mensalidade marcada como paga", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating recurring status:", error);
+                            setToast({ message: "Erro ao atualizar status", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isRecurringPaid
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-xs">check_circle</span>
+                        Pago
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!currentProject.isRecurringPaid) return;
+                          try {
+                            // Atualizar apenas faturas de mensalidade (REC-*)
+                            const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-'));
+                            for (const invoice of recurringInvoices) {
+                              if (invoice.status === 'Paid') {
+                                await updateInvoice(invoice.id, { status: 'Pending' });
+                              }
+                            }
+                            await updateProject(currentProject.id, { isRecurringPaid: false });
+                            setToast({ message: "Mensalidade marcada como pendente", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating recurring status:", error);
+                            setToast({ message: "Erro ao atualizar status", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isRecurringPaid
+                          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-xs">pending</span>
+                        Pendente
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* Status de pagamento geral apenas para projetos normais */}
+                {!isProjectRecurring() && (
+                  <div className="py-2">
+                    <p className="text-slate-500 text-xs mb-1">Status de Pagamento</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (currentProject.isPaid) return;
+                          try {
+                            // Atualizar status geral do projeto
+                            await updateProject(currentProject.id, { isPaid: true });
+
+                            // Atualizar todas as faturas pendentes para Pago
+                            const pendingInvoices = invoices.filter(inv => inv.status !== 'Paid');
+                            for (const invoice of pendingInvoices) {
+                              await updateInvoice(invoice.id, { status: 'Paid' });
+                            }
+
+                            setToast({ message: "Todas as faturas marcadas como pagas", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating payment status:", error);
+                            setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${currentProject.isPaid
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                        Pago
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!currentProject.isPaid) return;
+                          try {
+                            // Atualizar status geral do projeto
+                            await updateProject(currentProject.id, { isPaid: false });
+
+                            // Atualizar todas as faturas pagas para Pendente
+                            const paidInvoices = invoices.filter(inv => inv.status === 'Paid');
+                            for (const invoice of paidInvoices) {
+                              await updateInvoice(invoice.id, { status: 'Pending' });
+                            }
+
+                            setToast({ message: "Todas as faturas marcadas como pendentes", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error updating payment status:", error);
+                            setToast({ message: "Erro ao atualizar status de pagamento", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${!currentProject.isPaid
+                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">pending</span>
+                        Pendente
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest">Equipe</p>
+                  <button
+                    onClick={() => setShowAddMember(true)}
+                    className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
+                    title="Adicionar membro"
+                  >
+                    <span className="material-symbols-outlined text-base">add</span>
+                  </button>
+                </div>
+                {teamMembers.length > 0 ? (
+                  <>
+                    <div className="flex -space-x-2 mb-3 flex-wrap">
+                      {teamMembers.slice(0, 5).map((member) => (
+                        <div
+                          key={member.id}
+                          className="size-10 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 relative group"
+                          style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
+                          title={member.name}
+                        >
+                          <button
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            title="Remover membro"
+                          >
+                            <span className="material-symbols-outlined text-xs">close</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowAllMembers(true)}
+                      className="text-sm font-semibold text-primary hover:underline text-left"
+                    >
+                      {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center py-2">
+                    <p className="text-xs text-slate-500 mb-2">Nenhum membro</p>
+                    <button
+                      onClick={() => setShowAddMember(true)}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      Adicionar membro
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <nav className="border-t border-slate-200 dark:border-slate-800 pt-8 pb-8 flex flex-col gap-1">
+              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
+              <NavBtn
+                icon="description"
+                label="Visão Geral"
+                active={activeManagementTab === 'overview'}
+                onClick={() => setActiveManagementTab('overview')}
+              />
+              <NavBtn
+                icon="payments"
+                label="Faturamento e Notas"
+                active={activeManagementTab === 'billing'}
+                onClick={() => setActiveManagementTab('billing')}
+              />
+              <NavBtn
+                icon="rocket_launch"
+                label="Roteiro do Projeto"
+                active={activeManagementTab === 'roadmap'}
+                onClick={() => setActiveManagementTab('roadmap')}
+              />
+            </nav>
+          </div>
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-8 mt-auto space-y-3">
+            <button
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+            >
+              <span className="material-symbols-outlined text-lg">arrow_back</span>
+              Voltar ao Painel
+            </button>
+            <button
+              onClick={() => setShowDeleteProjectConfirm(true)}
+              className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">delete</span>
+              Excluir Projeto
+            </button>
+          </div>
+        </aside>
+
+        {/* Coluna Direita - Conteúdo Principal */}
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10">
+          {activeManagementTab === 'overview' && (
+            <div className="p-8">
+              <div className="max-w-5xl mx-auto flex flex-col gap-6">
+                <div className="flex items-center gap-2 text-slate-500 mb-2">
+                  <button
+                    onClick={onClose}
+                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                  </button>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+                </div>
+                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-4">
+                    {/* Foto do Projeto */}
+                    <div className="relative group">
+                      {currentProject.projectImage ? (
+                        <div
+                          className="size-16 rounded-xl bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity shadow-md"
+                          style={{ backgroundImage: `url(${currentProject.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                          onClick={() => projectImageInputRef.current?.click()}
+                          title="Alterar foto do projeto"
+                        ></div>
+                      ) : (
+                        <button
+                          onClick={() => projectImageInputRef.current?.click()}
+                          className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                          title="Adicionar foto do projeto"
+                        >
+                          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
+                        </button>
+                      )}
+                      <input
+                        ref={projectImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+
+                          setUploadingProjectImage(true);
+                          try {
+                            const imageUrl = await uploadProjectImage(currentProject.id, file);
+                            await updateProject(currentProject.id, { projectImage: imageUrl });
+                            setToast({ message: "Foto do projeto atualizada com sucesso!", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (error) {
+                            console.error("Error uploading project image:", error);
+                            setToast({ message: "Erro ao fazer upload da foto. Tente novamente.", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          } finally {
+                            setUploadingProjectImage(false);
+                            if (projectImageInputRef.current) {
+                              projectImageInputRef.current.value = '';
+                            }
+                          }
+                        }}
+                      />
+                      {uploadingProjectImage && (
+                        <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                          <span className="material-symbols-outlined text-white animate-spin">sync</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {/* Nome do Projeto - Edição Inline */}
+                      {editingNameHeader ? (
+                        <input
+                          type="text"
+                          value={tempNameHeader}
+                          onChange={(e) => setTempNameHeader(e.target.value)}
+                          onBlur={async () => {
+                            if (tempNameHeader.trim() && tempNameHeader !== currentProject.name) {
+                              try {
+                                await updateProject(currentProject.id, { name: tempNameHeader.trim() });
+                                setToast({ message: "Nome atualizado", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error updating name:", error);
+                                setToast({ message: "Erro ao atualizar nome", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            }
+                            setEditingNameHeader(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur();
+                            } else if (e.key === 'Escape') {
+                              setEditingNameHeader(false);
+                            }
+                          }}
+                          className="text-3xl font-black leading-tight tracking-tight bg-transparent border-b-2 border-primary outline-none"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 group/header-name">
+                          <p className="text-3xl font-black leading-tight tracking-tight">{currentProject.name}</p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTempNameHeader(currentProject.name);
+                              setEditingNameHeader(true);
+                            }}
+                            className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                            title="Editar nome"
+                          >
+                            <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex gap-2 flex-wrap items-center">
+                        {/* Tipo/Serviço - Dropdown para múltiplos serviços */}
+                        <div className="relative" ref={typeDropdownRef}>
+                          {/* Exibir badges dos serviços selecionados */}
+                          {(currentProject.types && currentProject.types.length > 0 ? currentProject.types : (currentProject.type ? [currentProject.type] : [])).map((typeName, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mr-1 mb-1 ${getCategoryBadgeClasses(typeName)}`}
+                              title="Alterar serviços"
+                            >
+                              {typeName || 'Sem categoria'}
+                            </button>
+                          ))}
+                          {/* Botão para adicionar serviço se não tiver nenhum */}
+                          {(!currentProject.types || currentProject.types.length === 0) && !currentProject.type && (
+                            <button
+                              onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                              className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 text-slate-500 dark:bg-slate-800"
+                              title="Adicionar serviços"
+                            >
+                              Sem categoria
+                              <span className="material-symbols-outlined text-[10px] ml-1 align-middle">expand_more</span>
+                            </button>
+                          )}
+                          {/* Botão de adicionar mais serviços */}
+                          <button
+                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                            className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
+                            title="Adicionar/remover serviços"
+                          >
+                            <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
+                          </button>
+                          {showTypeDropdown && (
+                            <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
+                              <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Selecione os serviços</span>
+                              </div>
+                              {categories.map((cat) => {
+                                const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                                const isSelected = projectTypes.includes(cat.name);
+                                return (
+                                  <label
+                                    key={cat.id}
+                                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors border-b border-slate-50 dark:border-slate-800 last:border-b-0 ${isSelected ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                                      }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={async () => {
+                                        try {
+                                          const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                                          let newTypes: string[];
+
+                                          if (isSelected) {
+                                            // Removendo o serviço
+                                            newTypes = currentTypes.filter(t => t !== cat.name && t !== 'Sem categoria');
+                                            // Se não sobrar nenhum serviço, adicionar "Sem categoria"
+                                            if (newTypes.length === 0) {
+                                              newTypes = ['Sem categoria'];
+                                            }
+                                          } else {
+                                            // Adicionando o serviço - remover "Sem categoria" se existir
+                                            newTypes = [...currentTypes.filter(t => t !== 'Sem categoria'), cat.name];
+                                          }
+
+                                          await updateProject(currentProject.id, {
+                                            types: newTypes,
+                                            type: newTypes[0] || '' // Manter compatibilidade
+                                          });
+                                          setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
+                                          setTimeout(() => setToast(null), 3000);
+                                        } catch (error) {
+                                          console.error("Error updating types:", error);
+                                        }
+                                      }}
+                                      className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                    />
+                                    <span className="text-xs flex-1">{cat.name}</span>
+                                    {cat.isRecurring && (
+                                      <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 rounded font-bold">Recorrente</span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${(() => {
                           const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                          const isRecurringService = projectTypes.some(typeName => 
+                          const isRecurringService = projectTypes.some(typeName =>
                             categories.find(cat => cat.name === typeName && cat.isRecurring)
                           );
                           const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
-                          
+
                           // Se for serviço recorrente na etapa Manutenção, usar azul para "Gestão"
                           if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
                             return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
                           }
-                          
+
                           // Caso contrário, usar as cores padrão
                           return currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                                 currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                 currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                 currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
+                            currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                              currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                currentProject.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
                         })()
-                      }`}>
-                        {(() => {
-                          // Verificar se algum dos serviços é recorrente
-                          const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                          const isRecurringService = projectTypes.some(typeName => 
-                            categories.find(cat => cat.name === typeName && cat.isRecurring)
-                          );
-                          
-                          // Verificar se está na etapa Manutenção
-                          const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
-                          
-                          // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
-                          if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
-                            return 'Gestão';
-                          }
-                          
-                          // Se for serviço recorrente e status Lead, mostrar "On-boarding"
-                          if (isRecurringService && currentProject.status === 'Lead') {
-                            return 'On-boarding';
-                          }
-                          
-                          // Caso contrário, usar a lógica padrão
-                          return currentProject.status === 'Lead' ? 'On-boarding' : 
-                                 currentProject.status === 'Active' ? 'Em Desenvolvimento' :
-                                 currentProject.status === 'Completed' ? 'Concluído' : 
-                                 currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
-                        })()}
-                      </span>
+                          }`}>
+                          {(() => {
+                            // Verificar se algum dos serviços é recorrente
+                            const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                            const isRecurringService = projectTypes.some(typeName =>
+                              categories.find(cat => cat.name === typeName && cat.isRecurring)
+                            );
+
+                            // Verificar se está na etapa Manutenção
+                            const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
+
+                            // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
+                            if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
+                              return 'Gestão';
+                            }
+
+                            // Se for serviço recorrente e status Lead, mostrar "On-boarding"
+                            if (isRecurringService && currentProject.status === 'Lead') {
+                              return 'On-boarding';
+                            }
+
+                            // Caso contrário, usar a lógica padrão
+                            return currentProject.status === 'Lead' ? 'On-boarding' :
+                              currentProject.status === 'Active' ? 'Em Desenvolvimento' :
+                                currentProject.status === 'Completed' ? 'Concluído' :
+                                  currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
+                          })()}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => setShowShareProject(true)}
-                    className="flex items-center px-4 h-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[18px] mr-2">share</span> Compartilhar
-                  </button>
-                </div>
-              </div>
-
-              {/* Etapas do Projeto - Timeline */}
-              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
-                {/* Progress Bar */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-slate-500">Progresso Geral</span>
-                    <span className="text-xs font-bold text-primary">{currentProject.progress}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-primary to-blue-400 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${currentProject.progress}%` }}
-                    ></div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowShareProject(true)}
+                      className="flex items-center px-4 h-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px] mr-2">share</span> Compartilhar
+                    </button>
                   </div>
                 </div>
 
-                {/* Etapas Timeline */}
-                <div className="flex items-center gap-1 overflow-x-auto pb-2">
-                  {stages.map((stage, index) => {
-                    const currentStage = stages.find(s => s.status === currentProject.status);
-                    const currentStageOrder = currentStage?.order ?? -1;
-                    const isPast = stage.order < currentStageOrder;
-                    const isCurrent = stage.status === currentProject.status;
-                    const isFuture = stage.order > currentStageOrder;
-                    
-                    return (
-                      <React.Fragment key={stage.id}>
-                        <button
-                          onClick={async () => {
-                            try {
-                              await updateProject(currentProject.id, { 
-                                status: stage.status as Project['status'],
-                                stageId: stage.id,
-                                progress: stage.progress
-                              });
-                              setToast({ message: `Projeto movido para: ${stage.title}`, type: 'success' });
-                              setTimeout(() => setToast(null), 3000);
-                            } catch (error) {
-                              console.error("Error updating project stage:", error);
-                              setToast({ message: "Erro ao atualizar etapa", type: 'error' });
-                              setTimeout(() => setToast(null), 3000);
+                {/* Etapas do Projeto - Timeline */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
+                  {/* Progress Bar */}
+                  <div className="mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-slate-500">Progresso Geral</span>
+                      <span className="text-xs font-bold text-primary">{currentProject.progress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-primary to-blue-400 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${currentProject.progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Etapas Timeline */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-2">
+                    {stages.map((stage, index) => {
+                      const currentStage = stages.find(s => s.status === currentProject.status);
+                      const currentStageOrder = currentStage?.order ?? -1;
+                      const isPast = stage.order < currentStageOrder;
+                      const isCurrent = stage.status === currentProject.status;
+                      const isFuture = stage.order > currentStageOrder;
+
+                      return (
+                        <React.Fragment key={stage.id}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateProject(currentProject.id, {
+                                  status: stage.status as Project['status'],
+                                  stageId: stage.id,
+                                  progress: stage.progress
+                                });
+                                setToast({ message: `Projeto movido para: ${stage.title}`, type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error updating project stage:", error);
+                                setToast({ message: "Erro ao atualizar etapa", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            }}
+                            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all min-w-[80px] ${isCurrent
+                              ? 'bg-primary/10 border-2 border-primary'
+                              : isPast
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+                                : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                              }`}
+                            title={`Mover para: ${stage.title}`}
+                          >
+                            <div className={`size-6 rounded-full flex items-center justify-center ${isCurrent
+                              ? 'bg-primary text-white'
+                              : isPast
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
+                              }`}>
+                              {isPast ? (
+                                <span className="material-symbols-outlined text-xs">check</span>
+                              ) : (
+                                <span className="text-[10px] font-bold">{index + 1}</span>
+                              )}
+                            </div>
+                            <span className={`text-[10px] font-semibold text-center leading-tight ${isCurrent ? 'text-primary' : isPast ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+                              }`}>
+                              {stage.title}
+                            </span>
+                          </button>
+                          {index < stages.length - 1 && (
+                            <div className={`h-[2px] w-4 flex-shrink-0 ${isPast ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700'
+                              }`}></div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="border-b border-slate-100 dark:border-slate-800 px-6 pt-2 flex gap-10">
+                    <TabLink
+                      label="Descrição"
+                      icon="description"
+                      active={activeTab === 'description'}
+                      onClick={() => setActiveTab('description')}
+                    />
+                    <TabLink
+                      label="Tarefas"
+                      icon="checklist"
+                      active={activeTab === 'tasks'}
+                      badge={(() => {
+                        let totalTasks = 0;
+                        let completedTasks = 0;
+                        stages.forEach((stage) => {
+                          const tasks = stageTasks[stage.id] || [];
+                          totalTasks += tasks.length;
+                          tasks.forEach((task) => {
+                            const projectTask = projectStageTasks.find(
+                              pt => pt.stageTaskId === task.id && pt.stageId === stage.id
+                            );
+                            if (projectTask?.completed) completedTasks++;
+                          });
+                        });
+                        const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                        return totalTasks > 0 ? `${progressPercentage}%` : undefined;
+                      })()}
+                      onClick={() => setActiveTab('tasks')}
+                    />
+                    <TabLink
+                      label="Dados de Acesso"
+                      icon="key"
+                      active={activeTab === 'access'}
+                      onClick={() => setActiveTab('access')}
+                    />
+                    <TabLink
+                      label="Arquivos"
+                      icon="folder"
+                      active={activeTab === 'files'}
+                      onClick={() => setActiveTab('files')}
+                    />
+                  </div>
+                  <div className="p-6">
+                    {activeTab === 'description' && (
+                      <div>
+                        <h3 className="text-lg font-bold mb-4">Descrição do Projeto</h3>
+                        <textarea
+                          value={tempDescription}
+                          onChange={(e) => setTempDescription(e.target.value)}
+                          onBlur={async () => {
+                            if (tempDescription !== (currentProject.description || '')) {
+                              try {
+                                await updateProject(currentProject.id, { description: tempDescription });
+                                setToast({ message: "Descrição atualizada", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error updating description:", error);
+                                setToast({ message: "Erro ao atualizar descrição", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
                             }
                           }}
-                          className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all min-w-[80px] ${
-                            isCurrent 
-                              ? 'bg-primary/10 border-2 border-primary' 
-                              : isPast 
-                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30' 
-                                : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                          }`}
-                          title={`Mover para: ${stage.title}`}
-                        >
-                          <div className={`size-6 rounded-full flex items-center justify-center ${
-                            isCurrent 
-                              ? 'bg-primary text-white' 
-                              : isPast 
-                                ? 'bg-emerald-500 text-white' 
-                                : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
-                          }`}>
-                            {isPast ? (
-                              <span className="material-symbols-outlined text-xs">check</span>
-                            ) : (
-                              <span className="text-[10px] font-bold">{index + 1}</span>
-                            )}
-                          </div>
-                          <span className={`text-[10px] font-semibold text-center leading-tight ${
-                            isCurrent ? 'text-primary' : isPast ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
-                          }`}>
-                            {stage.title}
-                          </span>
-                        </button>
-                        {index < stages.length - 1 && (
-                          <div className={`h-[2px] w-4 flex-shrink-0 ${
-                            isPast ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700'
-                          }`}></div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
+                          placeholder="Adicione uma descrição para o projeto..."
+                          className="w-full min-h-[150px] p-4 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg resize-y focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all leading-relaxed"
+                        />
+                        <p className="text-xs text-slate-400 mt-2">As alterações são salvas automaticamente ao clicar fora do campo.</p>
+                      </div>
+                    )}
 
-              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-              <div className="border-b border-slate-100 dark:border-slate-800 px-6 pt-2 flex gap-10">
-                <TabLink 
-                  label="Descrição" 
-                  icon="description" 
-                  active={activeTab === 'description'} 
-                  onClick={() => setActiveTab('description')} 
-                />
-                <TabLink 
-                  label="Tarefas" 
-                  icon="checklist" 
-                  active={activeTab === 'tasks'} 
-                  badge={(() => {
-                    let totalTasks = 0;
-                    let completedTasks = 0;
-                    stages.forEach((stage) => {
-                      const tasks = stageTasks[stage.id] || [];
-                      totalTasks += tasks.length;
-                      tasks.forEach((task) => {
-                        const projectTask = projectStageTasks.find(
-                          pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                        );
-                        if (projectTask?.completed) completedTasks++;
-                      });
-                    });
-                    const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                    return totalTasks > 0 ? `${progressPercentage}%` : undefined;
-                  })()}
-                  onClick={() => setActiveTab('tasks')} 
-                />
-                <TabLink 
-                  label="Dados de Acesso" 
-                  icon="key" 
-                  active={activeTab === 'access'} 
-                  onClick={() => setActiveTab('access')} 
-                />
-                <TabLink 
-                  label="Arquivos" 
-                  icon="folder" 
-                  active={activeTab === 'files'} 
-                  onClick={() => setActiveTab('files')} 
-                />
-              </div>
-              <div className="p-6">
-                {activeTab === 'description' && (
-                  <div>
-                    <h3 className="text-lg font-bold mb-4">Descrição do Projeto</h3>
-                    <textarea
-                      value={tempDescription}
-                      onChange={(e) => setTempDescription(e.target.value)}
-                      onBlur={async () => {
-                        if (tempDescription !== (currentProject.description || '')) {
-                          try {
-                            await updateProject(currentProject.id, { description: tempDescription });
-                            setToast({ message: "Descrição atualizada", type: 'success' });
-                            setTimeout(() => setToast(null), 3000);
-                          } catch (error) {
-                            console.error("Error updating description:", error);
-                            setToast({ message: "Erro ao atualizar descrição", type: 'error' });
-                            setTimeout(() => setToast(null), 3000);
-                          }
-                        }
-                      }}
-                      placeholder="Adicione uma descrição para o projeto..."
-                      className="w-full min-h-[150px] p-4 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg resize-y focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all leading-relaxed"
-                    />
-                    <p className="text-xs text-slate-400 mt-2">As alterações são salvas automaticamente ao clicar fora do campo.</p>
-                  </div>
-                )}
+                    {activeTab === 'tasks' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-lg font-bold">Progresso de Tarefas</h3>
+                        </div>
 
-                {activeTab === 'tasks' && (
-                  <div>
-                    <div className="mb-6">
-                      <h3 className="text-lg font-bold">Progresso de Tarefas</h3>
-                    </div>
-                    {stages.length > 0 && Object.keys(stageTasks).length > 0 ? (
-                      <>
                         {/* Calcular progresso total */}
                         {(() => {
-                          let totalTasks = 0;
-                          let completedTasks = 0;
-                          stages.forEach((stage) => {
-                            const tasks = stageTasks[stage.id] || [];
-                            totalTasks += tasks.length;
-                            tasks.forEach((task) => {
-                              const projectTask = projectStageTasks.find(
-                                pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                              );
-                              if (projectTask?.completed) completedTasks++;
-                            });
-                          });
-                          const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-                          
-                          return (
+                          const allTasks = projectStageTasks.filter(t => t.stageId);
+                          const completedTasks = allTasks.filter(t => t.completed);
+                          const progressPercentage = allTasks.length > 0 ? (completedTasks.length / allTasks.length) * 100 : 0;
+
+                          return allTasks.length > 0 ? (
                             <div className="space-y-4 mb-6">
                               <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-primary h-full rounded-full transition-all" 
+                                <div
+                                  className="bg-primary h-full rounded-full transition-all"
                                   style={{ width: `${progressPercentage}%` }}
                                 ></div>
                               </div>
                             </div>
-                          );
+                          ) : null;
                         })()}
-                        
+
                         <div className="space-y-6">
                           {stages.map((stage) => {
-                            const tasks = stageTasks[stage.id] || [];
-                            if (tasks.length === 0) return null;
-                            
+                            // Filtrar tarefas do projeto para essa etapa
+                            const stageProjectTasks = projectStageTasks
+                              .filter(pt => pt.stageId === stage.id)
+                              .sort((a, b) => (a.order || 0) - (b.order || 0));
+
                             const isCurrentStage = stage.status === currentProject.status;
                             const currentStage = stages.find(s => s.status === currentProject.status);
                             const currentStageOrder = currentStage?.order ?? -1;
                             const stageOrder = stage.order;
                             const isPreviousStage = stageOrder < currentStageOrder;
-                            
-                            const allTasksCompleted = tasks.every((task) => {
-                              const projectTask = projectStageTasks.find(
-                                pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                              );
-                              return projectTask?.completed || false;
-                            });
-                            
+
+                            const allTasksCompleted = stageProjectTasks.length > 0 && stageProjectTasks.every(t => t.completed);
                             const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
-                            
+
                             return (
                               <div key={stage.id} className="space-y-3">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <h4 className={`text-sm font-semibold uppercase tracking-wider ${
-                                    isCompleted
-                                      ? 'text-emerald-600 dark:text-emerald-400'
-                                      : isCurrentStage 
-                                      ? 'text-primary dark:text-primary' 
+                                  <h4 className={`text-sm font-semibold uppercase tracking-wider ${isCompleted
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : isCurrentStage
+                                      ? 'text-primary dark:text-primary'
                                       : 'text-slate-600 dark:text-slate-400'
-                                  }`}>
+                                    }`}>
                                     {stage.title}
                                   </h4>
                                   {(isCurrentStage || isPreviousStage) && (
-                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
-                                      isCompleted 
-                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' 
-                                        : isCurrentStage 
-                                        ? 'bg-primary/10 text-primary' 
+                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
+                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                      : isCurrentStage
+                                        ? 'bg-primary/10 text-primary'
                                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                    }`}>
+                                      }`}>
                                       {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
                                     </span>
                                   )}
+                                  {/* Botão Redefinir Tarefas */}
+                                  {isCurrentStage && (
+                                    <button
+                                      onClick={() => {
+                                        setStageToReset(stage);
+                                        setShowResetTasksConfirm(true);
+                                      }}
+                                      className="ml-auto text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
+                                      title="Redefinir tarefas para o padrão"
+                                    >
+                                      <span className="material-symbols-outlined text-sm">refresh</span>
+                                      Redefinir
+                                    </button>
+                                  )}
                                 </div>
-                                <div className="space-y-3">
-                                  {tasks.map((task) => {
-                                    const projectTask = projectStageTasks.find(
-                                      pt => pt.stageTaskId === task.id && pt.stageId === stage.id
-                                    );
-                                    const isTaskCompleted = projectTask?.completed || false;
+                                <div className="space-y-2">
+                                  {stageProjectTasks.map((task) => {
+                                    const isTaskCompleted = task.completed || false;
                                     const isTaskInProgress = isCurrentStage && !isTaskCompleted;
-                                    
+
                                     return (
-                                      <label
+                                      <div
                                         key={task.id}
-                                        className="flex items-center gap-3 cursor-pointer group"
-                                        onClick={async (e) => {
-                                          if (e.target instanceof HTMLElement && e.target.closest('input')) return;
-                                          try {
-                                            await toggleProjectStageTask(currentProject.id, task.id, stage.id, !isTaskCompleted);
-                                          } catch (error) {
-                                            console.error("Error toggling task:", error);
-                                            setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
-                                            setTimeout(() => setToast(null), 3000);
-                                          }
-                                        }}
+                                        className="flex items-center gap-3 group p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                       >
-                                        <span className={`material-symbols-outlined transition-colors ${
-                                          isTaskCompleted 
-                                            ? 'text-green-500' 
-                                            : isTaskInProgress 
-                                            ? 'text-primary' 
-                                            : 'text-slate-400'
-                                        }`}>
-                                          {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
-                                        </span>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await toggleProjectStageTask(currentProject.id, task.stageTaskId || task.id, stage.id, !isTaskCompleted);
+                                            } catch (error) {
+                                              console.error("Error toggling task:", error);
+                                              setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
+                                              setTimeout(() => setToast(null), 3000);
+                                            }
+                                          }}
+                                          className="flex-shrink-0"
+                                        >
+                                          <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
+                                            ? 'text-green-500'
+                                            : isTaskInProgress
+                                              ? 'text-primary'
+                                              : 'text-slate-400'
+                                            }`}>
+                                            {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
+                                          </span>
+                                        </button>
                                         <p className={`text-sm flex-1 ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}>
-                                          {task.title}
+                                          {task.title || 'Sem título'}
                                         </p>
-                                      </label>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await removeProjectTask(task.id);
+                                              setToast({ message: "Tarefa removida", type: 'success' });
+                                              setTimeout(() => setToast(null), 3000);
+                                            } catch (error) {
+                                              console.error("Error removing task:", error);
+                                              setToast({ message: "Erro ao remover tarefa", type: 'error' });
+                                              setTimeout(() => setToast(null), 3000);
+                                            }
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
+                                          title="Remover tarefa"
+                                        >
+                                          <span className="material-symbols-outlined text-lg">delete</span>
+                                        </button>
+                                      </div>
                                     );
                                   })}
+
+                                  {/* Formulário para adicionar nova tarefa */}
+                                  {isCurrentStage && (
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Adicionar nova tarefa..."
+                                        className="flex-1 px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                                        onKeyPress={async (e) => {
+                                          if (e.key === 'Enter') {
+                                            const input = e.target as HTMLInputElement;
+                                            const title = input.value.trim();
+                                            if (!title) return;
+
+                                            try {
+                                              const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
+                                              await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
+                                              input.value = '';
+                                              setToast({ message: "Tarefa adicionada", type: 'success' });
+                                              setTimeout(() => setToast(null), 3000);
+                                            } catch (error) {
+                                              console.error("Error adding task:", error);
+                                              setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
+                                              setTimeout(() => setToast(null), 3000);
+                                            }
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
-                      </>
-                    ) : (
-                      <p className="text-sm text-slate-500 text-center py-8">Nenhuma tarefa definida para este projeto.</p>
-                    )}
-                  </div>
-                )}
 
-                {activeTab === 'access' && (
-                  <>
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-lg font-bold">Credenciais de Hospedagem e CMS</h3>
-                      <div className="flex items-center gap-3">
-                        <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
-                        </div>
-                        <button 
-                          onClick={() => setShowAddCredential(true)}
-                          className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-base">add</span>
-                          Adicionar Credencial
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {credentials.map((credential) => (
-                        <CredentialCard 
-                          key={credential.id}
-                          title={credential.title} 
-                          sub={credential.sub} 
-                          icon={credential.icon} 
-                          url={credential.url} 
-                          user={credential.user}
-                          password={credential.password}
-                          onEdit={() => setShowEditCredential(credential)}
-                          onDelete={() => {
-                            setCredentials(credentials.filter(c => c.id !== credential.id));
-                            setToast({ message: "Credencial removida com sucesso!", type: 'success' });
-                            setTimeout(() => setToast(null), 3000);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {activeTab === 'files' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold">Mídias e Documentos</h3>
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          onChange={handleFileUpload}
-                          className="hidden"
-                          id="file-upload"
-                          disabled={uploading}
-                        />
-                        <label
-                          htmlFor="file-upload"
-                          className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                            uploading
-                              ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                              : 'text-primary hover:bg-primary/10'
-                          }`}
-                        >
-                          <span className="material-symbols-outlined text-sm">
-                            {uploading ? 'hourglass_empty' : 'upload'}
-                          </span>
-                          {uploading ? 'Enviando...' : 'Enviar Arquivo'}
-                        </label>
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      {projectFiles.length > 0 ? (
-                        projectFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors"
-                          >
-                            <div className="flex-shrink-0">
-                              {file.type === 'image' ? (
-                                <span className="material-symbols-outlined text-2xl text-blue-500">image</span>
-                              ) : file.type === 'video' ? (
-                                <span className="material-symbols-outlined text-2xl text-purple-500">videocam</span>
-                              ) : file.type === 'document' ? (
-                                <span className="material-symbols-outlined text-2xl text-red-500">description</span>
-                              ) : (
-                                <span className="material-symbols-outlined text-2xl text-slate-500">attach_file</span>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <a
-                                href={file.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
-                              >
-                                {file.name}
-                              </a>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
-                                <span className="text-xs text-slate-400">•</span>
-                                <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteFile(file)}
-                              className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
-                              title="Excluir arquivo"
-                            >
-                              <span className="material-symbols-outlined text-lg">delete</span>
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-slate-500 text-center py-8">Nenhum arquivo enviado ainda</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {activeManagementTab === 'billing' && (
-          <div className="p-8">
-            <div className="max-w-5xl mx-auto">
-              <div className="flex items-center gap-2 text-slate-500 mb-4">
-                <button 
-                  onClick={onClose}
-                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">arrow_back</span>
-                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-              </div>
-              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
-                  <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
-                </div>
-                <button 
-                  onClick={() => setShowAddInvoice(true)}
-                  className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
-                >
-                  <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
-                </button>
-              </div>
-
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold">Faturas</h3>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
-                      <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
-                    </div>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50">
-                      <tr>
-                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
-                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
-                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
-                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {invoices.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center">
-                            <div className="flex flex-col items-center gap-2">
-                              <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
-                              <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
-                              <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        [...invoices].sort((a, b) => {
-                          const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-                          const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-                          return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
-                        }).map((invoice, index, sortedInvoices) => (
-                          <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                            <td className="px-6 py-4">
-                              <p className="text-sm font-medium">{invoice.description}</p>
-                              <p className="text-[10px] text-slate-400">{invoice.number}</p>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-slate-500">
-                              {(() => {
-                                if (!invoice.date) return '-';
-                                let dateObj: Date;
-                                if (invoice.date instanceof Date) {
-                                  dateObj = invoice.date;
-                                } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
-                                  // Parse YYYY-MM-DD sem problemas de timezone
-                                  const [year, month, day] = invoice.date.split('-').map(Number);
-                                  dateObj = new Date(year, month - 1, day);
-                                } else if (invoice.date?.toDate) {
-                                  // Firebase Timestamp
-                                  dateObj = invoice.date.toDate();
-                                } else {
-                                  dateObj = new Date(invoice.date);
-                                }
-                                return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
-                              })()}
-                            </td>
-                            <td className="px-6 py-4 text-sm font-bold">
-                              <div className="flex items-baseline gap-1.5">
-                                <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
-                                {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
-                                {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
-                                  <span className="text-[10px] font-normal text-slate-500">
-                                    {(() => {
-                                      // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
-                                      const sameTypeInvoices = sortedInvoices.filter(inv => 
-                                        invoice.number.startsWith('IMP-') 
-                                          ? inv.number.startsWith('IMP-') 
-                                          : inv.number.startsWith('INV-')
-                                      );
-                                      const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
-                                      return `${currentIndex + 1}/${sameTypeInvoices.length}`;
-                                    })()}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={async () => {
-                                    if (invoice.status === 'Paid') return;
-                                    try {
-                                      await updateInvoice(invoice.id, { status: 'Paid' });
-                                      const updatedInvoices = invoices.map(inv => 
-                                        inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
-                                      );
-                                      
-                                      // Atualizar status específico baseado no tipo de fatura
-                                      if (isProjectRecurring()) {
-                                        if (invoice.number.startsWith('IMP-')) {
-                                          // Verificar se todas as faturas de implementação estão pagas
-                                          const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                          const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                          if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                            await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                          }
-                                        } else if (invoice.number.startsWith('REC-')) {
-                                          // Para mensalidade, marcar como paga e perguntar se quer criar nova fatura
-                                          await updateProject(currentProject.id, { isRecurringPaid: true });
-                                          setPaidInvoiceForRecurring(invoice);
-                                          setShowRecurringConfirm(true);
-                                        }
-                                      } else {
-                                        // Projeto normal: atualizar status geral
-                                        const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                        if (allPaid !== currentProject.isPaid) {
-                                          await updateProject(currentProject.id, { isPaid: allPaid });
-                                        }
-                                      }
-                                    } catch (error) {
-                                      console.error("Error updating invoice:", error);
-                                    }
-                                  }}
-                                  className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                                    invoice.status === 'Paid'
-                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
-                                  }`}
-                                >
-                                  <span className="material-symbols-outlined text-xs">check_circle</span>
-                                  Pago
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (invoice.status === 'Pending') return;
-                                    try {
-                                      await updateInvoice(invoice.id, { status: 'Pending' });
-                                      const updatedInvoices = invoices.map(inv => 
-                                        inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
-                                      );
-                                      
-                                      // Atualizar status específico baseado no tipo de fatura
-                                      if (isProjectRecurring()) {
-                                        if (invoice.number.startsWith('IMP-')) {
-                                          // Verificar se alguma fatura de implementação está pendente
-                                          const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                          const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                          if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                            await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                          }
-                                        } else if (invoice.number.startsWith('REC-')) {
-                                          // Para mensalidade, marcar como pendente
-                                          await updateProject(currentProject.id, { isRecurringPaid: false });
-                                        }
-                                      } else {
-                                        // Projeto normal: atualizar status geral
-                                        const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                        if (allPaid !== currentProject.isPaid) {
-                                          await updateProject(currentProject.id, { isPaid: allPaid });
-                                        }
-                                      }
-                                    } catch (error) {
-                                      console.error("Error updating invoice:", error);
-                                    }
-                                  }}
-                                  className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                                    invoice.status === 'Pending'
-                                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-red-100 hover:text-red-700 hover:border-red-300'
-                                  }`}
-                                >
-                                  <span className="material-symbols-outlined text-xs">pending</span>
-                                  Pendente
-                                </button>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <button
-                                onClick={() => setEditingInvoice(invoice)}
-                                className="size-8 rounded-lg flex items-center justify-center transition-all bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-primary/10 hover:text-primary border border-slate-200 dark:border-slate-700"
-                                title="Editar fatura"
-                              >
-                                <span className="material-symbols-outlined text-lg">edit</span>
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeManagementTab === 'roadmap' && (
-          <div className="p-8">
-            <div className="max-w-5xl mx-auto">
-              <div className="flex items-center gap-2 text-slate-500 mb-4">
-                <button 
-                  onClick={onClose}
-                  className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">arrow_back</span>
-                  <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-              </div>
-              <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
-                  <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
-                </div>
-                <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
-                  <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
-                </button>
-              </div>
-
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
-                <div className="relative">
-                  {[
-                    { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
-                    { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
-                    { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
-                    { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
-                    { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
-                    { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
-                  ].map((milestone, index) => (
-                    <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${
-                          milestone.status === 'completed' ? 'bg-green-500 text-white' :
-                          milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
-                          'bg-slate-200 text-slate-400'
-                        }`}>
-                          {milestone.status === 'completed' ? (
-                            <span className="material-symbols-outlined">check</span>
-                          ) : (
-                            <span>{index + 1}</span>
-                          )}
-                        </div>
-                        {index < 5 && (
-                          <div className={`w-0.5 h-full mt-2 ${
-                            milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
-                          }`} style={{ minHeight: '80px' }}></div>
+                        {stages.length === 0 && (
+                          <p className="text-sm text-slate-500 text-center py-8">Nenhuma tarefa definida para este projeto.</p>
                         )}
                       </div>
-                      <div className="flex-1 pb-8">
-                        <div className={`p-4 rounded-lg border-2 ${
-                          milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
-                          milestone.status === 'current' ? 'border-primary bg-primary/5' :
-                          'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-lg font-bold">{milestone.title}</h3>
-                            <span className="text-sm text-slate-500">{milestone.date}</span>
+                    )}
+
+                    {activeTab === 'access' && (
+                      <>
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-lg font-bold">Credenciais de Hospedagem e CMS</h3>
+                          <div className="flex items-center gap-3">
+                            <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
+                            </div>
+                            <button
+                              onClick={() => setShowAddCredential(true)}
+                              className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-base">add</span>
+                              Adicionar Credencial
+                            </button>
                           </div>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {credentials.map((credential) => (
+                            <CredentialCard
+                              key={credential.id}
+                              title={credential.title}
+                              sub={credential.sub}
+                              icon={credential.icon}
+                              url={credential.url}
+                              user={credential.user}
+                              password={credential.password}
+                              onEdit={() => setShowEditCredential(credential)}
+                              onDelete={() => {
+                                setCredentials(credentials.filter(c => c.id !== credential.id));
+                                setToast({ message: "Credencial removida com sucesso!", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {activeTab === 'files' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-bold">Mídias e Documentos</h3>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              onChange={handleFileUpload}
+                              className="hidden"
+                              id="file-upload"
+                              disabled={uploading}
+                            />
+                            <label
+                              htmlFor="file-upload"
+                              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${uploading
+                                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                : 'text-primary hover:bg-primary/10'
+                                }`}
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                {uploading ? 'hourglass_empty' : 'upload'}
+                              </span>
+                              {uploading ? 'Enviando...' : 'Enviar Arquivo'}
+                            </label>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {projectFiles.length > 0 ? (
+                            projectFiles.map((file) => (
+                              <div
+                                key={file.id}
+                                className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary/50 transition-colors"
+                              >
+                                <div className="flex-shrink-0">
+                                  {file.type === 'image' ? (
+                                    <span className="material-symbols-outlined text-2xl text-blue-500">image</span>
+                                  ) : file.type === 'video' ? (
+                                    <span className="material-symbols-outlined text-2xl text-purple-500">videocam</span>
+                                  ) : file.type === 'document' ? (
+                                    <span className="material-symbols-outlined text-2xl text-red-500">description</span>
+                                  ) : (
+                                    <span className="material-symbols-outlined text-2xl text-slate-500">attach_file</span>
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <a
+                                    href={file.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
+                                  >
+                                    {file.name}
+                                  </a>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                                    <span className="text-xs text-slate-400">•</span>
+                                    <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteFile(file)}
+                                  className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
+                                  title="Excluir arquivo"
+                                >
+                                  <span className="material-symbols-outlined text-lg">delete</span>
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500 text-center py-8">Nenhum arquivo enviado ainda</p>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeManagementTab === 'billing' && (
+            <div className="p-8">
+              <div className="max-w-5xl mx-auto">
+                <div className="flex items-center gap-2 text-slate-500 mb-4">
+                  <button
+                    onClick={onClose}
+                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                  </button>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+                </div>
+                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                  <div className="flex flex-col gap-1">
+                    <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
+                    <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddInvoice(true)}
+                    className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
+                  >
+                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
+                  </button>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold">Faturas</h3>
+                      <div className="flex gap-2">
+                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
+                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50">
+                        <tr>
+                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
+                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
+                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
+                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {invoices.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-12 text-center">
+                              <div className="flex flex-col items-center gap-2">
+                                <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
+                                <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
+                                <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          [...invoices].sort((a, b) => {
+                            const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+                            const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+                            return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
+                          }).map((invoice, index, sortedInvoices) => (
+                            <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="px-6 py-4">
+                                <p className="text-sm font-medium">{invoice.description}</p>
+                                <p className="text-[10px] text-slate-400">{invoice.number}</p>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-slate-500">
+                                {(() => {
+                                  if (!invoice.date) return '-';
+                                  let dateObj: Date;
+                                  if (invoice.date instanceof Date) {
+                                    dateObj = invoice.date;
+                                  } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
+                                    // Parse YYYY-MM-DD sem problemas de timezone
+                                    const [year, month, day] = invoice.date.split('-').map(Number);
+                                    dateObj = new Date(year, month - 1, day);
+                                  } else if (invoice.date?.toDate) {
+                                    // Firebase Timestamp
+                                    dateObj = invoice.date.toDate();
+                                  } else {
+                                    dateObj = new Date(invoice.date);
+                                  }
+                                  return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+                                })()}
+                              </td>
+                              <td className="px-6 py-4 text-sm font-bold">
+                                <div className="flex items-baseline gap-1.5">
+                                  <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
+                                  {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
+                                  {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
+                                    <span className="text-[10px] font-normal text-slate-500">
+                                      {(() => {
+                                        // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
+                                        const sameTypeInvoices = sortedInvoices.filter(inv =>
+                                          invoice.number.startsWith('IMP-')
+                                            ? inv.number.startsWith('IMP-')
+                                            : inv.number.startsWith('INV-')
+                                        );
+                                        const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
+                                        return `${currentIndex + 1}/${sameTypeInvoices.length}`;
+                                      })()}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={async () => {
+                                      if (invoice.status === 'Paid') return;
+                                      try {
+                                        await updateInvoice(invoice.id, { status: 'Paid' });
+                                        const updatedInvoices = invoices.map(inv =>
+                                          inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
+                                        );
+
+                                        // Atualizar status específico baseado no tipo de fatura
+                                        if (isProjectRecurring()) {
+                                          if (invoice.number.startsWith('IMP-')) {
+                                            // Verificar se todas as faturas de implementação estão pagas
+                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                            }
+                                          } else {
+                                            // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
+                                            await updateProject(currentProject.id, { isRecurringPaid: true });
+                                            setPaidInvoiceForRecurring(invoice);
+                                            setShowRecurringConfirm(true);
+                                          }
+                                        } else {
+                                          // Projeto normal: atualizar status geral
+                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                          if (allPaid !== currentProject.isPaid) {
+                                            await updateProject(currentProject.id, { isPaid: allPaid });
+                                          }
+                                        }
+                                      } catch (error) {
+                                        console.error("Error updating invoice:", error);
+                                      }
+                                    }}
+                                    className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
+                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
+                                      }`}
+                                  >
+                                    <span className="material-symbols-outlined text-xs">check_circle</span>
+                                    Pago
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (invoice.status === 'Pending') return;
+                                      try {
+                                        await updateInvoice(invoice.id, { status: 'Pending' });
+                                        const updatedInvoices = invoices.map(inv =>
+                                          inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
+                                        );
+
+                                        // Atualizar status específico baseado no tipo de fatura
+                                        if (isProjectRecurring()) {
+                                          if (invoice.number.startsWith('IMP-')) {
+                                            // Verificar se alguma fatura de implementação está pendente
+                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                            }
+                                          } else if (invoice.number.startsWith('REC-')) {
+                                            // Para mensalidade, marcar como pendente
+                                            await updateProject(currentProject.id, { isRecurringPaid: false });
+                                          }
+                                        } else {
+                                          // Projeto normal: atualizar status geral
+                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                          if (allPaid !== currentProject.isPaid) {
+                                            await updateProject(currentProject.id, { isPaid: allPaid });
+                                          }
+                                        }
+                                      } catch (error) {
+                                        console.error("Error updating invoice:", error);
+                                      }
+                                    }}
+                                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${invoice.status === 'Pending'
+                                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/20'
+                                      }`}
+                                  >
+                                    <span className="material-symbols-outlined text-sm">pending</span>
+                                    Pendente
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <button
+                                  onClick={() => setEditingInvoice(invoice)}
+                                  className="size-8 rounded-lg flex items-center justify-center transition-all bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-primary/10 hover:text-primary border border-slate-200 dark:border-slate-700"
+                                  title="Editar fatura"
+                                >
+                                  <span className="material-symbols-outlined text-lg">edit</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeManagementTab === 'roadmap' && (
+            <div className="p-8">
+              <div className="max-w-5xl mx-auto">
+                <div className="flex items-center gap-2 text-slate-500 mb-4">
+                  <button
+                    onClick={onClose}
+                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                  </button>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
+                </div>
+                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                  <div className="flex flex-col gap-1">
+                    <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
+                    <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+                  </div>
+                  <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
+                  </button>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
+                  <div className="relative">
+                    {[
+                      { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
+                      { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
+                      { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
+                      { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
+                      { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
+                      { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
+                    ].map((milestone, index) => (
+                      <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
+                        <div className="flex flex-col items-center">
+                          <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
+                            milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
+                              'bg-slate-200 text-slate-400'
+                            }`}>
+                            {milestone.status === 'completed' ? (
+                              <span className="material-symbols-outlined">check</span>
+                            ) : (
+                              <span>{index + 1}</span>
+                            )}
+                          </div>
+                          {index < 5 && (
+                            <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
+                              }`} style={{ minHeight: '80px' }}></div>
+                          )}
+                        </div>
+                        <div className="flex-1 pb-8">
+                          <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
+                            milestone.status === 'current' ? 'border-primary bg-primary/5' :
+                              'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
+                            }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="text-lg font-bold">{milestone.title}</h3>
+                              <span className="text-sm text-slate-500">{milestone.date}</span>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Modal Adicionar Credencial */}
+        {showAddCredential && (
+          <AddCredentialModal
+            onClose={() => setShowAddCredential(false)}
+            onSave={(credentialData) => {
+              const newCredential = {
+                id: Date.now().toString(),
+                ...credentialData
+              };
+              setCredentials([...credentials, newCredential]);
+              setShowAddCredential(false);
+              setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
+              setTimeout(() => setToast(null), 3000);
+            }}
+          />
+        )}
+
+        {/* Modal Editar Credencial */}
+        {showEditCredential && (
+          <EditCredentialModal
+            credential={showEditCredential}
+            onClose={() => setShowEditCredential(null)}
+            onSave={(credentialData) => {
+              setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
+              setShowEditCredential(null);
+              setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
+              setTimeout(() => setToast(null), 3000);
+            }}
+          />
+        )}
+
+        {/* Modal Adicionar Atividade */}
+        {showAddActivity && (
+          <AddActivityModal
+            projectId={currentProject.id}
+            onClose={() => setShowAddActivity(false)}
+            onSave={async (activityData) => {
+              try {
+                console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
+                const activityId = await addActivity({
+                  projectId: currentProject.id,
+                  text: activityData.text,
+                  icon: activityData.icon,
+                  userName: activityData.userName || 'Usuário',
+                });
+                console.log("Activity added successfully:", activityId);
+                setShowAddActivity(false);
+              } catch (error: any) {
+                console.error("Error adding activity:", error);
+                const errorMessage = error?.message || "Erro desconhecido";
+                alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
+              }
+            }}
+          />
+        )}
+
+        {/* Modal Adicionar Membro */}
+        {showAddMember && (
+          <AddMemberModal
+            projectId={currentProject.id}
+            onClose={() => setShowAddMember(false)}
+            onSave={async (memberData) => {
+              try {
+                console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
+                const memberId = await addTeamMember({
+                  projectId: currentProject.id,
+                  name: memberData.name,
+                  role: memberData.role,
+                  avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
+                  email: memberData.email,
+                });
+                console.log("Team member added successfully:", memberId);
+                setShowAddMember(false);
+              } catch (error: any) {
+                console.error("Error adding team member:", error);
+                const errorMessage = error?.message || "Erro desconhecido";
+                alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
+              }
+            }}
+          />
+        )}
+
+        {/* Modal Ver Todos os Membros */}
+        {showAllMembers && (
+          <AllMembersModal
+            members={teamMembers}
+            onClose={() => setShowAllMembers(false)}
+            onRemove={(memberId) => {
+              const member = teamMembers.find(m => m.id === memberId);
+              if (member) {
+                setMemberToRemove(member);
+              }
+            }}
+          />
+        )}
+
+        {/* Modal Compartilhar Projeto */}
+        {showShareProject && (
+          <ShareProjectModal
+            project={currentProject}
+            onClose={() => setShowShareProject(false)}
+          />
+        )}
+
+        {/* Modal Confirmar Exclusão de Arquivo */}
+        {fileToDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Excluir Arquivo</h3>
+                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
+                </p>
+              </div>
+              <div className="p-6 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setFileToDelete(null)}
+                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDeleteFile}
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                >
+                  Excluir
+                </button>
               </div>
             </div>
           </div>
         )}
-      </main>
 
-      {/* Modal Adicionar Credencial */}
-      {showAddCredential && (
-        <AddCredentialModal
-          onClose={() => setShowAddCredential(false)}
-          onSave={(credentialData) => {
-            const newCredential = {
-              id: Date.now().toString(),
-              ...credentialData
-            };
-            setCredentials([...credentials, newCredential]);
-            setShowAddCredential(false);
-            setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
-            setTimeout(() => setToast(null), 3000);
-          }}
-        />
-      )}
-
-      {/* Modal Editar Credencial */}
-      {showEditCredential && (
-        <EditCredentialModal
-          credential={showEditCredential}
-          onClose={() => setShowEditCredential(null)}
-          onSave={(credentialData) => {
-            setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
-            setShowEditCredential(null);
-            setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
-            setTimeout(() => setToast(null), 3000);
-          }}
-        />
-      )}
-
-      {/* Modal Adicionar Atividade */}
-      {showAddActivity && (
-        <AddActivityModal
-          projectId={currentProject.id}
-          onClose={() => setShowAddActivity(false)}
-          onSave={async (activityData) => {
-            try {
-              console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
-              const activityId = await addActivity({
-                projectId: currentProject.id,
-                text: activityData.text,
-                icon: activityData.icon,
-                userName: activityData.userName || 'Usuário',
-              });
-              console.log("Activity added successfully:", activityId);
-              setShowAddActivity(false);
-            } catch (error: any) {
-              console.error("Error adding activity:", error);
-              const errorMessage = error?.message || "Erro desconhecido";
-              alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Adicionar Membro */}
-      {showAddMember && (
-        <AddMemberModal
-          projectId={currentProject.id}
-          onClose={() => setShowAddMember(false)}
-          onSave={async (memberData) => {
-            try {
-              console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
-              const memberId = await addTeamMember({
-                projectId: currentProject.id,
-                name: memberData.name,
-                role: memberData.role,
-                avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
-                email: memberData.email,
-              });
-              console.log("Team member added successfully:", memberId);
-              setShowAddMember(false);
-            } catch (error: any) {
-              console.error("Error adding team member:", error);
-              const errorMessage = error?.message || "Erro desconhecido";
-              alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Ver Todos os Membros */}
-      {showAllMembers && (
-        <AllMembersModal
-          members={teamMembers}
-          onClose={() => setShowAllMembers(false)}
-          onRemove={(memberId) => {
-            const member = teamMembers.find(m => m.id === memberId);
-            if (member) {
-              setMemberToRemove(member);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Compartilhar Projeto */}
-      {showShareProject && (
-        <ShareProjectModal
-          project={currentProject}
-          onClose={() => setShowShareProject(false)}
-        />
-      )}
-
-      {/* Modal Confirmar Exclusão de Arquivo */}
-      {fileToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+        {/* Modal Confirmar Remoção de Membro */}
+        {memberToRemove && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Remover Membro</h3>
+                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold">Excluir Arquivo</h3>
-                  <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
+                </p>
               </div>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
-              </p>
-            </div>
-            <div className="p-6 flex items-center justify-end gap-3">
-              <button 
-                onClick={() => setFileToDelete(null)}
-                className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={confirmDeleteFile}
-                className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Confirmar Remoção de Membro */}
-      {memberToRemove && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold">Remover Membro</h3>
-                  <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                </div>
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
-              </p>
-            </div>
-            <div className="p-6 flex items-center justify-end gap-3">
-              <button 
-                onClick={() => setMemberToRemove(null)}
-                className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={confirmRemoveMember}
-                className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-              >
-                Remover
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDeleteProjectConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold">Excluir Projeto</h3>
-                  <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                </div>
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
-              </p>
-            </div>
-            <div className="p-6 flex items-center justify-end gap-3">
-              <button 
-                onClick={() => setShowDeleteProjectConfirm(false)}
-                className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={async () => {
-                  try {
-                    await deleteProject(currentProject.id);
-                    setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
-                    setTimeout(() => {
-                      setShowDeleteProjectConfirm(false);
-                      onClose();
-                    }, 1000);
-                  } catch (error) {
-                    console.error("Error deleting project:", error);
-                    setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
-                    setTimeout(() => setToast(null), 3000);
-                  }
-                }}
-                className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${
-            toast.type === 'success' 
-              ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50' 
-              : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
-          }`}>
-            <span className={`material-symbols-outlined flex-shrink-0 ${
-              toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-            }`}>
-              {toast.type === 'success' ? 'check_circle' : 'error'}
-            </span>
-            <p className={`text-sm font-semibold flex-1 ${
-              toast.type === 'success' 
-                ? 'text-emerald-900 dark:text-emerald-100' 
-                : 'text-red-900 dark:text-red-100'
-            }`}>
-              {toast.message}
-            </p>
-            <button 
-              onClick={() => setToast(null)}
-              className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
-            >
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Adicionar Nova Fatura */}
-      {showAddInvoice && (
-        <AddInvoiceModal
-          projectId={currentProject.id}
-          workspaceId={currentProject.workspaceId}
-          defaultNumber={(() => {
-            const year = new Date().getFullYear();
-            const count = invoices.length + 1;
-            return `INV-${year}-${count.toString().padStart(3, '0')}`;
-          })()}
-          onClose={() => setShowAddInvoice(false)}
-          isRecurring={isProjectRecurring()}
-          recurringAmount={currentProject.recurringAmount || 0}
-          onSave={async (invoiceData) => {
-            try {
-              await addInvoice({
-                ...invoiceData,
-                projectId: currentProject.id,
-                workspaceId: currentProject.workspaceId
-              });
-              setShowAddInvoice(false);
-              setToast({ message: "Fatura criada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
-            } catch (error) {
-              console.error("Error adding invoice:", error);
-              setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
-              setTimeout(() => setToast(null), 3000);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Editar Fatura */}
-      {editingInvoice && (
-        <EditInvoiceModal
-          invoice={editingInvoice}
-          onClose={() => setEditingInvoice(null)}
-          onSave={async (updates) => {
-            try {
-              await updateInvoice(editingInvoice.id, updates);
-              setEditingInvoice(null);
-              setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
-            } catch (error) {
-              console.error("Error updating invoice:", error);
-              setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
-              setTimeout(() => setToast(null), 3000);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal Confirmar Nova Fatura Recorrente */}
-      {showRecurringConfirm && paidInvoiceForRecurring && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
-                  <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
-                </div>
-              </div>
-              
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
-              </p>
-              
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
-                  <span className="text-sm font-bold text-slate-900 dark:text-white">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
-                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                    {(() => {
-                      let previousDate: Date;
-                      if (paidInvoiceForRecurring.date instanceof Date) {
-                        previousDate = paidInvoiceForRecurring.date;
-                      } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
-                        const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
-                        previousDate = new Date(year, month - 1, day);
-                      } else if (paidInvoiceForRecurring.date?.toDate) {
-                        previousDate = paidInvoiceForRecurring.date.toDate();
-                      } else {
-                        previousDate = new Date();
-                      }
-                      const nextDate = new Date(previousDate);
-                      nextDate.setDate(nextDate.getDate() + 30);
-                      return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    })()}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="flex gap-3">
+              <div className="p-6 flex items-center justify-end gap-3">
                 <button
-                  onClick={() => {
-                    setShowRecurringConfirm(false);
-                    setPaidInvoiceForRecurring(null);
-                  }}
-                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  onClick={() => setMemberToRemove(null)}
+                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
                 >
-                  Não, obrigado
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmRemoveMember}
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeleteProjectConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Excluir Projeto</h3>
+                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
+                </p>
+              </div>
+              <div className="p-6 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteProjectConfirm(false)}
+                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                >
+                  Cancelar
                 </button>
                 <button
                   onClick={async () => {
-                    if (paidInvoiceForRecurring) {
-                      await createRecurringInvoice(paidInvoiceForRecurring);
+                    try {
+                      await deleteProject(currentProject.id);
+                      setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
+                      setTimeout(() => {
+                        setShowDeleteProjectConfirm(false);
+                        onClose();
+                      }, 1000);
+                    } catch (error) {
+                      console.error("Error deleting project:", error);
+                      setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
+                      setTimeout(() => setToast(null), 3000);
                     }
-                    setShowRecurringConfirm(false);
-                    setPaidInvoiceForRecurring(null);
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Sim, criar fatura
+                  Excluir
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${toast.type === 'success'
+              ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50'
+              : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
+              }`}>
+              <span className={`material-symbols-outlined flex-shrink-0 ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                }`}>
+                {toast.type === 'success' ? 'check_circle' : 'error'}
+              </span>
+              <p className={`text-sm font-semibold flex-1 ${toast.type === 'success'
+                ? 'text-emerald-900 dark:text-emerald-100'
+                : 'text-red-900 dark:text-red-100'
+                }`}>
+                {toast.message}
+              </p>
+              <button
+                onClick={() => setToast(null)}
+                className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Adicionar Nova Fatura */}
+        {showAddInvoice && (
+          <AddInvoiceModal
+            projectId={currentProject.id}
+            workspaceId={currentProject.workspaceId}
+            defaultNumber={(() => {
+              const year = new Date().getFullYear();
+              const count = invoices.length + 1;
+              return `INV-${year}-${count.toString().padStart(3, '0')}`;
+            })()}
+            onClose={() => setShowAddInvoice(false)}
+            isRecurring={isProjectRecurring()}
+            recurringAmount={currentProject.recurringAmount || 0}
+            onSave={async (invoiceData) => {
+              try {
+                await addInvoice({
+                  ...invoiceData,
+                  projectId: currentProject.id,
+                  workspaceId: currentProject.workspaceId
+                });
+                setShowAddInvoice(false);
+                setToast({ message: "Fatura criada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              } catch (error) {
+                console.error("Error adding invoice:", error);
+                setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
+                setTimeout(() => setToast(null), 3000);
+              }
+            }}
+          />
+        )}
+
+        {/* Modal Editar Fatura */}
+        {editingInvoice && (
+          <EditInvoiceModal
+            invoice={editingInvoice}
+            onClose={() => setEditingInvoice(null)}
+            onSave={async (updates) => {
+              try {
+                await updateInvoice(editingInvoice.id, updates);
+                setEditingInvoice(null);
+                setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              } catch (error) {
+                console.error("Error updating invoice:", error);
+                setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
+                setTimeout(() => setToast(null), 3000);
+              }
+            }}
+          />
+        )}
+
+        {/* Modal Confirmar Nova Fatura Recorrente */}
+        {showRecurringConfirm && paidInvoiceForRecurring && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
+                    <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                  </div>
+                </div>
+
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                  Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+                </p>
+
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                      {(() => {
+                        let previousDate: Date;
+                        if (paidInvoiceForRecurring.date instanceof Date) {
+                          previousDate = paidInvoiceForRecurring.date;
+                        } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
+                          const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
+                          previousDate = new Date(year, month - 1, day);
+                        } else if (paidInvoiceForRecurring.date?.toDate) {
+                          previousDate = paidInvoiceForRecurring.date.toDate();
+                        } else {
+                          previousDate = new Date();
+                        }
+                        const nextDate = new Date(previousDate);
+                        nextDate.setDate(nextDate.getDate() + 30);
+                        return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                      })()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowRecurringConfirm(false);
+                      setPaidInvoiceForRecurring(null);
+                    }}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Não, obrigado
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (paidInvoiceForRecurring) {
+                        await createRecurringInvoice(paidInvoiceForRecurring);
+                      }
+                      setShowRecurringConfirm(false);
+                      setPaidInvoiceForRecurring(null);
+                    }}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">add_circle</span>
+                    Sim, criar fatura
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Confirmar Redefinir Tarefas */}
+        {showResetTasksConfirm && stageToReset && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">refresh</span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Redefinir Tarefas?</h3>
+                    <p className="text-sm text-slate-500">Etapa: {stageToReset.title}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                  Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
+                </p>
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
+                    <span className="text-xs text-slate-500">
+                      As tarefas serão substituídas pelas definidas em Configurações.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowResetTasksConfirm(false);
+                      setStageToReset(null);
+                    }}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                        const projectCategory = categories.find(c => projectTypes.includes(c.name));
+                        await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
+                        setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } catch (error) {
+                        console.error("Error resetting tasks:", error);
+                        setToast({ message: "Erro ao redefinir tarefas", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                      setShowResetTasksConfirm(false);
+                      setStageToReset(null);
+                    }}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                    Sim, redefinir
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 };
@@ -2535,7 +2629,7 @@ const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value 
 const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void; buttonRef?: React.RefObject<HTMLButtonElement> }> = ({ selectedDate, onSelectDate, onClose, buttonRef }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [position, setPosition] = useState({ top: 0, left: 0 });
-  
+
   useEffect(() => {
     if (buttonRef?.current) {
       const rect = buttonRef.current.getBoundingClientRect();
@@ -2546,15 +2640,15 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
     }
   }, [buttonRef]);
   const today = new Date();
-  
+
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  
+
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startingDayOfWeek = firstDayOfMonth.getDay();
   const daysInMonth = lastDayOfMonth.getDate();
-  
+
   const days = [];
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -2562,28 +2656,28 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
   for (let i = 1; i <= daysInMonth; i++) {
     days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
   }
-  
+
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
-  
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
-  
+
   const isToday = (date: Date | null) => {
     if (!date) return false;
     return date.toDateString() === today.toDateString();
   };
-  
+
   const isSelected = (date: Date | null) => {
     if (!date || !selectedDate) return false;
     // Comparar apenas ano, mês e dia para evitar problemas de timezone
     return date.getFullYear() === selectedDate.getFullYear() &&
-           date.getMonth() === selectedDate.getMonth() &&
-           date.getDate() === selectedDate.getDate();
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
   };
-  
+
   const handleDateClick = (date: Date | null) => {
     if (date) {
       // Criar data no horário local para evitar problemas de timezone
@@ -2591,16 +2685,16 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
       onSelectDate(localDate);
     }
   };
-  
+
   const clearDate = () => {
     onSelectDate(null);
   };
-  
+
   return (
     <>
       {/* Overlay para fechar ao clicar fora */}
       <div className="fixed inset-0 z-[59]" onClick={onClose} />
-      <div 
+      <div
         className="fixed bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl z-[60] p-3 w-64"
         style={{ top: position.top, left: position.left }}
       >
@@ -2621,7 +2715,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_right</span>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-7 gap-0.5 mb-1">
           {weekDays.map((day) => (
             <div key={day} className="text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 py-0.5">
@@ -2629,7 +2723,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             </div>
           ))}
         </div>
-        
+
         <div className="grid grid-cols-7 gap-0.5">
           {days.map((date, index) => (
             <button
@@ -2640,10 +2734,10 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
                 aspect-square flex items-center justify-center text-[10px] font-medium rounded transition-all
                 ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
                 ${date && isToday(date) ? 'ring-1 ring-primary' : ''}
-                ${date && isSelected(date) 
-                  ? 'bg-primary text-white hover:bg-primary/90' 
-                  : date 
-                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
+                ${date && isSelected(date)
+                  ? 'bg-primary text-white hover:bg-primary/90'
+                  : date
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary'
                     : 'text-transparent'
                 }
               `}
@@ -2652,7 +2746,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
             </button>
           ))}
         </div>
-        
+
         <div className="flex items-center justify-start mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
           <button
             onClick={clearDate}
@@ -2670,15 +2764,15 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
 const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   const today = new Date();
-  
+
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  
+
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startingDayOfWeek = firstDayOfMonth.getDay();
   const daysInMonth = lastDayOfMonth.getDate();
-  
+
   const days: (Date | null)[] = [];
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -2686,39 +2780,39 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
   for (let i = 1; i <= daysInMonth; i++) {
     days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
   }
-  
+
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
-  
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
-  
+
   const isToday = (date: Date | null) => {
     if (!date) return false;
     return date.getFullYear() === today.getFullYear() &&
-           date.getMonth() === today.getMonth() &&
-           date.getDate() === today.getDate();
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
   };
-  
+
   const isSelected = (date: Date | null) => {
     if (!date || !selectedDate) return false;
     return date.getFullYear() === selectedDate.getFullYear() &&
-           date.getMonth() === selectedDate.getMonth() &&
-           date.getDate() === selectedDate.getDate();
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
   };
-  
+
   const handleDateClick = (date: Date | null) => {
     if (date) {
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       onSelectDate(localDate);
     }
   };
-  
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[100]" onClick={onClose}>
-      <div 
+      <div
         className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 w-72"
         onClick={(e) => e.stopPropagation()}
       >
@@ -2741,7 +2835,7 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
             <span className="material-symbols-outlined text-lg text-slate-600 dark:text-slate-400">chevron_right</span>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1 mb-2">
           {weekDays.map((day) => (
             <div key={day} className="text-center text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">
@@ -2749,7 +2843,7 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
             </div>
           ))}
         </div>
-        
+
         <div className="grid grid-cols-7 gap-1">
           {days.map((date, index) => (
             <button
@@ -2761,10 +2855,10 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
                 aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all
                 ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
                 ${date && isToday(date) ? 'ring-2 ring-primary' : ''}
-                ${date && isSelected(date) 
-                  ? 'bg-primary text-white hover:bg-primary/90' 
-                  : date 
-                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary' 
+                ${date && isSelected(date)
+                  ? 'bg-primary text-white hover:bg-primary/90'
+                  : date
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary'
                     : 'text-transparent'
                 }
               `}
@@ -2773,7 +2867,7 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
             </button>
           ))}
         </div>
-        
+
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
@@ -2796,11 +2890,10 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
 };
 
 const TabLink: React.FC<{ label: string; icon: string; active?: boolean; badge?: string; onClick?: () => void }> = ({ label, icon, active, badge, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`flex items-center gap-2 border-b-[3px] pb-3 pt-4 font-bold text-sm transition-colors ${
-      active ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'
-    }`}
+    className={`flex items-center gap-2 border-b-[3px] pb-3 pt-4 font-bold text-sm transition-colors ${active ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'
+      }`}
   >
     <span className="material-symbols-outlined text-[18px]">{icon}</span>
     {label}
@@ -2809,23 +2902,22 @@ const TabLink: React.FC<{ label: string; icon: string; active?: boolean; badge?:
 );
 
 const NavBtn: React.FC<{ icon: string; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-      active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-    }`}
+    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
+      }`}
   >
     <span className="material-symbols-outlined text-[20px]">{icon}</span>
     {label}
   </button>
 );
 
-const CredentialCard: React.FC<{ 
-  title: string; 
-  sub: string; 
-  icon: string; 
-  url: string; 
-  user: string; 
+const CredentialCard: React.FC<{
+  title: string;
+  sub: string;
+  icon: string;
+  url: string;
+  user: string;
   password: string;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -2850,7 +2942,7 @@ const CredentialCard: React.FC<{
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button 
+          <button
             onClick={onEdit}
             className="text-slate-400 hover:text-primary transition-colors p-1"
             title="Editar credencial"
@@ -2858,7 +2950,7 @@ const CredentialCard: React.FC<{
             <span className="material-symbols-outlined text-[18px]">edit</span>
           </button>
           {onDelete && (
-            <button 
+            <button
               onClick={onDelete}
               className="text-slate-400 hover:text-red-500 transition-colors p-1"
               title="Excluir credencial"
@@ -2873,7 +2965,7 @@ const CredentialCard: React.FC<{
           <span className="text-slate-500 dark:text-slate-400">URL</span>
           <div className="flex items-center gap-2">
             <span className="text-primary font-medium">{url}</span>
-            <button 
+            <button
               onClick={() => copyToClipboard(url, 'URL')}
               className="text-slate-400 hover:text-primary transition-colors"
               title="Copiar URL"
@@ -2886,7 +2978,7 @@ const CredentialCard: React.FC<{
           <span className="text-slate-500 dark:text-slate-400">Usuário</span>
           <div className="flex items-center gap-2">
             <span className="font-medium">{user}</span>
-            <button 
+            <button
               onClick={() => copyToClipboard(user, 'Usuário')}
               className="text-slate-400 hover:text-primary transition-colors"
               title="Copiar usuário"
@@ -2900,14 +2992,14 @@ const CredentialCard: React.FC<{
           <div className="flex items-center gap-2">
             <span className="font-medium">{showPassword ? password : '••••••••'}</span>
             <div className="flex items-center gap-1">
-              <button 
+              <button
                 onClick={() => setShowPassword(!showPassword)}
                 className="text-slate-400 hover:text-primary transition-colors"
                 title={showPassword ? "Ocultar senha" : "Mostrar senha"}
               >
                 <span className="material-symbols-outlined text-[14px]">{showPassword ? 'visibility_off' : 'visibility'}</span>
               </button>
-              <button 
+              <button
                 onClick={() => copyToClipboard(password, 'Senha')}
                 className="text-slate-400 hover:text-primary transition-colors"
                 title="Copiar senha"
@@ -2985,21 +3077,18 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
                   key={option.value}
                   type="button"
                   onClick={() => setFormData({ ...formData, icon: option.value })}
-                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    formData.icon === option.value
-                      ? 'border-primary bg-primary/10'
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
-                  }`}
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${formData.icon === option.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
+                    }`}
                   title={option.label}
                 >
-                  <span className={`material-symbols-outlined text-xl ${
-                    formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
-                  }`}>
+                  <span className={`material-symbols-outlined text-xl ${formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
+                    }`}>
                     {option.icon}
                   </span>
-                  <span className={`text-[10px] font-medium ${
-                    formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
-                  }`}>
+                  <span className={`text-[10px] font-medium ${formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
+                    }`}>
                     {option.label.length > 8 ? option.label.substring(0, 6) + '..' : option.label}
                   </span>
                 </button>
@@ -3065,14 +3154,14 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-4">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
               className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors"
             >
@@ -3085,10 +3174,10 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
   );
 };
 
-const EditCredentialModal: React.FC<{ 
-  credential: { id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }; 
-  onClose: () => void; 
-  onSave: (data: { title: string; sub: string; icon: string; url: string; user: string; password: string }) => void 
+const EditCredentialModal: React.FC<{
+  credential: { id: string; title: string; sub: string; icon: string; url: string; user: string; password: string };
+  onClose: () => void;
+  onSave: (data: { title: string; sub: string; icon: string; url: string; user: string; password: string }) => void
 }> = ({ credential, onClose, onSave }) => {
   const [formData, setFormData] = useState(credential);
   const [showPassword, setShowPassword] = useState(false);
@@ -3152,21 +3241,18 @@ const EditCredentialModal: React.FC<{
                   key={option.value}
                   type="button"
                   onClick={() => setFormData({ ...formData, icon: option.value })}
-                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    formData.icon === option.value
-                      ? 'border-primary bg-primary/10'
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
-                  }`}
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${formData.icon === option.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/50'
+                    }`}
                   title={option.label}
                 >
-                  <span className={`material-symbols-outlined text-xl ${
-                    formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
-                  }`}>
+                  <span className={`material-symbols-outlined text-xl ${formData.icon === option.value ? 'text-primary' : 'text-slate-600 dark:text-slate-400'
+                    }`}>
                     {option.icon}
                   </span>
-                  <span className={`text-[10px] font-medium ${
-                    formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
-                  }`}>
+                  <span className={`text-[10px] font-medium ${formData.icon === option.value ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
+                    }`}>
                     {option.label.length > 8 ? option.label.substring(0, 6) + '..' : option.label}
                   </span>
                 </button>
@@ -3232,14 +3318,14 @@ const EditCredentialModal: React.FC<{
             </div>
           </div>
           <div className="flex items-center justify-end gap-3 pt-4">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
               className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors"
             >
@@ -3422,7 +3508,7 @@ const AllMembersModal: React.FC<{ members: TeamMember[]; onClose: () => void; on
               {members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div 
+                    <div
                       className="size-12 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200"
                       style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
                     ></div>
@@ -3494,14 +3580,14 @@ const ShareProjectModal: React.FC<{ project: Project; onClose: () => void }> = (
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
             <p className="text-sm text-slate-500 mb-3">Compartilhar em:</p>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => window.open(`mailto:?subject=${encodeURIComponent(project.name)}&body=${encodeURIComponent(shareUrl)}`, '_blank')}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm">mail</span>
                 E-mail
               </button>
-              <button 
+              <button
                 onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`${project.name} - ${shareUrl}`)}`, '_blank')}
                 className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
               >
@@ -3534,7 +3620,7 @@ const AddInvoiceModal: React.FC<{
     status: 'Pending' as 'Paid' | 'Pending' | 'Overdue'
   });
   const [amountDisplay, setAmountDisplay] = useState<string>('0,00');
-  
+
   // Atualizar descrição e valor quando o tipo de fatura muda
   useEffect(() => {
     if (invoiceType === 'recurring' && recurringAmount > 0) {
@@ -3586,7 +3672,7 @@ const AddInvoiceModal: React.FC<{
     // Remove tudo que não é dígito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
-    
+
     // Converte para número e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
     // Formata como número brasileiro (sem o símbolo R$)
@@ -3600,11 +3686,11 @@ const AddInvoiceModal: React.FC<{
     const inputValue = e.target.value;
     // Remove tudo que não é dígito
     const numbers = inputValue.replace(/\D/g, '');
-    
+
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
-    
+
     // Extrai o valor numérico (divide por 100 porque estamos trabalhando com centavos)
     const numericValue = numbers ? parseFloat(numbers) / 100 : 0;
     setFormData({ ...formData, amount: numericValue.toString() });
@@ -3617,7 +3703,7 @@ const AddInvoiceModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.description || !amountDisplay || amountDisplay === '0,00') {
       return;
     }
@@ -3625,11 +3711,11 @@ const AddInvoiceModal: React.FC<{
     try {
       // Converte o valor formatado para número
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
-      
+
       // Parse da data sem problemas de timezone
       const [year, month, day] = formData.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day);
-      
+
       await onSave({
         projectId,
         workspaceId,
@@ -3668,11 +3754,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('custom')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'custom'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'custom'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">receipt</span>
                   Personalizada
@@ -3680,11 +3765,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('implementation')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'implementation'
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'implementation'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">build</span>
                   Implementação
@@ -3692,11 +3776,10 @@ const AddInvoiceModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setInvoiceType('recurring')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    invoiceType === 'recurring'
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${invoiceType === 'recurring'
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">autorenew</span>
                   Mensalidade
@@ -3759,11 +3842,11 @@ const AddInvoiceModal: React.FC<{
                   className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                    {formData.date 
+                    {formData.date
                       ? (() => {
-                          const [year, month, day] = formData.date.split('-').map(Number);
-                          return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-                        })()
+                        const [year, month, day] = formData.date.split('-').map(Number);
+                        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                      })()
                       : 'Selecione uma data'
                     }
                   </span>
@@ -3841,7 +3924,7 @@ const EditInvoiceModal: React.FC<{
     // Remove tudo que não é dígito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
-    
+
     // Converte para número e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
     // Formata como número brasileiro (sem o símbolo R$)
@@ -3896,11 +3979,11 @@ const EditInvoiceModal: React.FC<{
     const inputValue = e.target.value;
     // Remove tudo que não é dígito
     const numbers = inputValue.replace(/\D/g, '');
-    
+
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
-    
+
     // Atualiza formData com o valor formatado para manter consistência
     setFormData({ ...formData, amount: formatted });
   };
@@ -3912,7 +3995,7 @@ const EditInvoiceModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.description || !amountDisplay || amountDisplay === '0,00') {
       return;
     }
@@ -3920,11 +4003,11 @@ const EditInvoiceModal: React.FC<{
     try {
       // Converte o valor formatado para número
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
-      
+
       // Parse da data sem problemas de timezone
       const [year, month, day] = formData.date.split('-').map(Number);
       const localDate = new Date(year, month - 1, day);
-      
+
       await onSave({
         number: formData.number,
         description: formData.description,
@@ -4002,11 +4085,11 @@ const EditInvoiceModal: React.FC<{
                   className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
                   <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                    {formData.date 
+                    {formData.date
                       ? (() => {
-                          const [year, month, day] = formData.date.split('-').map(Number);
-                          return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-                        })()
+                        const [year, month, day] = formData.date.split('-').map(Number);
+                        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+                      })()
                       : 'Selecione uma data'
                     }
                   </span>

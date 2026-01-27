@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [dashboardInitialFilter, setDashboardInitialFilter] = useState<string | undefined>(undefined);
   const [dashboardHighlightedProjectId, setDashboardHighlightedProjectId] = useState<string | undefined>(undefined);
+  const [dashboardSearchQuery, setDashboardSearchQuery] = useState<string>('');
   const [openAddProjectModal, setOpenAddProjectModal] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -119,41 +120,14 @@ const App: React.FC = () => {
   }, [previousView, currentView]);
 
   const handleSearch = useCallback(async (query: string) => {
-    // Se a query estiver vazia, resetar os filtros e voltar ao estado original
-    if (!query.trim()) {
+    setDashboardSearchQuery(query);
+    if (query.trim()) {
+      setCurrentView('Dashboard');
+      // Limpar filtros de categoria para permitir busca global
       setDashboardInitialFilter(undefined);
       setDashboardHighlightedProjectId(undefined);
-      return;
     }
-
-    try {
-      // Buscar todos os projetos do workspace atual
-      const allProjects = await getProjects();
-      const workspaceProjects = currentWorkspace
-        ? allProjects.filter(p => p.workspaceId === currentWorkspace.id)
-        : allProjects;
-
-      // Buscar por nome do projeto ou cliente (case-insensitive)
-      const searchLower = query.toLowerCase();
-      const foundProject = workspaceProjects.find(p =>
-        p.name.toLowerCase().includes(searchLower) ||
-        p.client.toLowerCase().includes(searchLower)
-      );
-
-      if (foundProject) {
-        // Converter o tipo do projeto para o formato do filtro
-        const filterKey = foundProject.type.toLowerCase().replace(/\s+/g, '-');
-
-        // Navegar para o Dashboard com o filtro do serviço e projeto destacado
-        setDashboardInitialFilter(filterKey);
-        setDashboardHighlightedProjectId(foundProject.id);
-        setCurrentView('Dashboard');
-        setPreviousView(currentView);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar projetos:', error);
-    }
-  }, [currentWorkspace, currentView]);
+  }, []);
 
   const handleCreateProject = useCallback(() => {
     setOpenAddProjectModal(true);
@@ -170,6 +144,7 @@ const App: React.FC = () => {
         openAddProjectModal={openAddProjectModal}
         onAddProjectModalClose={() => setOpenAddProjectModal(false)}
         userId={user?.uid}
+        searchQuery={dashboardSearchQuery}
       />;
       case 'Financial': return <Financial
         currentWorkspace={currentWorkspace}
