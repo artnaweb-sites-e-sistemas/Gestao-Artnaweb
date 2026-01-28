@@ -169,8 +169,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               onClick={() => setView(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold relative group ${isActive
-                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               <span className={`material-symbols-outlined text-[20px] transition-transform ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
@@ -188,7 +188,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-6">
         <button
           onClick={onCreateProject}
-          className="w-full h-12 flex items-center justify-center gap-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl dark:shadow-white/5 active:opacity-90"
+          className="w-full h-12 flex items-center justify-center gap-3 bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-200 border border-transparent dark:border-slate-700/50 rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl dark:shadow-black/20 active:opacity-90"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           <span>CRIAR PROJETO</span>

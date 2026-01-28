@@ -124,6 +124,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
 
+  // Estado para controlar etapas expandidas/colapsadas na aba de tarefas
+  const [expandedStages, setExpandedStages] = useState<{ [stageId: string]: boolean }>({});
+
   // Estado para debounce de salvamento da descrição
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -1650,7 +1653,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           ) : null;
                         })()}
 
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                           {stages.map((stage) => {
                             // Filtrar tarefas do projeto para essa etapa
                             const stageProjectTasks = projectStageTasks
@@ -1666,10 +1669,31 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const allTasksCompleted = stageProjectTasks.length > 0 && stageProjectTasks.every(t => t.completed);
                             const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
 
+                            // Estado para controlar expansão da etapa - sempre começa expandido se for etapa atual
+                            const isExpanded = expandedStages[stage.id] !== false;
+
                             return (
-                              <div key={stage.id} className="space-y-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <h4 className={`text-sm font-semibold uppercase tracking-wider ${isCompleted
+                              <div key={stage.id} className={`rounded-xl border transition-all ${isCurrentStage
+                                ? 'border-primary/30 bg-primary/5 dark:bg-primary/10'
+                                : isCompleted
+                                  ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10'
+                                  : 'border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30'
+                                }`}>
+                                {/* Cabeçalho da Etapa - Clicável para expandir/colapsar */}
+                                <button
+                                  onClick={() => {
+                                    setExpandedStages(prev => ({
+                                      ...prev,
+                                      [stage.id]: !isExpanded
+                                    }));
+                                  }}
+                                  className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors rounded-t-xl"
+                                >
+                                  <span className={`material-symbols-outlined text-lg transition-transform ${isExpanded ? 'rotate-90' : ''} ${isCurrentStage ? 'text-primary' : isCompleted ? 'text-emerald-500' : 'text-slate-400'
+                                    }`}>
+                                    chevron_right
+                                  </span>
+                                  <h4 className={`text-sm font-bold uppercase tracking-wider flex-1 ${isCompleted
                                     ? 'text-emerald-600 dark:text-emerald-400'
                                     : isCurrentStage
                                       ? 'text-primary dark:text-primary'
@@ -1677,279 +1701,287 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     }`}>
                                     {stage.title}
                                   </h4>
-                                  {(isCurrentStage || isPreviousStage) && (
-                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
-                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                      : isCurrentStage
-                                        ? 'bg-primary/10 text-primary'
-                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                      }`}>
-                                      {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
-                                    </span>
-                                  )}
-                                  {/* Botão Redefinir Tarefas */}
-                                  {isCurrentStage && (
-                                    <button
-                                      onClick={() => {
-                                        setStageToReset(stage);
-                                        setShowResetTasksConfirm(true);
-                                      }}
-                                      className="ml-auto text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
-                                      title="Redefinir tarefas para o padrão"
-                                    >
-                                      <span className="material-symbols-outlined text-sm">refresh</span>
-                                      Redefinir
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="space-y-2">
-                                  {stageProjectTasks.map((task) => {
-                                    const isTaskCompleted = task.completed || false;
-                                    const isTaskInProgress = isCurrentStage && !isTaskCompleted;
+                                  <div className="flex items-center gap-2">
+                                    {stageProjectTasks.length > 0 && (
+                                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                                        {stageProjectTasks.filter(t => t.completed).length}/{stageProjectTasks.length}
+                                      </span>
+                                    )}
+                                    {(isCurrentStage || isPreviousStage) && (
+                                      <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
+                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                        : isCurrentStage
+                                          ? 'bg-primary/10 text-primary'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        }`}>
+                                        {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
 
-                                    return (
-                                      <div
-                                        key={task.id}
-                                        draggable={isCurrentStage || (currentProject.stageId === 'finished-recurring')}
-                                        onDragStart={(e) => {
-                                          if (!isCurrentStage && currentProject.stageId !== 'finished-recurring') return;
-                                          e.stopPropagation();
-                                          setDraggedTask(task);
-                                          e.dataTransfer.effectAllowed = 'move';
-                                          e.currentTarget.style.opacity = '0.4';
+                                {/* Conteúdo Expandível */}
+                                {isExpanded && (
+                                  <div className="px-4 pb-4">
+                                    {/* Botão Redefinir Tarefas - Agora disponível para todas as etapas */}
+                                    <div className="flex justify-end mb-2">
+                                      <button
+                                        onClick={() => {
+                                          setStageToReset(stage);
+                                          setShowResetTasksConfirm(true);
                                         }}
-                                        onDragEnd={(e) => {
-                                          if (!isCurrentStage && currentProject.stageId !== 'finished-recurring') return;
-                                          e.stopPropagation();
-                                          setDraggedTask(null);
-                                          setDropTargetId(null);
-                                          setDropPosition(null);
-                                          e.currentTarget.style.opacity = '1';
-                                        }}
-                                        onDragOver={(e) => {
-                                          if (!isCurrentStage && currentProject.stageId !== 'finished-recurring') return;
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          e.dataTransfer.dropEffect = 'move';
-
-                                          if (!draggedTask) return;
-                                          if (draggedTask.id === task.id) return;
-                                          if (draggedTask.stageId !== task.stageId) return;
-
-                                          const rect = e.currentTarget.getBoundingClientRect();
-                                          const midpoint = rect.top + rect.height / 2;
-                                          const position = e.clientY < midpoint ? 'above' : 'below';
-
-                                          setDropTargetId(task.id);
-                                          setDropPosition(position);
-                                        }}
-                                        onDragLeave={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          // Opzional: limpar apenas se sair do container pai
-                                        }}
-                                        onDrop={async (e) => {
-                                          if (!isCurrentStage && currentProject.stageId !== 'finished-recurring') return;
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          setDropTargetId(null);
-                                          setDropPosition(null);
-                                          e.currentTarget.style.opacity = '1';
-
-                                          if (!draggedTask || draggedTask.id === task.id || draggedTask.stageId !== task.stageId) {
-                                            return;
-                                          }
-
-                                          const rect = e.currentTarget.getBoundingClientRect();
-                                          const midpoint = rect.top + rect.height / 2;
-                                          const position = e.clientY < midpoint ? 'above' : 'below';
-
-                                          // Logica de reordenação local e no banco
-                                          const tasksInStage = projectStageTasks
-                                            .filter(t => t.stageId === stage.id)
-                                            .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-                                          const draggedIndex = tasksInStage.findIndex(t => t.id === draggedTask.id);
-                                          let targetIndex = tasksInStage.findIndex(t => t.id === task.id);
-
-                                          if (draggedIndex === -1 || targetIndex === -1) return;
-
-                                          // Ajustar targetIndex baseado na posição (above/below) e direção do movimento
-                                          // Se inserir 'abaixo', o indice alvo é +1.
-                                          // Se o item arrastado estava antes do alvo, e movemos para 'abaixo' do alvo, o alvo "sobe" virtualmente 1.
-
-                                          let insertionIndex = targetIndex;
-                                          if (position === 'below') insertionIndex = targetIndex + 1;
-
-                                          // Remover o item arrastado
-                                          const newTasksInStage = [...tasksInStage];
-                                          const [removed] = newTasksInStage.splice(draggedIndex, 1);
-
-                                          // Ajustar indice de inserção se removemos de uma posição anterior
-                                          if (draggedIndex < insertionIndex) insertionIndex--;
-
-                                          // Inserir na nova posição
-                                          newTasksInStage.splice(insertionIndex, 0, removed);
-
-                                          // Atualizar ordens
-                                          const updatedTasks = newTasksInStage.map((t, index) => ({
-                                            ...t,
-                                            order: index
-                                          }));
-
-                                          // Atualizar estado local
-                                          setProjectStageTasks(prev => {
-                                            const otherTasks = prev.filter(t => t.stageId !== stage.id);
-                                            return [...otherTasks, ...updatedTasks];
-                                          });
-
-                                          // Persistir no banco
-                                          try {
-                                            await updateProjectTasksOrder(updatedTasks);
-                                          } catch (error) {
-                                            console.error('Error updating task order:', error);
-                                            setToast({ message: "Erro ao reordenar tarefas", type: 'error' });
-                                          }
-                                        }}
-                                        className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors ${(isCurrentStage || currentProject.stageId === 'finished-recurring') ? 'cursor-grab active:cursor-grabbing' : ''
-                                          } ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+                                        className="text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
+                                        title="Redefinir tarefas para o padrão"
                                       >
-                                        {/* Indicadores Visuais de Drop */}
-                                        {dropTargetId === task.id && dropPosition === 'above' && (
-                                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform -translate-y-[2px]"></div>
-                                        )}
-                                        {dropTargetId === task.id && dropPosition === 'below' && (
-                                          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform translate-y-[2px]"></div>
-                                        )}
+                                        <span className="material-symbols-outlined text-sm">refresh</span>
+                                        Redefinir
+                                      </button>
+                                    </div>
 
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await updateProjectTask(task.id, { completed: !isTaskCompleted });
-                                            } catch (error) {
-                                              console.error("Error toggling task:", error);
-                                              setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            }
-                                          }}
-                                          className="flex-shrink-0"
-                                        >
-                                          <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
-                                            ? 'text-green-500'
-                                            : isTaskInProgress
-                                              ? 'text-primary'
-                                              : 'text-slate-400'
-                                            }`}>
-                                            {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
-                                          </span>
-                                        </button>
+                                    <div className="space-y-2">
+                                      {stageProjectTasks.map((task) => {
+                                        const isTaskCompleted = task.completed || false;
+                                        const isTaskInProgress = isCurrentStage && !isTaskCompleted;
 
-                                        {/* Edição inline da tarefa */}
-                                        {editingTaskId === task.id ? (
-                                          <input
-                                            type="text"
-                                            value={editingTaskTitle}
-                                            onChange={(e) => setEditingTaskTitle(e.target.value)}
-                                            onBlur={async () => {
-                                              if (editingTaskTitle.trim() && editingTaskTitle !== task.title) {
+                                        return (
+                                          <div
+                                            key={task.id}
+                                            draggable={true}
+                                            onDragStart={(e) => {
+                                              e.stopPropagation();
+                                              setDraggedTask(task);
+                                              e.dataTransfer.effectAllowed = 'move';
+                                              e.currentTarget.style.opacity = '0.4';
+                                            }}
+                                            onDragEnd={(e) => {
+                                              e.stopPropagation();
+                                              setDraggedTask(null);
+                                              setDropTargetId(null);
+                                              setDropPosition(null);
+                                              e.currentTarget.style.opacity = '1';
+                                            }}
+                                            onDragOver={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              e.dataTransfer.dropEffect = 'move';
+
+                                              if (!draggedTask) return;
+                                              if (draggedTask.id === task.id) return;
+                                              if (draggedTask.stageId !== task.stageId) return;
+
+                                              const rect = e.currentTarget.getBoundingClientRect();
+                                              const midpoint = rect.top + rect.height / 2;
+                                              const position = e.clientY < midpoint ? 'above' : 'below';
+
+                                              setDropTargetId(task.id);
+                                              setDropPosition(position);
+                                            }}
+                                            onDragLeave={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                            }}
+                                            onDrop={async (e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setDropTargetId(null);
+                                              setDropPosition(null);
+                                              e.currentTarget.style.opacity = '1';
+
+                                              if (!draggedTask || draggedTask.id === task.id || draggedTask.stageId !== task.stageId) {
+                                                return;
+                                              }
+
+                                              const rect = e.currentTarget.getBoundingClientRect();
+                                              const midpoint = rect.top + rect.height / 2;
+                                              const position = e.clientY < midpoint ? 'above' : 'below';
+
+                                              // Logica de reordenação local e no banco
+                                              const tasksInStage = projectStageTasks
+                                                .filter(t => t.stageId === stage.id)
+                                                .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                                              const draggedIndex = tasksInStage.findIndex(t => t.id === draggedTask.id);
+                                              let targetIndex = tasksInStage.findIndex(t => t.id === task.id);
+
+                                              if (draggedIndex === -1 || targetIndex === -1) return;
+
+                                              let insertionIndex = targetIndex;
+                                              if (position === 'below') insertionIndex = targetIndex + 1;
+
+                                              // Remover o item arrastado
+                                              const newTasksInStage = [...tasksInStage];
+                                              const [removed] = newTasksInStage.splice(draggedIndex, 1);
+
+                                              // Ajustar indice de inserção se removemos de uma posição anterior
+                                              if (draggedIndex < insertionIndex) insertionIndex--;
+
+                                              // Inserir na nova posição
+                                              newTasksInStage.splice(insertionIndex, 0, removed);
+
+                                              // Atualizar ordens
+                                              const updatedTasks = newTasksInStage.map((t, index) => ({
+                                                ...t,
+                                                order: index
+                                              }));
+
+                                              // Atualizar estado local
+                                              setProjectStageTasks(prev => {
+                                                const otherTasks = prev.filter(t => t.stageId !== stage.id);
+                                                return [...otherTasks, ...updatedTasks];
+                                              });
+
+                                              // Persistir no banco
+                                              try {
+                                                await updateProjectTasksOrder(updatedTasks);
+                                              } catch (error) {
+                                                console.error('Error updating task order:', error);
+                                                setToast({ message: "Erro ao reordenar tarefas", type: 'error' });
+                                              }
+                                            }}
+                                            className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
+                                          >
+                                            {/* Indicadores Visuais de Drop */}
+                                            {dropTargetId === task.id && dropPosition === 'above' && (
+                                              <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform -translate-y-[2px]"></div>
+                                            )}
+                                            {dropTargetId === task.id && dropPosition === 'below' && (
+                                              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform translate-y-[2px]"></div>
+                                            )}
+
+                                            <button
+                                              onClick={async () => {
                                                 try {
-                                                  await updateProjectTask(task.id, { title: editingTaskTitle.trim() });
-                                                  setToast({ message: "Tarefa atualizada", type: 'success' });
-                                                  setTimeout(() => setToast(null), 3000);
+                                                  await updateProjectTask(task.id, { completed: !isTaskCompleted });
                                                 } catch (error) {
-                                                  console.error("Error updating task:", error);
-                                                  setToast({ message: "Erro ao atualizar tarefa", type: 'error' });
+                                                  console.error("Error toggling task:", error);
+                                                  setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
                                                   setTimeout(() => setToast(null), 3000);
                                                 }
-                                              }
-                                              setEditingTaskId(null);
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter') {
-                                                e.currentTarget.blur();
-                                              } else if (e.key === 'Escape') {
-                                                setEditingTaskId(null);
-                                              }
-                                            }}
-                                            className="flex-1 px-2 py-1 text-sm bg-white dark:bg-slate-700 border border-primary rounded outline-none"
-                                            autoFocus
-                                          />
-                                        ) : (
-                                          <div className="flex-1 flex items-center gap-2 group/task">
-                                            <p
-                                              onDoubleClick={() => {
-                                                setEditingTaskId(task.id);
-                                                setEditingTaskTitle(task.title || '');
                                               }}
-                                              className={`text-sm flex-1 cursor-text ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
-                                              title="Clique duplo para editar"
+                                              className="flex-shrink-0"
                                             >
-                                              {task.title || 'Sem título'}
-                                            </p>
+                                              <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
+                                                ? 'text-green-500'
+                                                : isTaskInProgress
+                                                  ? 'text-primary'
+                                                  : 'text-slate-400'
+                                                }`}>
+                                                {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
+                                              </span>
+                                            </button>
+
+                                            {/* Edição inline da tarefa */}
+                                            {editingTaskId === task.id ? (
+                                              <input
+                                                type="text"
+                                                value={editingTaskTitle}
+                                                onChange={(e) => setEditingTaskTitle(e.target.value)}
+                                                onBlur={async () => {
+                                                  if (editingTaskTitle.trim() && editingTaskTitle !== task.title) {
+                                                    try {
+                                                      await updateProjectTask(task.id, { title: editingTaskTitle.trim() });
+                                                      setToast({ message: "Tarefa atualizada", type: 'success' });
+                                                      setTimeout(() => setToast(null), 3000);
+                                                    } catch (error) {
+                                                      console.error("Error updating task:", error);
+                                                      setToast({ message: "Erro ao atualizar tarefa", type: 'error' });
+                                                      setTimeout(() => setToast(null), 3000);
+                                                    }
+                                                  }
+                                                  setEditingTaskId(null);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.currentTarget.blur();
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingTaskId(null);
+                                                  }
+                                                }}
+                                                className="flex-1 px-2 py-1 text-sm bg-white dark:bg-slate-700 border border-primary rounded outline-none"
+                                                autoFocus
+                                              />
+                                            ) : (
+                                              <div className="flex-1 flex items-center gap-2 group/task">
+                                                <p
+                                                  onDoubleClick={() => {
+                                                    setEditingTaskId(task.id);
+                                                    setEditingTaskTitle(task.title || '');
+                                                  }}
+                                                  className={`text-sm flex-1 cursor-text ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
+                                                  title="Clique duplo para editar"
+                                                >
+                                                  {task.title || 'Sem título'}
+                                                </p>
+                                                <button
+                                                  onClick={() => {
+                                                    setEditingTaskId(task.id);
+                                                    setEditingTaskTitle(task.title || '');
+                                                  }}
+                                                  className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
+                                                  title="Editar tarefa"
+                                                >
+                                                  <span className="material-symbols-outlined text-sm">edit</span>
+                                                </button>
+                                              </div>
+                                            )}
+
                                             <button
-                                              onClick={() => {
-                                                setEditingTaskId(task.id);
-                                                setEditingTaskTitle(task.title || '');
+                                              onClick={async () => {
+                                                try {
+                                                  await removeProjectTask(task.id);
+                                                  setToast({ message: "Tarefa removida", type: 'success' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                } catch (error) {
+                                                  console.error("Error removing task:", error);
+                                                  setToast({ message: "Erro ao remover tarefa", type: 'error' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                }
                                               }}
-                                              className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
-                                              title="Editar tarefa"
+                                              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
+                                              title="Remover tarefa"
                                             >
-                                              <span className="material-symbols-outlined text-sm">edit</span>
+                                              <span className="material-symbols-outlined text-lg">delete</span>
                                             </button>
                                           </div>
-                                        )}
+                                        );
+                                      })}
 
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await removeProjectTask(task.id);
-                                              setToast({ message: "Tarefa removida", type: 'success' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            } catch (error) {
-                                              console.error("Error removing task:", error);
-                                              setToast({ message: "Erro ao remover tarefa", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
+                                      {stageProjectTasks.length === 0 && (
+                                        <p className="text-xs text-slate-400 text-center py-3 italic">
+                                          Nenhuma tarefa nesta etapa
+                                        </p>
+                                      )}
+
+                                      {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas */}
+                                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
+                                        <input
+                                          type="text"
+                                          placeholder="Adicionar nova tarefa..."
+                                          className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                                          onKeyPress={async (e) => {
+                                            if (e.key === 'Enter') {
+                                              const input = e.target as HTMLInputElement;
+                                              const title = input.value.trim();
+                                              if (!title) return;
+
+                                              try {
+                                                const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
+                                                await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
+                                                input.value = '';
+                                                setToast({ message: "Tarefa adicionada", type: 'success' });
+                                                setTimeout(() => setToast(null), 3000);
+                                              } catch (error) {
+                                                console.error("Error adding task:", error);
+                                                setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
+                                                setTimeout(() => setToast(null), 3000);
+                                              }
                                             }
                                           }}
-                                          className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
-                                          title="Remover tarefa"
-                                        >
-                                          <span className="material-symbols-outlined text-lg">delete</span>
-                                        </button>
+                                        />
                                       </div>
-                                    );
-                                  })}
-
-                                  {/* Formulário para adicionar nova tarefa */}
-                                  {isCurrentStage && (
-                                    <div className="flex items-center gap-2 mt-2">
-                                      <input
-                                        type="text"
-                                        placeholder="Adicionar nova tarefa..."
-                                        className="flex-1 px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                                        onKeyPress={async (e) => {
-                                          if (e.key === 'Enter') {
-                                            const input = e.target as HTMLInputElement;
-                                            const title = input.value.trim();
-                                            if (!title) return;
-
-                                            try {
-                                              const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
-                                              await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
-                                              input.value = '';
-                                              setToast({ message: "Tarefa adicionada", type: 'success' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            } catch (error) {
-                                              console.error("Error adding task:", error);
-                                              setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            }
-                                          }
-                                        }}
-                                      />
                                     </div>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

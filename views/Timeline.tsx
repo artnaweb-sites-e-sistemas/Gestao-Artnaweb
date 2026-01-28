@@ -160,12 +160,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     const totalDays = Math.max(diffDays, 7);
 
     const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const weekDays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
     // Sempre mostrar o primeiro dia
     const firstMonth = monthNames[startDate.getMonth()];
     const firstDay = startDate.getDate().toString().padStart(2, '0');
+    const firstWeekDay = weekDays[startDate.getDay()];
     days.push({
-      label: `${firstMonth} ${firstDay}`,
+      label: `${firstMonth} ${firstDay} ${firstWeekDay}`,
       date: new Date(startDate),
       index: 0
     });
@@ -180,9 +182,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
       const month = monthNames[currentDate.getMonth()];
       const day = currentDate.getDate().toString().padStart(2, '0');
+      const weekDay = weekDays[currentDate.getDay()];
 
       days.push({
-        label: `${month} ${day}`,
+        label: `${month} ${day} ${weekDay}`,
         date: new Date(currentDate),
         index: i
       });
@@ -531,10 +534,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             <p className="text-sm text-slate-500">Visualização global de entregas e marcos de projetos</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-colors">
+            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               <span className="material-symbols-outlined text-sm">filter_list</span> Filtros
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors">
+            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 shadow-sm shadow-primary/20 transition-colors">
               <span className="material-symbols-outlined text-sm">ios_share</span> Exportar
             </button>
           </div>
@@ -554,13 +557,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             {categories.length > 0 ? (
               categories.map((category, index) => {
                 // Obter cor baseada no índice - evitando verde (emerald) para não confundir com projetos concluídos
-                const colorMap: { [key: number]: { bg: string; text: string; border: string; dot: string } } = {
-                  0: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200/30', dot: 'bg-amber-500' },
-                  1: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200/30', dot: 'bg-blue-500' },
-                  2: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200/30', dot: 'bg-indigo-500' },
-                  3: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200/30', dot: 'bg-purple-500' },
-                  4: { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200/30', dot: 'bg-rose-500' },
-                  5: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200/30', dot: 'bg-emerald-500' },
+                // Cores mais suaves para o modo dark
+                const colorMap: { [key: number]: { bg: string; bgDark: string; text: string; textDark: string; border: string; borderDark: string; dot: string } } = {
+                  0: { bg: 'bg-amber-50', bgDark: 'dark:bg-amber-500/15', text: 'text-amber-600', textDark: 'dark:text-amber-400', border: 'border-amber-200/50', borderDark: 'dark:border-amber-500/30', dot: 'bg-amber-500' },
+                  1: { bg: 'bg-blue-50', bgDark: 'dark:bg-blue-500/15', text: 'text-blue-600', textDark: 'dark:text-blue-400', border: 'border-blue-200/50', borderDark: 'dark:border-blue-500/30', dot: 'bg-blue-500' },
+                  2: { bg: 'bg-indigo-50', bgDark: 'dark:bg-indigo-500/15', text: 'text-indigo-600', textDark: 'dark:text-indigo-400', border: 'border-indigo-200/50', borderDark: 'dark:border-indigo-500/30', dot: 'bg-indigo-500' },
+                  3: { bg: 'bg-purple-50', bgDark: 'dark:bg-purple-500/15', text: 'text-purple-600', textDark: 'dark:text-purple-400', border: 'border-purple-200/50', borderDark: 'dark:border-purple-500/30', dot: 'bg-purple-500' },
+                  4: { bg: 'bg-rose-50', bgDark: 'dark:bg-rose-500/15', text: 'text-rose-600', textDark: 'dark:text-rose-400', border: 'border-rose-200/50', borderDark: 'dark:border-rose-500/30', dot: 'bg-rose-500' },
+                  5: { bg: 'bg-emerald-50', bgDark: 'dark:bg-emerald-500/15', text: 'text-emerald-600', textDark: 'dark:text-emerald-400', border: 'border-emerald-200/50', borderDark: 'dark:border-emerald-500/30', dot: 'bg-emerald-500' },
                 };
                 // Usar módulo 6 para incluir todas as cores, mas verde só aparece depois de outras cores
                 const colors = colorMap[index % 6] || colorMap[0];
@@ -572,13 +576,13 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                     key={category.id || index}
                     onClick={() => toggleCategoryFilter(category.name)}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${isSelected
-                      ? `${colors.bg} ${colors.text} ${colors.border} ring-2 ring-offset-2 ring-current`
+                      ? `${colors.bg} ${colors.bgDark} ${colors.text} ${colors.textDark} ${colors.border} ${colors.borderDark} ring-2 ring-offset-2 ring-current dark:ring-offset-slate-900`
                       : hasAnySelection
-                        ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700 opacity-60'
-                        : `${colors.bg} ${colors.text} ${colors.border} hover:opacity-80`
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800/50 dark:text-slate-500 dark:border-slate-700/50 opacity-60'
+                        : `${colors.bg} ${colors.bgDark} ${colors.text} ${colors.textDark} ${colors.border} ${colors.borderDark} hover:opacity-80`
                       }`}
                   >
-                    <span className={`size-1.5 rounded-full ${isSelected ? colors.dot : 'bg-slate-400'}`}></span> {category.name}
+                    <span className={`size-1.5 rounded-full ${isSelected ? colors.dot : 'bg-slate-400 dark:bg-slate-500'}`}></span> {category.name}
                   </button>
                 );
               })
@@ -680,12 +684,17 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const minutesInDay = (now.getHours() * 60) + now.getMinutes();
                   const positionX = (minutesInDay / 1440) * 100;
 
+                  const dayOfWeek = day.date.getDay();
+                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
                   return (
                     <div
                       key={i}
                       className={`w-[100px] flex-shrink-0 text-center border-r flex items-center justify-center relative ${today
                         ? 'bg-slate-50/30 dark:bg-slate-800/10 border-r-slate-100 dark:border-r-slate-800/50'
-                        : 'border-slate-100 dark:border-slate-800/50'
+                        : isWeekend
+                          ? 'bg-slate-100/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800/50'
+                          : 'border-slate-100 dark:border-slate-800/50'
                         }`}
                     >
                       {/* Bolinha única no topo */}
@@ -696,14 +705,19 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                         ></div>
                       )}
                       <div className="flex flex-col items-center justify-center py-2">
-                        <span className={`block text-[9px] font-bold leading-tight uppercase ${today ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <span className={`block text-[8px] font-bold leading-none uppercase mb-1 ${today ? 'text-primary' : isWeekend ? 'text-rose-400 dark:text-rose-500/70' : 'text-slate-400 dark:text-slate-500'}`}>
                           {day.label.split(' ')[0]}
                         </span>
-                        <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all ${today
+                        <span className={`flex items-center justify-center size-7 text-sm font-black tracking-tight rounded-full transition-all mb-1 ${today
                           ? 'bg-primary text-white shadow-sm shadow-primary/20'
-                          : 'text-slate-900 dark:text-white'
+                          : isWeekend
+                            ? 'text-rose-500 dark:text-rose-400'
+                            : 'text-slate-900 dark:text-white'
                           }`}>
                           {day.label.split(' ')[1]}
+                        </span>
+                        <span className={`block text-[8px] font-bold leading-none uppercase ${today ? 'text-primary' : isWeekend ? 'text-rose-400 dark:text-rose-500/70' : 'text-slate-400 dark:text-slate-500'}`}>
+                          {day.label.split(' ')[2]}
                         </span>
                       </div>
                     </div>
@@ -752,14 +766,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   // Obter classes CSS baseadas na cor da categoria
                   const getCategoryBadgeClasses = (color: string) => {
                     const colorMap: { [key: string]: string } = {
-                      'amber': 'bg-amber-50 text-amber-600',
-                      'blue': 'bg-blue-50 text-blue-600',
-                      'emerald': 'bg-emerald-50 text-emerald-600',
-                      'indigo': 'bg-indigo-50 text-indigo-600',
-                      'purple': 'bg-purple-50 text-purple-600',
-                      'rose': 'bg-rose-50 text-rose-600',
+                      'amber': 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
+                      'blue': 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
+                      'emerald': 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+                      'indigo': 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400',
+                      'purple': 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
+                      'rose': 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
                     };
-                    return colorMap[color] || 'bg-blue-50 text-blue-600';
+                    return colorMap[color] || 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400';
                   };
 
                   return (
