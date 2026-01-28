@@ -131,9 +131,11 @@ export interface ProjectFile {
   id: string;
   projectId: string;
   name: string;
+  title?: string; // Título opcional para o arquivo ou link
   url: string;
-  type: 'image' | 'document' | 'video' | 'other';
+  type: 'image' | 'document' | 'video' | 'other' | 'link';
   size: number;
+  isLink?: boolean; // True se for um link externo
   uploadedBy?: string;
   uploadedAt: Date | any;
 }

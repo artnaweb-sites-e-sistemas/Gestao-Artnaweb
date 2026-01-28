@@ -1208,6 +1208,25 @@ export const removeProjectTask = async (taskId: string): Promise<void> => {
   }
 };
 
+// Atualizar tarefa de um projeto
+export const updateProjectTask = async (taskId: string, updates: Partial<ProjectStageTask> | { completed: boolean }): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    const dataToUpdate: any = { ...updates };
+    if (updates.hasOwnProperty('completed')) {
+      dataToUpdate.completedAt = updates.completed ? new Date() : null;
+    }
+
+    await updateDoc(doc(db, PROJECT_STAGE_TASKS_COLLECTION, taskId), dataToUpdate);
+  } catch (error) {
+    console.error("Error updating project task:", error);
+    throw error;
+  }
+};
+
 // Atualizar ordem das tarefas de um projeto
 export const updateProjectTasksOrder = async (
   tasks: Array<{ id: string; order: number }>
@@ -1543,6 +1562,64 @@ export const deleteProjectFile = async (fileId: string, fileUrl: string): Promis
     await deleteDoc(doc(db, PROJECT_FILES_COLLECTION, fileId));
   } catch (error) {
     console.error("Error deleting file:", error);
+    throw error;
+  }
+};
+
+// Adicionar um link ao projeto
+export const addProjectLink = async (
+  projectId: string,
+  url: string,
+  title?: string,
+  uploadedBy?: string
+): Promise<string> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    // Extrair nome do link da URL se não houver título
+    let linkName = title || url;
+    try {
+      const urlObj = new URL(url);
+      linkName = title || urlObj.hostname;
+    } catch {
+      // Se não for uma URL válida, usa a URL como nome
+    }
+
+    const linkData = {
+      projectId,
+      name: linkName,
+      title: title || '',
+      url: url.startsWith('http') ? url : `https://${url}`,
+      type: 'link' as const,
+      size: 0,
+      isLink: true,
+      uploadedBy: uploadedBy || 'Usuário',
+      uploadedAt: new Date()
+    };
+
+    const docRef = await addDoc(collection(db, PROJECT_FILES_COLLECTION), linkData);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding project link:", error);
+    throw error;
+  }
+};
+
+// Atualizar título de um arquivo ou link
+export const updateProjectFile = async (
+  fileId: string,
+  updates: { title?: string; name?: string }
+): Promise<void> => {
+  try {
+    if (!db) {
+      throw new Error("Firebase não está inicializado");
+    }
+
+    await updateDoc(doc(db, PROJECT_FILES_COLLECTION, fileId), updates);
+  } catch (error) {
+    console.error("Error updating project file:", error);
     throw error;
   }
 };

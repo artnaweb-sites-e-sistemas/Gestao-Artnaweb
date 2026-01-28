@@ -2739,7 +2739,6 @@ const ListView: React.FC<{
                       <div className="min-w-0 flex-1 overflow-hidden">
                         <p className="text-sm font-bold truncate">{project.name}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{project.client}</p>
-                        <p className="text-xs text-slate-500 truncate">{project.description}</p>
                       </div>
                     </div>
                   </td>
