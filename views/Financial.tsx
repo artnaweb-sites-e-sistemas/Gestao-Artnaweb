@@ -8,9 +8,10 @@ interface FinancialProps {
   currentWorkspace?: Workspace | null;
   onCreateInvoice?: () => void;
   onProjectClick?: (project: Project) => void;
+  canEdit?: boolean;
 }
 
-export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreateInvoice, onProjectClick }) => {
+export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreateInvoice, onProjectClick, canEdit = true }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -639,7 +640,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         <div className="p-8 border-b border-white/20 dark:border-slate-800/50 flex flex-wrap justify-between items-center gap-6">
           <div className="flex items-center gap-4">
             <h3 className="text-xl font-black">Fluxo de Caixa</h3>
-            {orphanInvoices.length > 0 && (
+            {orphanInvoices.length > 0 && canEdit && (
               <button
                 onClick={deleteOrphanInvoices}
                 className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-xl text-xs font-black hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20"
@@ -704,12 +705,13 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                       <td className="px-6 py-4 text-sm font-bold">{formatCurrency(invoice.amount)}</td>
                       <td className="px-6 py-4">
                         <button
-                          onClick={() => toggleInvoiceStatus(invoice)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${invoice.status === 'Paid'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
-                              : isInvoiceOverdue
-                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                          onClick={() => canEdit && toggleInvoiceStatus(invoice)}
+                          disabled={!canEdit}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''} ${invoice.status === 'Paid'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
+                            : isInvoiceOverdue
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
                             }`}
                         >
                           <span className="material-symbols-outlined text-sm">

@@ -140,6 +140,20 @@ export interface ProjectFile {
   uploadedAt: Date | any;
 }
 
+export interface WorkspaceMember {
+  id?: string; // Optional (if linked to auth uid) or generated
+  email: string;
+  role: 'admin' | 'member';
+  permissions: {
+    financial: 'none' | 'view' | 'edit';
+    timeline: 'none' | 'view' | 'edit';
+    pipeline: 'none' | 'view' | 'edit';
+    clients: 'none' | 'view' | 'edit';
+    settings: 'none' | 'view' | 'edit';
+  };
+  addedAt: Date | any;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -147,6 +161,8 @@ export interface Workspace {
   description?: string; // Descrição do workspace
   color?: string; // Cor tema do workspace
   userId?: string; // ID do usuário proprietário
+  members?: WorkspaceMember[]; // Membros da equipe
+  memberEmails?: string[]; // Lista de emails dos membros para facilitar query
   createdAt: Date | any;
   updatedAt?: Date | any;
 }

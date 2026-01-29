@@ -96,24 +96,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
             className="flex items-center gap-3 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <div className="text-right hidden sm:block">
-              {currentWorkspace?.name ? (
-                <>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{currentWorkspace.name}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Workspace</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{getUserDisplayName()}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">{user?.email}</p>
-                </>
-              )}
+              <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{getUserDisplayName()}</p>
+              <p className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">{user?.email}</p>
             </div>
             <div
               className="size-9 rounded-lg bg-cover bg-center ring-2 ring-primary/10 flex-shrink-0 shadow-sm"
               style={{
-                backgroundImage: currentWorkspace?.avatar
-                  ? `url('${currentWorkspace.avatar}')`
-                  : `url('${getUserAvatar()}')`
+                backgroundImage: user?.photoURL
+                  ? `url("${user.photoURL}")`
+                  : currentWorkspace?.avatar
+                    ? `url("${currentWorkspace.avatar}")`
+                    : `url("${getUserAvatar()}")`
               }}
             ></div>
           </button>

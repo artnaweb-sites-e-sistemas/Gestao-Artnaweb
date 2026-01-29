@@ -318,6 +318,140 @@ const taskSuggestions: { [serviceKey: string]: { label: string; stages: { [stage
                 'Oferecer design de papelaria/social media (Upsell)'
             ]
         }
+    },
+    'meta-ads': {
+        label: 'Meta Ads',
+        stages: {
+            'onboarding': [
+                'Solicitar acessos ao Business Manager',
+                'Definir orçamento diário/mensal',
+                'Criar/Configurar Pixel e API de Conversão',
+                'Definir público-alvo e personas',
+                'Solicitar criativos (imagens/vídeos) e Copys'
+            ],
+            'development': [
+                'Estruturar campanhas (Funil)',
+                'Criar conjuntos de anúncios (Segmentação)',
+                'Configurar eventos de conversão',
+                'Subir criativos e copys na plataforma',
+                'Configurar regras de otimização automatizada'
+            ],
+            'review': [
+                'Validar setup das campanhas com cliente',
+                'Verificar funcionamento do Pixel (Helper)',
+                'Revisar segmentação de público e exclusões',
+                'Conferir links e parâmetros UTM'
+            ],
+            'adjustments': [
+                'Ajustar segmentação de público',
+                'Trocar criativos reprovados ou com baixa qualidade',
+                'Corrigir erros de rastreamento no Pixel',
+                'Refinar textos persuasivos (Copy)'
+            ],
+            'completed': [
+                'Otimizar lances e orçamentos (Escala)',
+                'Gerar relatório mensal de performance',
+                'Testar novos públicos (A/B Testing)',
+                'Atualizar criativos (Creative Refresh)',
+                'Monitorar frequência de exibição'
+            ],
+            // Recorrente
+            'onboarding-recurring': [
+                'Solicitar acessos ao BM e Contas',
+                'Definir orçamento e KPIs',
+                'Configurar Pixel/API',
+                'Solicitar criativos iniciais'
+            ],
+            'development-recurring': [
+                'Estruturar campanhas',
+                'Subir anúncios',
+                'Configurar Rastreamento',
+                'Criar Públicos Personalizados'
+            ],
+            'review-recurring': [
+                'Validar setup com cliente',
+                'Conferir Tracking',
+                'Revisar Criativos'
+            ],
+            'adjustments-recurring': [
+                'Ajustes de segmentação',
+                'Correção de reprovações',
+                'Refinamento de Copy'
+            ],
+            'maintenance-recurring': [
+                'Otimização diária de orçamento',
+                'Relatório mensal de resultados',
+                'Testes A/B de público e criativo',
+                'Rotação de anúncios (Refresh)'
+            ]
+        }
+    },
+    'google-ads': {
+        label: 'Google Ads',
+        stages: {
+            'onboarding': [
+                'Solicitar acesso à conta Google Ads (MCC)',
+                'Configurar Google Analytics 4 (GA4)',
+                'Definir palavras-chave negativas iniciais',
+                'Definir raio geográfico e locais de atuação',
+                'Verificar saldo e método de pagamento'
+            ],
+            'development': [
+                'Criar estrutura de campanhas (Search/Display/Shopping)',
+                'Escrever títulos e descrições (RSA)',
+                'Configurar extensões de anúncio (Sitelinks, Callouts)',
+                'Configurar tags de conversão no site',
+                'Vincular com GMB e Merchant Center'
+            ],
+            'review': [
+                'Revisar lista de palavras-chave e correspondências',
+                'Validar estratégia de lances (CPA/ROAS)',
+                'Conferir URLs finais e parâmetros de rastreamento',
+                'Simular funil de conversão'
+            ],
+            'adjustments': [
+                'Ajustar termos de pesquisa (Negativação)',
+                'Refinar copy dos anúncios para aumentar CTR',
+                'Ajustar configurações de lance e orçamento',
+                'Corrigir reprovações de política'
+            ],
+            'completed': [
+                'Negativar termos irrelevantes semanalmente',
+                'Otimizar índice de qualidade dos anúncios',
+                'Ajustar CPC máximo por palavra-chave',
+                'Gerar relatório de conversões e ROAS',
+                'Testar novas oportunidades de palavras-chave'
+            ],
+            // Recorrente
+            'onboarding-recurring': [
+                'Acesso à conta e Analytics',
+                'Definição de Budget e Metas',
+                'Instalação de Tags',
+                'Definição Geo/Demográfica'
+            ],
+            'development-recurring': [
+                'Estruturação de Grupos de Anúncio',
+                'Redação de Anúncios',
+                'Setup de Extensões',
+                'Setup de Conversões'
+            ],
+            'review-recurring': [
+                'Revisão de Palavras-chave',
+                'Revisão de Lances',
+                'Check de URLs'
+            ],
+            'adjustments-recurring': [
+                'Negativação de Termos',
+                'Ajustes de Lance',
+                'Refinamento de Anúncios'
+            ],
+            'maintenance-recurring': [
+                'Otimização de Índice de Qualidade',
+                'Gestão de Orçamento',
+                'Relatórios de Performance',
+                'Planejamento de Expansão'
+            ]
+        }
     }
 };
 
@@ -412,7 +546,8 @@ export const DefineStageTasksModal: React.FC<DefineStageTasksModalProps> = ({ st
 
     const handleSave = async () => {
         try {
-            await saveStageTasks(stage.id, tasks, categoryId);
+            const tasksToSave = tasks.map(t => ({ ...t, stageId: stage.id }));
+            await saveStageTasks(stage.id, tasksToSave, categoryId);
             setToast({ message: "Tarefas salvas com sucesso!", type: 'success' });
             setTimeout(() => {
                 setToast(null);

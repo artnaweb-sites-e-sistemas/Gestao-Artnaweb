@@ -12,7 +12,8 @@ import {
   orderBy,
   where,
   onSnapshot,
-  enableIndexedDbPersistence
+  enableIndexedDbPersistence,
+  or
 } from "firebase/firestore";
 import {
   ref,
@@ -29,7 +30,7 @@ import {
   User
 } from "firebase/auth";
 import { db, storage, auth } from "./config";
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice } from "../types";
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, WorkspaceMember, Workspace } from "../types";
 
 // Habilitar persistência offline (opcional)
 try {
@@ -1703,23 +1704,35 @@ export const getWorkspaces = async (): Promise<Workspace[]> => {
   }
 };
 
-export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => void, userId?: string | null) => {
+export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => void, userId?: string | null, userEmail?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
     return () => { };
   }
 
   try {
-    // Filtrar por userId se fornecido
     let q;
     if (userId) {
-      q = query(
-        collection(db, WORKSPACES_COLLECTION),
-        where("userId", "==", userId)
-      );
+      if (userEmail) {
+        // Se tiver email, buscar workspaces onde é dono OU membro
+        q = query(
+          collection(db, WORKSPACES_COLLECTION),
+          or(
+            where("userId", "==", userId),
+            where("memberEmails", "array-contains", userEmail)
+          )
+        );
+      } else {
+        // Se não tiver email, buscar apenas onde é dono
+        q = query(
+          collection(db, WORKSPACES_COLLECTION),
+          where("userId", "==", userId)
+        );
+      }
     } else {
       q = query(collection(db, WORKSPACES_COLLECTION));
     }
+
     return onSnapshot(q,
       (querySnapshot) => {
         const workspaces = querySnapshot.docs.map(doc => ({
@@ -1740,13 +1753,16 @@ export const subscribeToWorkspaces = (callback: (workspaces: Workspace[]) => voi
       },
       (error) => {
         console.error("Error in workspaces subscription:", error);
-        console.error("Error code:", error?.code);
-        console.error("Error message:", error?.message);
 
-        // Se for erro de permissão, tentar novamente após um delay
-        if (error?.code === 'permission-denied') {
-          console.warn("⚠️ Erro de permissão detectado. Verifique as regras do Firestore no Firebase Console.");
-          console.warn("⚠️ As regras devem permitir leitura/escrita para a coleção 'workspaces'");
+        // Se for erro de permissão ou índice (comum com 'or'), tentar fallback
+        if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+          console.warn("⚠️ Query complexa falhou (possivelmente falta de índice). Tentando query simples por userId.");
+          // Fallback: buscar apenas pelo ID do usuário
+          const qSimple = query(collection(db, WORKSPACES_COLLECTION), where("userId", "==", userId));
+          return onSnapshot(qSimple, (snap) => {
+            const simpleWorkspaces = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+            callback(simpleWorkspaces);
+          });
         }
 
         // Retornar array vazio em caso de erro para não quebrar a UI
@@ -1765,7 +1781,7 @@ const DEFAULT_CATEGORIES = [
   { name: 'Recorrência', isRecurring: true }
 ];
 
-export const addWorkspace = async (workspace: Omit<Workspace, "id">, userId?: string | null): Promise<string> => {
+export const addWorkspace = async (workspace: { name: string } & Partial<Workspace>, userId?: string | null): Promise<string> => {
   try {
     if (!db) {
       console.error("Firebase não está inicializado - db é", db);
@@ -2110,4 +2126,132 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
 // Obter usuário atual
 export const getCurrentUser = (): User | null => {
   return auth.currentUser;
+};
+
+// Workspace Members Management
+
+// Adicionar membro ao workspace
+export const addWorkspaceMember = async (workspaceId: string, memberEmail: string, role: 'admin' | 'member', permissions: WorkspaceMember['permissions']): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const workspaceRef = doc(db, WORKSPACES_COLLECTION, workspaceId);
+    const workspaceSnap = await getDoc(workspaceRef);
+
+    if (!workspaceSnap.exists()) {
+      throw new Error("Workspace não encontrado");
+    }
+
+    const workspaceData = workspaceSnap.data() as Workspace;
+    const currentMembers = workspaceData.members || [];
+    const currentMemberEmails = workspaceData.memberEmails || [];
+
+    // Verificar se já existe
+    if (currentMembers.some(m => m.email === memberEmail)) {
+      throw new Error("Este email já é membro do workspace");
+    }
+
+    const newMember: WorkspaceMember = {
+      id: crypto.randomUUID(), // Gerar ID único para o membro
+      email: memberEmail,
+      role,
+      permissions,
+      addedAt: new Date()
+    };
+
+    const updatedMembers = [...currentMembers, newMember];
+
+    // Atualizar lista de emails para facilitar query
+    // Garantir que não haja duplicatas
+    const updatedMemberEmails = Array.from(new Set([...currentMemberEmails, memberEmail]));
+
+    await updateDoc(workspaceRef, {
+      members: updatedMembers,
+      memberEmails: updatedMemberEmails,
+      updatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error("Error adding workspace member:", error);
+    throw error;
+  }
+};
+
+// Atualizar membro do workspace
+export const updateWorkspaceMember = async (workspaceId: string, memberEmail: string, updates: Partial<WorkspaceMember>): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const workspaceRef = doc(db, WORKSPACES_COLLECTION, workspaceId);
+    const workspaceSnap = await getDoc(workspaceRef);
+
+    if (!workspaceSnap.exists()) {
+      throw new Error("Workspace não encontrado");
+    }
+
+    const workspaceData = workspaceSnap.data() as Workspace;
+    const currentMembers = workspaceData.members || [];
+
+    const memberIndex = currentMembers.findIndex(m => m.email === memberEmail);
+    if (memberIndex === -1) {
+      throw new Error("Membro não encontrado");
+    }
+
+    const updatedMembers = [...currentMembers];
+    updatedMembers[memberIndex] = {
+      ...updatedMembers[memberIndex],
+      ...updates
+    };
+
+    // Se o email mudou (improvável, mas possível), atualizar lista de emails
+    let memberEmailsUpdate = {};
+    if (updates.email && updates.email !== memberEmail) {
+      const currentMemberEmails = workspaceData.memberEmails || [];
+      const updatedMemberEmails = currentMemberEmails
+        .filter(e => e !== memberEmail)
+        .concat(updates.email);
+      memberEmailsUpdate = { memberEmails: updatedMemberEmails };
+    }
+
+    await updateDoc(workspaceRef, {
+      members: updatedMembers,
+      ...memberEmailsUpdate,
+      updatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error("Error updating workspace member:", error);
+    throw error;
+  }
+};
+
+// Remover membro do workspace
+export const removeWorkspaceMember = async (workspaceId: string, memberEmail: string): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const workspaceRef = doc(db, WORKSPACES_COLLECTION, workspaceId);
+    const workspaceSnap = await getDoc(workspaceRef);
+
+    if (!workspaceSnap.exists()) {
+      throw new Error("Workspace não encontrado");
+    }
+
+    const workspaceData = workspaceSnap.data() as Workspace;
+    const currentMembers = workspaceData.members || [];
+    const currentMemberEmails = workspaceData.memberEmails || [];
+
+    const updatedMembers = currentMembers.filter(m => m.email !== memberEmail);
+    const updatedMemberEmails = currentMemberEmails.filter(e => e !== memberEmail);
+
+    await updateDoc(workspaceRef, {
+      members: updatedMembers,
+      memberEmails: updatedMemberEmails,
+      updatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error("Error removing workspace member:", error);
+    throw error;
+  }
 };

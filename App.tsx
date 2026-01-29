@@ -19,6 +19,7 @@ import { ProjectRoadmap } from './views/ProjectRoadmap';
 import { Login } from './views/Login';
 import { ViewState, Project, Workspace } from './types';
 import { getProjects, onAuthStateChange, signOut } from './firebase/services';
+import { useAccessControl } from './hooks/useAccessControl';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -38,6 +39,10 @@ const App: React.FC = () => {
     if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  // Controle de Acesso
+  const { permissions } = useAccessControl({ user, workspace: currentWorkspace });
 
   // Observar estado de autenticação
   useEffect(() => {
@@ -89,6 +94,16 @@ const App: React.FC = () => {
 
   const navigateToView = useCallback((view: ViewState, project?: Project) => {
     if (view !== currentView) {
+
+      // Verificação de permissão
+      if (permissions) {
+        if (view === 'Financial' && !permissions.canView('financial')) return;
+        if (view === 'Timeline' && !permissions.canView('timeline')) return;
+        if (view === 'Clients' && !permissions.canView('clients')) return;
+        if (view === 'Settings' && !permissions.canView('settings')) return;
+        if (view === 'Dashboard' && !permissions.canView('pipeline')) return;
+      }
+
       // Se estiver navegando entre views de projeto, mantém o previousView como ProjectDetails
       if (currentView === 'ProjectDetails' || currentView === 'ProjectBilling' || currentView === 'ProjectRoadmap') {
         if (view === 'ProjectDetails' || view === 'ProjectBilling' || view === 'ProjectRoadmap') {
@@ -130,9 +145,14 @@ const App: React.FC = () => {
   }, []);
 
   const handleCreateProject = useCallback(() => {
+    if (permissions && !permissions.canEdit('pipeline')) {
+      setToast({ message: 'Você não tem permissão para criar projetos.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
     setOpenAddProjectModal(true);
     setCurrentView('Dashboard');
-  }, []);
+  }, [permissions]);
 
   const renderView = () => {
     switch (currentView) {
@@ -145,11 +165,13 @@ const App: React.FC = () => {
         onAddProjectModalClose={() => setOpenAddProjectModal(false)}
         userId={user?.uid}
         searchQuery={dashboardSearchQuery}
+        canEdit={permissions?.canEdit('pipeline')}
       />;
       case 'Financial': return <Financial
         currentWorkspace={currentWorkspace}
         onCreateInvoice={() => navigateToView('CreateInvoice')}
         onProjectClick={(project) => navigateToView('ProjectDetails', project)}
+        canEdit={permissions?.canEdit('financial')}
       />;
       case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'Settings': return <Settings
@@ -161,6 +183,7 @@ const App: React.FC = () => {
           }
         }}
         userId={user?.uid}
+        canEdit={permissions?.canEdit('settings')}
       />;
       case 'Clients': return <ClientProfile
         currentWorkspace={currentWorkspace}
@@ -171,6 +194,8 @@ const App: React.FC = () => {
           project={selectedProject}
           onClose={goBack}
           onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
+          canEdit={permissions?.canEdit('pipeline')}
+          canViewFinancial={permissions?.canView('financial')}
         />
       ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'ProjectBilling': return selectedProject ? (
@@ -225,10 +250,13 @@ const App: React.FC = () => {
         currentWorkspace={currentWorkspace}
         workspaces={workspaces}
         onWorkspaceChange={handleWorkspaceChange}
-        onWorkspacesChange={handleWorkspacesChange}
-        userId={user?.uid}
+        onWorkspacesChange={setWorkspaces}
+        userId={user.uid}
+        userEmail={user.email}
         theme={theme}
+        permissions={permissions}
       />
+
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header
@@ -244,7 +272,52 @@ const App: React.FC = () => {
           {renderView()}
         </main>
       </div>
-    </div>
+
+      {/* Toast Notification */}
+      {
+        toast && (
+          <div className="fixed top-4 right-4 z-[60] animate-[slideIn_0.3s_ease-out]">
+            <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border backdrop-blur-sm min-w-[360px] max-w-[480px] ${toast.type === 'success'
+              ? 'bg-white/95 dark:bg-slate-900/95 border-emerald-200 dark:border-emerald-800/50'
+              : toast.type === 'error'
+                ? 'bg-white/95 dark:bg-slate-900/95 border-red-200 dark:border-red-800/50'
+                : 'bg-white/95 dark:bg-slate-900/95 border-amber-200 dark:border-amber-800/50'
+              }`}>
+              <div className={`flex-shrink-0 size-10 rounded-full flex items-center justify-center ${toast.type === 'success'
+                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                : toast.type === 'error'
+                  ? 'bg-red-100 dark:bg-red-900/30'
+                  : 'bg-amber-100 dark:bg-amber-900/30'
+                }`}>
+                <span className={`material-symbols-outlined text-xl ${toast.type === 'success'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : toast.type === 'error'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                  }`}>
+                  {toast.type === 'success' ? 'check_circle' : toast.type === 'error' ? 'error' : 'warning'}
+                </span>
+              </div>
+              <p className={`text-sm font-semibold flex-1 leading-relaxed ${toast.type === 'success'
+                ? 'text-emerald-900 dark:text-emerald-100'
+                : toast.type === 'error'
+                  ? 'text-red-900 dark:text-red-100'
+                  : 'text-amber-900 dark:text-amber-100'
+                }`}>
+                {toast.message}
+              </p>
+              <button
+                onClick={() => setToast(null)}
+                className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Fechar"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

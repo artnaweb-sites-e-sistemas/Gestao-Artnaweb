@@ -33,6 +33,7 @@ interface DashboardProps {
   onAddProjectModalClose?: () => void;
   userId?: string | null;
   searchQuery?: string;
+  canEdit?: boolean;
 }
 
 type ViewMode = 'board' | 'list';
@@ -150,7 +151,7 @@ const fixedStagesRecurring: DashboardStage[] = [
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished' as any, order: 5, progress: 100, isFixed: true }
 ];
 
-export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId, searchQuery = '' }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWorkspace, initialFilter, highlightedProjectId, openAddProjectModal, onAddProjectModalClose, userId, searchQuery = '', canEdit = true }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedFilter, setSelectedFilter] = useState<string>(initialFilter || 'all');
   const [showCompletedProjects, setShowCompletedProjects] = useState<boolean>(() => {
@@ -230,6 +231,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
   // Função para lidar com o drop de projeto
   const handleProjectDrop = async (project: Project, targetStage: DashboardStage) => {
+    if (!canEdit) return;
+
     try {
       // IDs fixos conhecidos para etapas normais
       const fixedStageIds = ['onboarding', 'development', 'review', 'completed'];
@@ -423,7 +426,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
       setProjects(firebaseProjects);
       setLoading(false);
-    }, currentWorkspace.id, userId);
+    }, currentWorkspace.id, null); // Passar null para userId para ver todos os projetos do workspace
 
     const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
       console.log('📁 [Dashboard] Categorias recebidas:', firebaseCategories.length);
@@ -575,7 +578,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
         // Buscar todas as etapas do workspace atual
         const allStages = await getStages();
-        const workspaceStages = allStages.filter(s => s.workspaceId === currentWorkspace.id);
+        const workspaceStages = allStages.filter(s => (s as any).workspaceId === currentWorkspace.id);
 
         console.log(`Encontradas ${workspaceStages.length} etapas para excluir`);
 
@@ -618,7 +621,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
     (window as any).clearAllStages = async () => {
       try {
         const allStages = await getStages();
-        const nonFixedStages = allStages.filter(s => !s.isFixed && s.workspaceId === currentWorkspace?.id);
+        const nonFixedStages = allStages.filter(s => !s.isFixed && (s as any).workspaceId === currentWorkspace?.id);
 
         console.log(`Encontradas ${allStages.length} etapas no total`);
         console.log(`${nonFixedStages.length} etapas não-fixas para excluir no workspace atual`);
@@ -727,19 +730,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               </label>
             </div>
 
-            <button
-              onClick={() => setShowAddProject(true)}
-              className="group flex items-center gap-3 px-8 py-3.5 bg-primary text-white rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-primary/30"
-            >
-              <span className="material-symbols-outlined text-[20px] group-hover:rotate-90 transition-transform">add</span>
-              <span>NOVO PROJETO</span>
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => setShowAddProject(true)}
+                className="group flex items-center gap-3 px-8 py-3.5 bg-primary text-white rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-primary/30"
+              >
+                <span className="material-symbols-outlined text-[20px] group-hover:rotate-90 transition-transform">add</span>
+                <span>NOVO PROJETO</span>
+              </button>
+            )}
           </div>
         </div>
         <div
           ref={categoryTabsRef}
           className="flex border-b border-slate-200 dark:border-slate-800 gap-2 items-center overflow-x-auto no-scrollbar"
-          onDragOver={(e) => e.preventDefault()}
+
           onMouseDown={(e: React.MouseEvent) => {
             // Não ativa se for botão direito do mouse
             if (e.button !== 0) return;
@@ -927,7 +932,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   <span
                     className={`material-symbols-outlined text-base opacity-0 group-hover:opacity-100 transition-opacity drag-indicator-handle cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-100' : ''}`}
                     style={{ fontSize: '16px' }}
-                    draggable
+                    draggable={canEdit}
                     onDragStart={(e) => {
                       setDraggedCategoryId(category.id);
                       e.dataTransfer.effectAllowed = 'move';
@@ -961,13 +966,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                   )}
                 </button>
 
-                <button
-                  onClick={() => setCategoryToDelete(category.name)}
-                  className="opacity-0 group-hover:opacity-100 transition-all size-6 flex items-center justify-center rounded-full hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-500 -ml-2 mr-2 mb-3"
-                  title="Excluir serviço"
-                >
-                  <span className="material-symbols-outlined text-[16px]">close</span>
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => setCategoryToDelete(category.name)}
+                    className="opacity-0 group-hover:opacity-100 transition-all size-6 flex items-center justify-center rounded-full hover:bg-rose-50 dark:hover:bg-rose-900/20 text-slate-300 hover:text-rose-500 -ml-2 mr-2 mb-3"
+                    title="Excluir serviço"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">close</span>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -991,13 +998,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               </button>
             )}
 
-          <button
-            onClick={() => setShowAddCategory(true)}
-            className="flex items-center gap-1.5 px-4 pb-3 text-sm font-bold text-primary hover:bg-primary/5 transition-all whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-lg">add_circle</span>
-            <span>Novo Serviço</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setShowAddCategory(true)}
+              className="flex items-center gap-1.5 px-4 pb-3 text-sm font-bold text-primary hover:bg-primary/5 transition-all whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-lg">add_circle</span>
+              <span>Novo Serviço</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1315,27 +1324,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                         // Para etapas recorrentes (Manutenção/Finalizado): 
                         // Mostrar apenas projetos recorrentes que estão nesse status
                         // E que NÃO foram movidos para etapas normais (não têm stageId de etapa fixa)
-                        return isProjectRecurring && p.status === stage.status && !hasFixedStageId(p.stageId);
+                        return isProjectRecurring && p.status === stage.status && !hasFixedStageId((p as any).stageId);
                       } else {
                         // Para etapas normais:
                         if (isProjectRecurring) {
                           // Projeto recorrente:
                           // 1. Se tem stageId de etapa fixa → mostrar na etapa correspondente
                           if (hasFixedStageId(p.stageId)) {
-                            return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
+                            return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                           }
                           // 2. Se NÃO tem stageId (projeto recém-criado em Recorrência):
                           //    Mostrar na etapa normal correspondente ao status
                           //    EXCETO se o status for Completed (vai para Manutenção) ou Finished (vai para Finalizado)
-                          if (!p.stageId && p.status !== 'Completed' && p.status !== 'Finished') {
+                          if (!(p as any).stageId && p.status !== 'Completed' && p.status !== 'Finished') {
                             return p.status === stage.status;
                           }
                           return false;
                         } else {
                           // Projeto normal: filtrar por status OU stageId correspondente
                           // Prioriza stageId se existir, senão usa status
-                          if (p.stageId) {
-                            return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
+                          if ((p as any).stageId) {
+                            return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                           }
                           return p.status === stage.status;
                         }
@@ -1345,11 +1354,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       return p.status === stage.status;
                     } else {
                       // Serviço normal selecionado: filtrar por stageId (com match flexível)
-                      return matchesStageId(p.stageId, stage.id, (stage as any).originalId);
+                      return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                     }
                   });
                   return (
                     <StageColumn
+                      canEdit={canEdit}
                       key={stage.id}
                       stage={stage}
                       index={index}
@@ -1364,7 +1374,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       onDrop={(project) => {
                         handleProjectDrop(project, stage as any);
                       }}
-                      onStageDragStart={(stage) => setDraggedStage(stage)}
+                      onStageDragStart={(stage) => setDraggedStage(stage as any)}
                       onStageDragEnd={() => setDraggedStage(null)}
                       onDeleteStage={(stage) => setStageToDelete(stage)}
                       onEditTasks={(stage) => setStageToEditTasks(stage)}
@@ -1393,7 +1403,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                             if (updatedDraggedStage) {
                               // Atualizar todos os projetos que estavam na etapa arrastada (por stageId ou status)
                               const projectsInStage = projectsForBoard.filter(p =>
-                                p.stageId ? p.stageId === draggedStage.id : p.status === draggedStage.status
+                                (p as any).stageId ? (p as any).stageId === draggedStage.id : p.status === draggedStage.status
                               );
 
                               try {
@@ -1830,7 +1840,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 await Promise.all(
                   projectsInStage.map(project =>
                     updateProjectInFirebase(project.id, {
-                      status: targetStage.status,
+                      status: targetStage.status as any,
                       stageId: targetStage.id, // Atualizar stageId para a nova etapa
                       progress: targetStage.progress
                     })
@@ -1870,7 +1880,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     updateStage(stage.id, {
                       order: stage.order,
                       progress: stage.progress,
-                      status: stage.status
+                      status: stage.status as any
                     })
                   )
                 );
@@ -1963,7 +1973,8 @@ const StageColumn: React.FC<{
   onMenuToggle?: (stageId: string) => void;
   menuOpen?: boolean;
   categories?: Category[];
-}> = ({ stage, index, count, projects, allProjects, isActive, selectedFilter, highlightedProjectId, onProjectClick, onDelete, onDrop, onStageDragStart, onStageDragEnd, onStageDrop, onDeleteStage, onEditTasks, onMenuToggle, menuOpen, categories = [] }) => {
+  canEdit?: boolean;
+}> = ({ stage, index, count, projects, allProjects, isActive, selectedFilter, highlightedProjectId, onProjectClick, onDelete, onDrop, onStageDragStart, onStageDragEnd, onStageDrop, onDeleteStage, onEditTasks, onMenuToggle, menuOpen, categories = [], canEdit = true }) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isStageDragging, setIsStageDragging] = useState(false);
 
@@ -2044,7 +2055,7 @@ const StageColumn: React.FC<{
       onDrop={handleDrop}
     >
       <div
-        draggable
+        draggable={canEdit}
         onDragStart={handleStageDragStart}
         onDragEnd={handleStageDragEnd}
         className={`flex items-center justify-between px-2 py-1.5 cursor-move rounded-xl transition-all ${
@@ -2129,6 +2140,7 @@ const StageColumn: React.FC<{
               onDelete={onDelete}
               isHighlighted={highlightedProjectId === project.id}
               categories={categories}
+              canEdit={canEdit}
             />
           ))
         ) : (
@@ -2144,7 +2156,7 @@ const StageColumn: React.FC<{
   );
 };
 
-const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean; categories?: Category[] }> = ({ project, onClick, onDelete, isHighlighted, categories = [] }) => {
+const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean; categories?: Category[]; canEdit?: boolean }> = ({ project, onClick, onDelete, isHighlighted, categories = [], canEdit = true }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   // Helper para verificar se o projeto está em uma etapa final (não precisa de deadline)
@@ -2248,7 +2260,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
 
   return (
     <div
-      draggable
+      draggable={canEdit}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onMouseDown={handleMouseDown}
@@ -2841,7 +2853,7 @@ const ListView: React.FC<{
   );
 };
 
-const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: Project) => void }> = ({ projects, onProjectClick }) => {
+const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: Project) => void; categories?: Category[]; stages?: Stage[] }> = ({ projects, onProjectClick, categories = [], stages = [] }) => {
   // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
   const getProjectTypes = (project: Project): string[] => {
     const types = project.types || (project.type ? [project.type] : []);
@@ -2874,7 +2886,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
     activeProjects.forEach(project => {
       if (project.deadline) {
-        const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+        const deadline = new Date(project.deadline);
         deadline.setHours(0, 0, 0, 0);
 
         if (!earliestDeadline || deadline < earliestDeadline) {
@@ -2899,7 +2911,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     // Encontrar a deadline mais distante entre todos os projetos
     projects.forEach(project => {
       if (project.deadline) {
-        const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+        const deadline = new Date(project.deadline);
         deadline.setHours(0, 0, 0, 0);
 
         if (!maxDeadline || deadline > maxDeadline) {
@@ -2980,7 +2992,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     // Usar deadline como fim (ou calcular baseado no status)
     let endDate: Date;
     if (project.deadline) {
-      endDate = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+      endDate = new Date(project.deadline);
       endDate.setHours(0, 0, 0, 0);
     } else {
       // Se não houver deadline, estimar duração baseado no status
@@ -3189,7 +3201,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
             today.setHours(0, 0, 0, 0);
 
             if (project.deadline) {
-              const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+              const deadline = new Date(project.deadline);
               deadline.setHours(0, 0, 0, 0);
 
               // Usar a data de atualização do projeto (quando o deadline foi definido/modificado)
@@ -3796,7 +3808,7 @@ const AddProjectModal: React.FC<{
           status: projectData.status,
           types: projectData.types
         });
-        await onSave(projectData);
+        await onSave(projectData as any);
         // Modal será fechado pelo onSave
       } catch (error) {
         console.error("Error in handleSubmit:", error);

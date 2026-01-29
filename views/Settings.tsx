@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Workspace, Category } from '../types';
-import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase, Stage } from '../firebase/services';
+import { Workspace, Category, Stage } from '../types';
+import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase } from '../firebase/services';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
+import { TeamSettings } from '../components/TeamSettings';
 
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
   onWorkspaceUpdate?: (workspace: Workspace) => void;
   userId?: string | null;
+  canEdit?: boolean;
 }
 
 // Etapas fixas para serviços padrão (não recorrentes)
@@ -28,8 +30,8 @@ const fixedStagesRecurring: Stage[] = [
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
 ];
 
-export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId }) => {
-  const [activeSection, setActiveSection] = useState<'general' | 'services' | 'appearance' | 'danger'>('general');
+export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId, canEdit = true }) => {
+  const [activeSection, setActiveSection] = useState<'general' | 'services' | 'stages' | 'team' | 'appearance' | 'danger'>('general');
   const [workspaceName, setWorkspaceName] = useState(currentWorkspace?.name || '');
   const [workspaceDescription, setWorkspaceDescription] = useState(currentWorkspace?.description || '');
   const [workspaceColor, setWorkspaceColor] = useState(currentWorkspace?.color || '#6366f1');
@@ -222,6 +224,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     { id: 'general', icon: 'tune', label: 'Geral' },
     { id: 'services', icon: 'category', label: 'Serviços' },
     { id: 'stages', icon: 'checklist', label: 'Etapas e Tarefas' },
+    { id: 'team', icon: 'group', label: 'Equipe' },
     { id: 'appearance', icon: 'palette', label: 'Aparência' },
     { id: 'danger', icon: 'warning', label: 'Zona de Perigo' },
   ];
@@ -296,20 +299,22 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <div className="flex items-center gap-6">
                   <div className="relative group">
                     <div
-                      className="size-24 rounded-2xl bg-slate-200 ring-4 ring-slate-100 dark:ring-slate-800 shadow-lg cursor-pointer hover:opacity-80 transition-opacity"
+                      className={`size-24 rounded-2xl bg-slate-200 ring-4 ring-slate-100 dark:ring-slate-800 shadow-lg transition-opacity ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
                       style={{
                         backgroundImage: `url('${getWorkspaceAvatar()}')`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center'
                       }}
-                      onClick={() => avatarInputRef.current?.click()}
+                      onClick={() => canEdit && avatarInputRef.current?.click()}
                     />
-                    <div
-                      className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      onClick={() => avatarInputRef.current?.click()}
-                    >
-                      <span className="material-symbols-outlined text-white text-2xl">photo_camera</span>
-                    </div>
+                    {canEdit && (
+                      <div
+                        className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        onClick={() => avatarInputRef.current?.click()}
+                      >
+                        <span className="material-symbols-outlined text-white text-2xl">photo_camera</span>
+                      </div>
+                    )}
                     {uploadingAvatar && (
                       <div className="absolute inset-0 rounded-2xl bg-black/70 flex items-center justify-center">
                         <span className="material-symbols-outlined text-white animate-spin">sync</span>
@@ -320,8 +325,9 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Alterar foto</p>
                     <p className="text-xs text-slate-500 mb-3">JPG, PNG ou GIF. Tamanho máximo de 5MB.</p>
                     <button
-                      onClick={() => avatarInputRef.current?.click()}
-                      className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors"
+                      onClick={() => canEdit && avatarInputRef.current?.click()}
+                      className={`px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-medium transition-colors ${canEdit ? 'hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-50 cursor-not-allowed'}`}
+                      disabled={!canEdit}
                     >
                       Escolher arquivo
                     </button>
@@ -349,8 +355,9 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                     type="text"
                     value={workspaceName}
                     onChange={(e) => setWorkspaceName(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Ex: Minha Agência"
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -363,8 +370,9 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                     value={workspaceDescription}
                     onChange={(e) => setWorkspaceDescription(e.target.value.slice(0, 30))}
                     maxLength={30}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Ex: Agência Digital"
+                    disabled={!canEdit}
                   />
                   <p className="text-xs text-slate-400 mt-1 text-right">{workspaceDescription.length}/30</p>
                 </div>
@@ -372,7 +380,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
                   <button
                     onClick={handleSaveGeneral}
-                    disabled={saving}
+                    disabled={saving || !canEdit}
                     className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     {saving ? (
@@ -463,15 +471,17 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                               <span className={`material-symbols-outlined text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
                                 expand_more
                               </span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteCategory(category.id);
-                                }}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                              >
-                                <span className="material-symbols-outlined text-lg">delete</span>
-                              </button>
+                              {canEdit && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCategory(category.id);
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-lg">delete</span>
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -527,16 +537,18 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                                             </div>
                                           </div>
                                         </div>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteStage(stage.id, stage.title);
-                                          }}
-                                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                          title="Excluir etapa"
-                                        >
-                                          <span className="material-symbols-outlined text-base">delete</span>
-                                        </button>
+                                        {canEdit && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteStage(stage.id, stage.title);
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                            title="Excluir etapa"
+                                          >
+                                            <span className="material-symbols-outlined text-base">delete</span>
+                                          </button>
+                                        )}
                                       </div>
                                     );
                                   })
@@ -639,7 +651,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
                         <button
                           onClick={() => setStageToEditTasks(stage)}
-                          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-primary hover:border-primary transition-all shadow-sm hover:shadow-md"
+                          className={`flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400 transition-all shadow-sm ${canEdit ? 'hover:text-primary hover:border-primary hover:shadow-md' : 'opacity-50 cursor-not-allowed'}`}
+                          disabled={!canEdit}
                         >
                           <span className="material-symbols-outlined text-lg">checklist</span>
                           Definir Tarefas
@@ -664,6 +677,17 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
             </div>
           )}
 
+          {/* Seção Equipe */}
+          {activeSection === 'team' && currentWorkspace && (
+            <TeamSettings
+              currentWorkspace={currentWorkspace}
+              onUpdate={(updatedSpace) => {
+                if (onWorkspaceUpdate) onWorkspaceUpdate(updatedSpace);
+              }}
+              canEdit={canEdit}
+            />
+          )}
+
           {/* Seção Aparência */}
           {activeSection === 'appearance' && (
             <div className="space-y-8">
@@ -680,12 +704,13 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                   {presetColors.map((color) => (
                     <button
                       key={color}
-                      onClick={() => setWorkspaceColor(color)}
+                      onClick={() => canEdit && setWorkspaceColor(color)}
                       className={`size-10 rounded-xl transition-all ${workspaceColor === color
                         ? 'ring-4 ring-offset-2 ring-slate-300 dark:ring-slate-600 scale-110'
-                        : 'hover:scale-105'
+                        : canEdit ? 'hover:scale-105' : 'opacity-70 cursor-not-allowed'
                         }`}
                       style={{ backgroundColor: color }}
+                      disabled={!canEdit}
                     />
                   ))}
                 </div>
@@ -697,7 +722,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       type="color"
                       value={workspaceColor}
                       onChange={(e) => setWorkspaceColor(e.target.value)}
-                      className="w-16 h-10 rounded-lg cursor-pointer border-0"
+                      className="w-16 h-10 rounded-lg cursor-pointer border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!canEdit}
                     />
                   </div>
                   <div className="flex-1">
@@ -706,7 +732,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       type="text"
                       value={workspaceColor}
                       onChange={(e) => setWorkspaceColor(e.target.value)}
-                      className="w-32 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono"
+                      className="w-32 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -729,7 +756,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <div className="flex justify-end pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
                   <button
                     onClick={handleSaveAppearance}
-                    disabled={saving}
+                    disabled={saving || !canEdit}
                     className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     {saving ? (
@@ -769,8 +796,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       faturas e arquivos. Esta ação não pode ser desfeita.
                     </p>
                     <button
-                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors"
+                      className={`px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-600'}`}
+                      disabled={!canEdit}
                       onClick={() => {
+                        if (!canEdit) return;
                         const confirmed = prompt(`Para confirmar, digite "${currentWorkspace.name}":`);
                         if (confirmed === currentWorkspace.name) {
                           // TODO: Implementar exclusão do workspace

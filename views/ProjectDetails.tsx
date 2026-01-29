@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice } from '../types';
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage } from '../types';
 import {
   subscribeToProjectActivities,
   subscribeToProjectTeamMembers,
@@ -11,7 +11,6 @@ import {
   subscribeToProject,
   subscribeToCategories,
   subscribeToStages,
-  Stage,
   getStageTasks,
   subscribeToProjectStageTasks,
   initializeProjectStageTasks,
@@ -41,6 +40,9 @@ import { RichTextEditor } from '../components/RichTextEditor';
 interface ProjectDetailsProps {
   project: Project;
   onClose: () => void;
+  onNavigate: (view: 'ProjectBilling' | 'ProjectRoadmap' | 'ProjectDetails') => void;
+  canEdit?: boolean;
+  canViewFinancial?: boolean;
 }
 
 // Etapas fixas para projetos normais
@@ -58,11 +60,11 @@ const fixedStagesRecurring: Stage[] = [
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
   { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
   { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 80, isFixed: true },
+  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 100, isFixed: true },
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
 ];
 
-export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose }) => {
+export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose, onNavigate, canEdit = true, canViewFinancial = false }) => {
   const [currentProject, setCurrentProject] = useState<Project>(project);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -489,14 +491,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div
                       className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
                       style={{ backgroundImage: `url(${currentProject.avatar})`, backgroundSize: 'cover' }}
-                      onClick={() => avatarInputRef.current?.click()}
-                      title="Alterar foto de perfil"
+                      onClick={() => canEdit && avatarInputRef.current?.click()}
+                      title={canEdit ? "Alterar foto de perfil" : "Foto de perfil"}
                     ></div>
                   ) : (
                     <button
                       onClick={() => avatarInputRef.current?.click()}
                       className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
                       title="Adicionar foto do cliente"
+                      disabled={!canEdit}
                     >
                       <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
                     </button>
@@ -577,18 +580,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   ) : (
                     <div className="flex items-center gap-1 group/client">
                       <h1 className="text-lg font-bold leading-tight uppercase truncate">{currentProject.client}</h1>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTempClient(currentProject.client);
-                          setEditingClient(true);
-                        }}
-                        className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                        title="Editar cliente"
-                      >
-                        <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
-                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempClient(currentProject.client);
+                            setEditingClient(true);
+                          }}
+                          className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                          title="Editar cliente"
+                        >
+                          <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -625,18 +630,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   ) : (
                     <div className="flex items-center gap-1 group/name">
                       <p className="text-slate-500 text-xs font-medium capitalize tracking-wider truncate">{currentProject.name}</p>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTempNameSidebar(currentProject.name);
-                          setEditingNameSidebar(true);
-                        }}
-                        className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                        title="Editar nome"
-                      >
-                        <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
-                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempNameSidebar(currentProject.name);
+                            setEditingNameSidebar(true);
+                          }}
+                          className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                          title="Editar nome"
+                        >
+                          <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -651,8 +658,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="relative date-picker-container flex-1">
                       <button
                         ref={datePickerButtonRef}
-                        onClick={() => setShowDatePicker(!showDatePicker)}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                        onClick={() => canEdit && setShowDatePicker(!showDatePicker)}
+                        disabled={!canEdit}
+                        className={`w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                           {currentProject.deadline
@@ -704,12 +712,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setToast({ message: "Projeto marcado como pendente", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
-                            console.error("Error marking project as pending:", error);
+                            console.error("Error updating project status pending:", error);
                             setToast({ message: "Erro ao marcar projeto como pendente", type: 'error' });
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
-                        className="w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                        disabled={!canEdit}
+                        className={`w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title="Marcar como pendente"
                       >
                         <span className="material-symbols-outlined text-sm">pending</span>
@@ -736,8 +745,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             <div className="relative date-picker-container flex-1">
                               <button
                                 ref={maintenanceDatePickerButtonRef}
-                                onClick={() => setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
-                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                                onClick={() => canEdit && setShowMaintenanceDatePicker(!showMaintenanceDatePicker)}
+                                disabled={!canEdit}
+                                className={`w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 <span className={currentProject.maintenanceDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                                   {currentProject.maintenanceDate
@@ -777,8 +787,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             <div className="relative date-picker-container flex-1">
                               <button
                                 ref={reportDatePickerButtonRef}
-                                onClick={() => setShowReportDatePicker(!showReportDatePicker)}
-                                className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
+                                onClick={() => canEdit && setShowReportDatePicker(!showReportDatePicker)}
+                                disabled={!canEdit}
+                                className={`w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 <span className={currentProject.reportDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                                   {currentProject.reportDate
@@ -820,6 +831,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex items-center gap-2 mt-2 w-full">
                       <button
                         onClick={async () => {
+                          if (!canEdit) return;
                           try {
                             // Buscar a etapa "Concluído"
                             const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
@@ -836,10 +848,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
+                        disabled={!canEdit}
                         className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Completed'
                           ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title="Marcar como concluído"
                       >
                         <span className="material-symbols-outlined text-sm">check_circle</span>
@@ -848,6 +861,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       {currentProject.status !== 'Completed' && (
                         <button
                           onClick={async () => {
+                            if (!canEdit) return;
                             try {
                               // Buscar a etapa "Em Revisão"
                               const reviewStage = stages.find(s => s.status === 'Review');
@@ -865,10 +879,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               setTimeout(() => setToast(null), 3000);
                             }
                           }}
+                          disabled={!canEdit}
                           className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Review'
                             ? 'bg-amber-500 hover:bg-amber-600 text-white'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                            }`}
+                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                           title="Enviar para revisão"
                         >
                           <span className="material-symbols-outlined text-sm">rate_review</span>
@@ -903,7 +918,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={async () => {
-                          if (currentProject.isImplementationPaid) return;
+                          if (currentProject.isImplementationPaid || !canEdit) return;
                           try {
                             // Atualizar apenas faturas de implementação (IMP-*)
                             const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
@@ -921,17 +936,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
+                        disabled={!canEdit}
                         className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isImplementationPaid
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-xs">check_circle</span>
                         Pago
                       </button>
                       <button
                         onClick={async () => {
-                          if (!currentProject.isImplementationPaid) return;
+                          if (!currentProject.isImplementationPaid || !canEdit) return;
                           try {
                             // Atualizar apenas faturas de implementação (IMP-*)
                             const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
@@ -949,10 +965,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
+                        disabled={!canEdit}
                         className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isImplementationPaid
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-xs">pending</span>
                         Pendente
@@ -976,7 +993,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={async () => {
-                          if (currentProject.isRecurringPaid) return;
+                          if (currentProject.isRecurringPaid || !canEdit) return;
                           try {
                             // Encontrar a fatura de mensalidade mais recente pendente (REC-*)
                             const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-') && inv.status !== 'Paid');
@@ -1044,7 +1061,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
-                          if (currentProject.isPaid) return;
+                          if (currentProject.isPaid || !canEdit) return;
                           try {
                             // Atualizar status geral do projeto
                             await updateProject(currentProject.id, { isPaid: true });
@@ -1063,17 +1080,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
+                        disabled={!canEdit}
                         className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${currentProject.isPaid
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-sm">check_circle</span>
                         Pago
                       </button>
                       <button
                         onClick={async () => {
-                          if (!currentProject.isPaid) return;
+                          if (!currentProject.isPaid || !canEdit) return;
                           try {
                             // Atualizar status geral do projeto
                             await updateProject(currentProject.id, { isPaid: false });
@@ -1092,10 +1110,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
+                        disabled={!canEdit}
                         className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${!currentProject.isPaid
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-sm">pending</span>
                         Pendente
@@ -1110,13 +1129,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest">Equipe</p>
-                  <button
-                    onClick={() => setShowAddMember(true)}
-                    className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
-                    title="Adicionar membro"
-                  >
-                    <span className="material-symbols-outlined text-base">add</span>
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => setShowAddMember(true)}
+                      className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
+                      title="Adicionar membro"
+                    >
+                      <span className="material-symbols-outlined text-base">add</span>
+                    </button>
+                  )}
                 </div>
                 {teamMembers.length > 0 ? (
                   <>
@@ -1128,13 +1149,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           style={{ backgroundImage: `url(${member.avatar})`, backgroundSize: 'cover' }}
                           title={member.name}
                         >
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                            title="Remover membro"
-                          >
-                            <span className="material-symbols-outlined text-xs">close</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleRemoveMember(member.id)}
+                              className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                              title="Remover membro"
+                            >
+                              <span className="material-symbols-outlined text-xs">close</span>
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1148,12 +1171,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 ) : (
                   <div className="text-center py-2">
                     <p className="text-xs text-slate-500 mb-2">Nenhum membro</p>
-                    <button
-                      onClick={() => setShowAddMember(true)}
-                      className="text-xs font-semibold text-primary hover:underline"
-                    >
-                      Adicionar membro
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowAddMember(true)}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Adicionar membro
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1167,12 +1192,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 active={activeManagementTab === 'overview'}
                 onClick={() => setActiveManagementTab('overview')}
               />
-              <NavBtn
-                icon="payments"
-                label="Faturamento e Notas"
-                active={activeManagementTab === 'billing'}
-                onClick={() => setActiveManagementTab('billing')}
-              />
+              {canViewFinancial && (
+                <NavBtn
+                  icon="payments"
+                  label="Faturamento e Notas"
+                  active={activeManagementTab === 'billing'}
+                  onClick={() => setActiveManagementTab('billing')}
+                />
+              )}
               <NavBtn
                 icon="rocket_launch"
                 label="Roteiro do Projeto"
@@ -1189,18 +1216,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               <span className="material-symbols-outlined text-lg">arrow_back</span>
               Voltar ao Painel
             </button>
-            <button
-              onClick={() => setShowDeleteProjectConfirm(true)}
-              className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
-            >
-              <span className="material-symbols-outlined text-lg">delete</span>
-              Excluir Projeto
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => setShowDeleteProjectConfirm(true)}
+                className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">delete</span>
+                Excluir Projeto
+              </button>
+            )}
           </div>
-        </aside>
+        </aside >
 
         {/* Coluna Direita - Conteúdo Principal */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10">
+        < main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10" >
           {activeManagementTab === 'overview' && (
             <div className="p-8">
               <div className="max-w-5xl mx-auto flex flex-col gap-6">
@@ -1221,19 +1250,27 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="relative group">
                       {currentProject.projectImage ? (
                         <div
-                          className="size-16 rounded-xl bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity shadow-md"
+                          className={`size-16 rounded-xl bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity shadow-md ${!canEdit ? 'pointer-events-none' : ''}`}
                           style={{ backgroundImage: `url(${currentProject.projectImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                          onClick={() => projectImageInputRef.current?.click()}
-                          title="Alterar foto do projeto"
+                          onClick={() => canEdit && projectImageInputRef.current?.click()}
+                          title={canEdit ? "Alterar foto do projeto" : "Foto do projeto"}
                         ></div>
                       ) : (
-                        <button
-                          onClick={() => projectImageInputRef.current?.click()}
-                          className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
-                          title="Adicionar foto do projeto"
-                        >
-                          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
-                        </button>
+                        canEdit ? (
+                          <button
+                            onClick={() => projectImageInputRef.current?.click()}
+                            className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                            title="Adicionar foto do projeto"
+                          >
+                            <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
+                          </button>
+                        ) : (
+                          <div
+                            className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600"
+                          >
+                            <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">image</span>
+                          </div>
+                        )
                       )}
                       <input
                         ref={projectImageInputRef}
@@ -1302,18 +1339,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       ) : (
                         <div className="flex items-center gap-2 group/header-name">
                           <p className="text-3xl font-black leading-tight tracking-tight">{currentProject.name}</p>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTempNameHeader(currentProject.name);
-                              setEditingNameHeader(true);
-                            }}
-                            className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                            title="Editar nome"
-                          >
-                            <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTempNameHeader(currentProject.name);
+                                setEditingNameHeader(true);
+                              }}
+                              className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                              title="Editar nome"
+                            >
+                              <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
+                            </button>
+                          )}
                         </div>
                       )}
                       <div className="flex gap-2 flex-wrap items-center">
@@ -1342,13 +1381,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             </button>
                           )}
                           {/* Botão de adicionar mais serviços */}
-                          <button
-                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                            className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
-                            title="Adicionar/remover serviços"
-                          >
-                            <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
+                              title="Adicionar/remover serviços"
+                            >
+                              <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
+                            </button>
+                          )}
                           {showTypeDropdown && (
                             <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
                               <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
@@ -1498,6 +1539,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         <React.Fragment key={stage.id}>
                           <button
                             onClick={async () => {
+                              if (!canEdit) return;
                               try {
                                 await updateProject(currentProject.id, {
                                   status: stage.status as Project['status'],
@@ -1512,13 +1554,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 setTimeout(() => setToast(null), 3000);
                               }
                             }}
+                            disabled={!canEdit}
                             className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all min-w-[80px] ${isCurrent
                               ? 'bg-primary/10 border-2 border-primary'
                               : isPast
                                 ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
                                 : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                              }`}
-                            title={`Mover para: ${stage.title}`}
+                              } ${!canEdit ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                            title={canEdit ? `Mover para: ${stage.title}` : `Etapa: ${stage.title}`}
                           >
                             <div className={`size-6 rounded-full flex items-center justify-center ${isCurrent
                               ? 'bg-primary text-white'
@@ -1597,6 +1640,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
                         <RichTextEditor
                           content={tempDescription}
+                          readOnly={!canEdit}
                           onChange={(newContent) => {
                             setTempDescription(newContent);
 
@@ -1660,8 +1704,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               .filter(pt => pt.stageId === stage.id)
                               .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-                            const isCurrentStage = stage.status === currentProject.status;
-                            const currentStage = stages.find(s => s.status === currentProject.status);
+                            // Lógica corrigida para determinar a etapa atual
+                            const isCurrentStage = currentProject.stageId
+                              ? stage.id === currentProject.stageId
+                              : stage.status === currentProject.status;
+
+                            // Determinar a etapa atual do projeto para comparação de ordem
+                            const currentStage = currentProject.stageId
+                              ? stages.find(s => s.id === currentProject.stageId)
+                              : stages.find(s => s.status === currentProject.status);
+
                             const currentStageOrder = currentStage?.order ?? -1;
                             const stageOrder = stage.order;
                             const isPreviousStage = stageOrder < currentStageOrder;
@@ -1727,10 +1779,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     <div className="flex justify-end mb-2">
                                       <button
                                         onClick={() => {
+                                          if (!canEdit) return;
                                           setStageToReset(stage);
                                           setShowResetTasksConfirm(true);
                                         }}
-                                        className="text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
+                                        disabled={!canEdit}
+                                        className={`text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         title="Redefinir tarefas para o padrão"
                                       >
                                         <span className="material-symbols-outlined text-sm">refresh</span>
@@ -1746,7 +1800,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         return (
                                           <div
                                             key={task.id}
-                                            draggable={true}
+                                            draggable={canEdit}
                                             onDragStart={(e) => {
                                               e.stopPropagation();
                                               setDraggedTask(task);
@@ -1850,6 +1904,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
                                             <button
                                               onClick={async () => {
+                                                if (!canEdit) return;
                                                 try {
                                                   await updateProjectTask(task.id, { completed: !isTaskCompleted });
                                                 } catch (error) {
@@ -1858,7 +1913,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                   setTimeout(() => setToast(null), 3000);
                                                 }
                                               }}
-                                              className="flex-shrink-0"
+                                              disabled={!canEdit}
+                                              className={`flex-shrink-0 ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
                                             >
                                               <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
                                                 ? 'text-green-500'
@@ -1904,6 +1960,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               <div className="flex-1 flex items-center gap-2 group/task">
                                                 <p
                                                   onDoubleClick={() => {
+                                                    if (!canEdit) return;
                                                     setEditingTaskId(task.id);
                                                     setEditingTaskTitle(task.title || '');
                                                   }}
@@ -1912,36 +1969,40 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 >
                                                   {task.title || 'Sem título'}
                                                 </p>
-                                                <button
-                                                  onClick={() => {
-                                                    setEditingTaskId(task.id);
-                                                    setEditingTaskTitle(task.title || '');
-                                                  }}
-                                                  className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
-                                                  title="Editar tarefa"
-                                                >
-                                                  <span className="material-symbols-outlined text-sm">edit</span>
-                                                </button>
+                                                {canEdit && (
+                                                  <button
+                                                    onClick={() => {
+                                                      setEditingTaskId(task.id);
+                                                      setEditingTaskTitle(task.title || '');
+                                                    }}
+                                                    className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
+                                                    title="Editar tarefa"
+                                                  >
+                                                    <span className="material-symbols-outlined text-sm">edit</span>
+                                                  </button>
+                                                )}
                                               </div>
                                             )}
 
-                                            <button
-                                              onClick={async () => {
-                                                try {
-                                                  await removeProjectTask(task.id);
-                                                  setToast({ message: "Tarefa removida", type: 'success' });
-                                                  setTimeout(() => setToast(null), 3000);
-                                                } catch (error) {
-                                                  console.error("Error removing task:", error);
-                                                  setToast({ message: "Erro ao remover tarefa", type: 'error' });
-                                                  setTimeout(() => setToast(null), 3000);
-                                                }
-                                              }}
-                                              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
-                                              title="Remover tarefa"
-                                            >
-                                              <span className="material-symbols-outlined text-lg">delete</span>
-                                            </button>
+                                            {canEdit && (
+                                              <button
+                                                onClick={async () => {
+                                                  try {
+                                                    await removeProjectTask(task.id);
+                                                    setToast({ message: "Tarefa removida", type: 'success' });
+                                                    setTimeout(() => setToast(null), 3000);
+                                                  } catch (error) {
+                                                    console.error("Error removing task:", error);
+                                                    setToast({ message: "Erro ao remover tarefa", type: 'error' });
+                                                    setTimeout(() => setToast(null), 3000);
+                                                  }
+                                                }}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
+                                                title="Remover tarefa"
+                                              >
+                                                <span className="material-symbols-outlined text-lg">delete</span>
+                                              </button>
+                                            )}
                                           </div>
                                         );
                                       })}
@@ -1953,32 +2014,34 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       )}
 
                                       {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas */}
-                                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
-                                        <input
-                                          type="text"
-                                          placeholder="Adicionar nova tarefa..."
-                                          className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                                          onKeyPress={async (e) => {
-                                            if (e.key === 'Enter') {
-                                              const input = e.target as HTMLInputElement;
-                                              const title = input.value.trim();
-                                              if (!title) return;
+                                      {canEdit && (
+                                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
+                                          <input
+                                            type="text"
+                                            placeholder="Adicionar nova tarefa..."
+                                            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                                            onKeyPress={async (e) => {
+                                              if (e.key === 'Enter') {
+                                                const input = e.target as HTMLInputElement;
+                                                const title = input.value.trim();
+                                                if (!title) return;
 
-                                              try {
-                                                const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
-                                                await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
-                                                input.value = '';
-                                                setToast({ message: "Tarefa adicionada", type: 'success' });
-                                                setTimeout(() => setToast(null), 3000);
-                                              } catch (error) {
-                                                console.error("Error adding task:", error);
-                                                setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
-                                                setTimeout(() => setToast(null), 3000);
+                                                try {
+                                                  const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
+                                                  await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
+                                                  input.value = '';
+                                                  setToast({ message: "Tarefa adicionada", type: 'success' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                } catch (error) {
+                                                  console.error("Error adding task:", error);
+                                                  setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                }
                                               }
-                                            }
-                                          }}
-                                        />
-                                      </div>
+                                            }}
+                                          />
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -2001,13 +2064,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg flex items-center gap-2">
                               <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
                             </div>
-                            <button
-                              onClick={() => setShowAddCredential(true)}
-                              className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">add</span>
-                              Adicionar Credencial
-                            </button>
+                            {canEdit && (
+                              <button
+                                onClick={() => setShowAddCredential(true)}
+                                className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-base">add</span>
+                                Adicionar Credencial
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2020,12 +2085,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               url={credential.url}
                               user={credential.user}
                               password={credential.password}
-                              onEdit={() => setShowEditCredential(credential)}
-                              onDelete={() => {
+                              onEdit={canEdit ? () => setShowEditCredential(credential) : undefined}
+                              onDelete={canEdit ? () => {
                                 setCredentials(credentials.filter(c => c.id !== credential.id));
                                 setToast({ message: "Credencial removida com sucesso!", type: 'success' });
                                 setTimeout(() => setToast(null), 3000);
-                              }}
+                              } : undefined}
                             />
                           ))}
                         </div>
@@ -2037,34 +2102,38 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-lg font-bold">Mídias, Documentos e Links</h3>
                           <div className="flex items-center gap-2">
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              multiple
-                              onChange={handleFileUpload}
-                              className="hidden"
-                              id="file-upload"
-                              disabled={uploading}
-                            />
-                            <label
-                              htmlFor="file-upload"
-                              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${uploading
-                                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                : 'text-primary hover:bg-primary/10'
-                                }`}
-                            >
-                              <span className="material-symbols-outlined text-sm">
-                                {uploading ? 'hourglass_empty' : 'upload'}
-                              </span>
-                              {uploading ? 'Enviando...' : 'Enviar Arquivo'}
-                            </label>
-                            <button
-                              onClick={() => setShowAddLinkModal(true)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-primary hover:bg-primary/10"
-                            >
-                              <span className="material-symbols-outlined text-sm">link</span>
-                              Adicionar Link
-                            </button>
+                            {canEdit && (
+                              <>
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  multiple
+                                  onChange={handleFileUpload}
+                                  className="hidden"
+                                  id="file-upload"
+                                  disabled={uploading}
+                                />
+                                <label
+                                  htmlFor="file-upload"
+                                  className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${uploading
+                                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                    : 'text-primary hover:bg-primary/10'
+                                    }`}
+                                >
+                                  <span className="material-symbols-outlined text-sm">
+                                    {uploading ? 'hourglass_empty' : 'upload'}
+                                  </span>
+                                  {uploading ? 'Enviando...' : 'Enviar Arquivo'}
+                                </label>
+                                <button
+                                  onClick={() => setShowAddLinkModal(true)}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-primary hover:bg-primary/10"
+                                >
+                                  <span className="material-symbols-outlined text-sm">link</span>
+                                  Adicionar Link
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -2128,23 +2197,27 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     </>
                                   )}
                                 </div>
-                                <button
-                                  onClick={() => {
-                                    setEditingFileTitle(file);
-                                    setEditingFileTitleValue(file.title || '');
-                                  }}
-                                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-primary transition-all p-1"
-                                  title="Editar título"
-                                >
-                                  <span className="material-symbols-outlined text-lg">edit</span>
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteFile(file)}
-                                  className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
-                                  title={file.isLink ? "Excluir link" : "Excluir arquivo"}
-                                >
-                                  <span className="material-symbols-outlined text-lg">delete</span>
-                                </button>
+                                {canEdit && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingFileTitle(file);
+                                        setEditingFileTitleValue(file.title || '');
+                                      }}
+                                      className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-primary transition-all p-1"
+                                      title="Editar título"
+                                    >
+                                      <span className="material-symbols-outlined text-lg">edit</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteFile(file)}
+                                      className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
+                                      title={file.isLink ? "Excluir link" : "Excluir arquivo"}
+                                    >
+                                      <span className="material-symbols-outlined text-lg">delete</span>
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             ))
                           ) : (
@@ -2157,889 +2230,933 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 </div>
               </div>
             </div>
-          )}
+          )
+          }
 
-          {activeManagementTab === 'billing' && (
-            <div className="p-8">
-              <div className="max-w-5xl mx-auto">
-                <div className="flex items-center gap-2 text-slate-500 mb-4">
-                  <button
-                    onClick={onClose}
-                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                  </button>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-                </div>
-                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                  <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
-                    <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+          {
+            activeManagementTab === 'billing' && canViewFinancial && (
+              <div className="p-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="flex items-center gap-2 text-slate-500 mb-4">
+                    <button
+                      onClick={onClose}
+                      className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">arrow_back</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                    </button>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
                   </div>
-                  <button
-                    onClick={() => setShowAddInvoice(true)}
-                    className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
-                  >
-                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
-                  </button>
-                </div>
+                  <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
+                      <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+                    </div>
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowAddInvoice(true)}
+                        className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
+                      >
+                        <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
+                      </button>
+                    )}
+                  </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                  <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold">Faturas</h3>
-                      <div className="flex gap-2">
-                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
-                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold">Faturas</h3>
+                        <div className="flex gap-2">
+                          <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
+                          <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 dark:bg-slate-800/50">
-                        <tr>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {invoices.length === 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 dark:bg-slate-800/50">
                           <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center">
-                              <div className="flex flex-col items-center gap-2">
-                                <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
-                                <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
-                                <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
-                              </div>
-                            </td>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
                           </tr>
-                        ) : (
-                          [...invoices].sort((a, b) => {
-                            const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-                            const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-                            return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
-                          }).map((invoice, index, sortedInvoices) => (
-                            <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                              <td className="px-6 py-4">
-                                <p className="text-sm font-medium">{invoice.description}</p>
-                                <p className="text-[10px] text-slate-400">{invoice.number}</p>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-slate-500">
-                                {(() => {
-                                  if (!invoice.date) return '-';
-                                  let dateObj: Date;
-                                  if (invoice.date instanceof Date) {
-                                    dateObj = invoice.date;
-                                  } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
-                                    // Parse YYYY-MM-DD sem problemas de timezone
-                                    const [year, month, day] = invoice.date.split('-').map(Number);
-                                    dateObj = new Date(year, month - 1, day);
-                                  } else if (invoice.date?.toDate) {
-                                    // Firebase Timestamp
-                                    dateObj = invoice.date.toDate();
-                                  } else {
-                                    dateObj = new Date(invoice.date);
-                                  }
-                                  return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
-                                })()}
-                              </td>
-                              <td className="px-6 py-4 text-sm font-bold">
-                                <div className="flex items-baseline gap-1.5">
-                                  <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
-                                  {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
-                                  {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
-                                    <span className="text-[10px] font-normal text-slate-500">
-                                      {(() => {
-                                        // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
-                                        const sameTypeInvoices = sortedInvoices.filter(inv =>
-                                          invoice.number.startsWith('IMP-')
-                                            ? inv.number.startsWith('IMP-')
-                                            : inv.number.startsWith('INV-')
-                                        );
-                                        const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
-                                        return `${currentIndex + 1}/${sameTypeInvoices.length}`;
-                                      })()}
-                                    </span>
-                                  )}
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {invoices.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-6 py-12 text-center">
+                                <div className="flex flex-col items-center gap-2">
+                                  <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
+                                  <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
+                                  <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
                                 </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={async () => {
-                                      if (invoice.status === 'Paid') return;
-                                      try {
-                                        await updateInvoice(invoice.id, { status: 'Paid' });
-                                        const updatedInvoices = invoices.map(inv =>
-                                          inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
-                                        );
-
-                                        // Atualizar status específico baseado no tipo de fatura
-                                        if (isProjectRecurring()) {
-                                          if (invoice.number.startsWith('IMP-')) {
-                                            // Verificar se todas as faturas de implementação estão pagas
-                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                            }
-                                          } else {
-                                            // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
-                                            await updateProject(currentProject.id, { isRecurringPaid: true });
-                                            setPaidInvoiceForRecurring(invoice);
-                                            setShowRecurringConfirm(true);
-                                          }
-                                        } else {
-                                          // Projeto normal: atualizar status geral
-                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                          if (allPaid !== currentProject.isPaid) {
-                                            await updateProject(currentProject.id, { isPaid: allPaid });
-                                          }
-                                        }
-                                      } catch (error) {
-                                        console.error("Error updating invoice:", error);
-                                      }
-                                    }}
-                                    className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
-                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
-                                      }`}
-                                  >
-                                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                                    Pago
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      if (invoice.status === 'Pending') return;
-                                      try {
-                                        await updateInvoice(invoice.id, { status: 'Pending' });
-                                        const updatedInvoices = invoices.map(inv =>
-                                          inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
-                                        );
-
-                                        // Atualizar status específico baseado no tipo de fatura
-                                        if (isProjectRecurring()) {
-                                          if (invoice.number.startsWith('IMP-')) {
-                                            // Verificar se alguma fatura de implementação está pendente
-                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                            }
-                                          } else if (invoice.number.startsWith('REC-')) {
-                                            // Para mensalidade, marcar como pendente
-                                            await updateProject(currentProject.id, { isRecurringPaid: false });
-                                          }
-                                        } else {
-                                          // Projeto normal: atualizar status geral
-                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                          if (allPaid !== currentProject.isPaid) {
-                                            await updateProject(currentProject.id, { isPaid: allPaid });
-                                          }
-                                        }
-                                      } catch (error) {
-                                        console.error("Error updating invoice:", error);
-                                      }
-                                    }}
-                                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${invoice.status === 'Pending'
-                                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/20'
-                                      }`}
-                                  >
-                                    <span className="material-symbols-outlined text-sm">pending</span>
-                                    Pendente
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                <button
-                                  onClick={() => setEditingInvoice(invoice)}
-                                  className="size-8 rounded-lg flex items-center justify-center transition-all bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-primary/10 hover:text-primary border border-slate-200 dark:border-slate-700"
-                                  title="Editar fatura"
-                                >
-                                  <span className="material-symbols-outlined text-lg">edit</span>
-                                </button>
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          ) : (
+                            [...invoices].sort((a, b) => {
+                              const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+                              const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+                              return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
+                            }).map((invoice, index, sortedInvoices) => (
+                              <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                <td className="px-6 py-4">
+                                  <p className="text-sm font-medium">{invoice.description}</p>
+                                  <p className="text-[10px] text-slate-400">{invoice.number}</p>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-slate-500">
+                                  {(() => {
+                                    if (!invoice.date) return '-';
+                                    let dateObj: Date;
+                                    if (invoice.date instanceof Date) {
+                                      dateObj = invoice.date;
+                                    } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
+                                      // Parse YYYY-MM-DD sem problemas de timezone
+                                      const [year, month, day] = invoice.date.split('-').map(Number);
+                                      dateObj = new Date(year, month - 1, day);
+                                    } else if (invoice.date?.toDate) {
+                                      // Firebase Timestamp
+                                      dateObj = invoice.date.toDate();
+                                    } else {
+                                      dateObj = new Date(invoice.date);
+                                    }
+                                    return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+                                  })()}
+                                </td>
+                                <td className="px-6 py-4 text-sm font-bold">
+                                  <div className="flex items-baseline gap-1.5">
+                                    <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
+                                    {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
+                                    {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
+                                      <span className="text-[10px] font-normal text-slate-500">
+                                        {(() => {
+                                          // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
+                                          const sameTypeInvoices = sortedInvoices.filter(inv =>
+                                            invoice.number.startsWith('IMP-')
+                                              ? inv.number.startsWith('IMP-')
+                                              : inv.number.startsWith('INV-')
+                                          );
+                                          const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
+                                          return `${currentIndex + 1}/${sameTypeInvoices.length}`;
+                                        })()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={async () => {
+                                        if (invoice.status === 'Paid' || !canEdit) return;
+                                        try {
+                                          await updateInvoice(invoice.id, { status: 'Paid' });
+                                          const updatedInvoices = invoices.map(inv =>
+                                            inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
+                                          );
+
+                                          // Atualizar status específico baseado no tipo de fatura
+                                          if (isProjectRecurring()) {
+                                            if (invoice.number.startsWith('IMP-')) {
+                                              // Verificar se todas as faturas de implementação estão pagas
+                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                              }
+                                            } else {
+                                              // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
+                                              await updateProject(currentProject.id, { isRecurringPaid: true });
+                                              setPaidInvoiceForRecurring(invoice);
+                                              setShowRecurringConfirm(true);
+                                            }
+                                          } else {
+                                            // Projeto normal: atualizar status geral
+                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                            if (allPaid !== currentProject.isPaid) {
+                                              await updateProject(currentProject.id, { isPaid: allPaid });
+                                            }
+                                          }
+                                        } catch (error) {
+                                          console.error("Error updating invoice:", error);
+                                        }
+                                      }}
+                                      className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
+                                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
+                                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      disabled={!canEdit}
+                                    >
+                                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                                      Pago
+                                    </button>
+                                    <button
+                                      onClick={async () => {
+                                        if (invoice.status === 'Pending' || !canEdit) return;
+                                        try {
+                                          await updateInvoice(invoice.id, { status: 'Pending' });
+                                          const updatedInvoices = invoices.map(inv =>
+                                            inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
+                                          );
+
+                                          // Atualizar status específico baseado no tipo de fatura
+                                          if (isProjectRecurring()) {
+                                            if (invoice.number.startsWith('IMP-')) {
+                                              // Verificar se alguma fatura de implementação está pendente
+                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                              }
+                                            } else if (invoice.number.startsWith('REC-')) {
+                                              // Para mensalidade, marcar como pendente
+                                              await updateProject(currentProject.id, { isRecurringPaid: false });
+                                            }
+                                          } else {
+                                            // Projeto normal: atualizar status geral
+                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                            if (allPaid !== currentProject.isPaid) {
+                                              await updateProject(currentProject.id, { isPaid: allPaid });
+                                            }
+                                          }
+                                        } catch (error) {
+                                          console.error("Error updating invoice:", error);
+                                        }
+                                      }}
+                                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${invoice.status === 'Pending'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/20'
+                                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      disabled={!canEdit}
+                                    >
+                                      <span className="material-symbols-outlined text-sm">pending</span>
+                                      Pendente
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <button
+                                    onClick={() => canEdit && setEditingInvoice(invoice)}
+                                    className={`size-8 rounded-lg flex items-center justify-center transition-all border border-slate-200 dark:border-slate-700 ${canEdit ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-primary/10 hover:text-primary' : 'bg-slate-50 dark:bg-slate-900 text-slate-300 cursor-not-allowed'}`}
+                                    disabled={!canEdit}
+                                    title="Editar fatura"
+                                  >
+                                    <span className="material-symbols-outlined text-lg">edit</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )
+          }
 
-          {activeManagementTab === 'roadmap' && (
-            <div className="p-8">
-              <div className="max-w-5xl mx-auto">
-                <div className="flex items-center gap-2 text-slate-500 mb-4">
-                  <button
-                    onClick={onClose}
-                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                  </button>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-                </div>
-                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                  <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
-                    <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+          {
+            activeManagementTab === 'roadmap' && (
+              <div className="p-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="flex items-center gap-2 text-slate-500 mb-4">
+                    <button
+                      onClick={onClose}
+                      className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">arrow_back</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                    </button>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
                   </div>
-                  <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
-                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
-                  </button>
-                </div>
+                  <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
+                      <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+                    </div>
+                    <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                      <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
+                    </button>
+                  </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
-                  <div className="relative">
-                    {[
-                      { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
-                      { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
-                      { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
-                      { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
-                      { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
-                      { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
-                    ].map((milestone, index) => (
-                      <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
-                        <div className="flex flex-col items-center">
-                          <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
-                            milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
-                              'bg-slate-200 text-slate-400'
-                            }`}>
-                            {milestone.status === 'completed' ? (
-                              <span className="material-symbols-outlined">check</span>
-                            ) : (
-                              <span>{index + 1}</span>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
+                    <div className="relative">
+                      {[
+                        { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
+                        { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
+                        { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
+                        { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
+                        { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
+                        { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
+                      ].map((milestone, index) => (
+                        <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
+                          <div className="flex flex-col items-center">
+                            <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
+                              milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
+                                'bg-slate-200 text-slate-400'
+                              }`}>
+                              {milestone.status === 'completed' ? (
+                                <span className="material-symbols-outlined">check</span>
+                              ) : (
+                                <span>{index + 1}</span>
+                              )}
+                            </div>
+                            {index < 5 && (
+                              <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
+                                }`} style={{ minHeight: '80px' }}></div>
                             )}
                           </div>
-                          {index < 5 && (
-                            <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
-                              }`} style={{ minHeight: '80px' }}></div>
-                          )}
-                        </div>
-                        <div className="flex-1 pb-8">
-                          <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
-                            milestone.status === 'current' ? 'border-primary bg-primary/5' :
-                              'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
-                            }`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="text-lg font-bold">{milestone.title}</h3>
-                              <span className="text-sm text-slate-500">{milestone.date}</span>
+                          <div className="flex-1 pb-8">
+                            <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
+                              milestone.status === 'current' ? 'border-primary bg-primary/5' :
+                                'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
+                              }`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-lg font-bold">{milestone.title}</h3>
+                                <span className="text-sm text-slate-500">{milestone.date}</span>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
                             </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </main>
+            )
+          }
+        </main >
 
         {/* Modal Adicionar Credencial */}
-        {showAddCredential && (
-          <AddCredentialModal
-            onClose={() => setShowAddCredential(false)}
-            onSave={(credentialData) => {
-              const newCredential = {
-                id: Date.now().toString(),
-                ...credentialData
-              };
-              setCredentials([...credentials, newCredential]);
-              setShowAddCredential(false);
-              setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
-            }}
-          />
-        )}
+        {
+          showAddCredential && (
+            <AddCredentialModal
+              onClose={() => setShowAddCredential(false)}
+              onSave={(credentialData) => {
+                const newCredential = {
+                  id: Date.now().toString(),
+                  ...credentialData
+                };
+                setCredentials([...credentials, newCredential]);
+                setShowAddCredential(false);
+                setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              }}
+            />
+          )
+        }
 
         {/* Modal Editar Credencial */}
-        {showEditCredential && (
-          <EditCredentialModal
-            credential={showEditCredential}
-            onClose={() => setShowEditCredential(null)}
-            onSave={(credentialData) => {
-              setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
-              setShowEditCredential(null);
-              setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
-            }}
-          />
-        )}
+        {
+          showEditCredential && (
+            <EditCredentialModal
+              credential={showEditCredential}
+              onClose={() => setShowEditCredential(null)}
+              onSave={(credentialData) => {
+                setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
+                setShowEditCredential(null);
+                setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              }}
+            />
+          )
+        }
 
         {/* Modal Adicionar Atividade */}
-        {showAddActivity && (
-          <AddActivityModal
-            projectId={currentProject.id}
-            onClose={() => setShowAddActivity(false)}
-            onSave={async (activityData) => {
-              try {
-                console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
-                const activityId = await addActivity({
-                  projectId: currentProject.id,
-                  text: activityData.text,
-                  icon: activityData.icon,
-                  userName: activityData.userName || 'Usuário',
-                });
-                console.log("Activity added successfully:", activityId);
-                setShowAddActivity(false);
-              } catch (error: any) {
-                console.error("Error adding activity:", error);
-                const errorMessage = error?.message || "Erro desconhecido";
-                alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
-              }
-            }}
-          />
-        )}
+        {
+          showAddActivity && (
+            <AddActivityModal
+              projectId={currentProject.id}
+              onClose={() => setShowAddActivity(false)}
+              onSave={async (activityData) => {
+                try {
+                  console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
+                  const activityId = await addActivity({
+                    projectId: currentProject.id,
+                    text: activityData.text,
+                    icon: activityData.icon,
+                    userName: activityData.userName || 'Usuário',
+                    createdAt: new Date()
+                  });
+                  console.log("Activity added successfully:", activityId);
+                  setShowAddActivity(false);
+                } catch (error: any) {
+                  console.error("Error adding activity:", error);
+                  const errorMessage = error?.message || "Erro desconhecido";
+                  alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
+                }
+              }}
+            />
+          )
+        }
 
         {/* Modal Adicionar Membro */}
-        {showAddMember && (
-          <AddMemberModal
-            projectId={currentProject.id}
-            onClose={() => setShowAddMember(false)}
-            onSave={async (memberData) => {
-              try {
-                console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
-                const memberId = await addTeamMember({
-                  projectId: currentProject.id,
-                  name: memberData.name,
-                  role: memberData.role,
-                  avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
-                  email: memberData.email,
-                });
-                console.log("Team member added successfully:", memberId);
-                setShowAddMember(false);
-              } catch (error: any) {
-                console.error("Error adding team member:", error);
-                const errorMessage = error?.message || "Erro desconhecido";
-                alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
-              }
-            }}
-          />
-        )}
+        {
+          showAddMember && (
+            <AddMemberModal
+              projectId={currentProject.id}
+              onClose={() => setShowAddMember(false)}
+              onSave={async (memberData) => {
+                try {
+                  console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
+                  const memberId = await addTeamMember({
+                    projectId: currentProject.id,
+                    name: memberData.name,
+                    role: memberData.role,
+                    avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
+                    email: memberData.email,
+                    addedAt: new Date()
+                  });
+                  console.log("Team member added successfully:", memberId);
+                  setShowAddMember(false);
+                } catch (error: any) {
+                  console.error("Error adding team member:", error);
+                  const errorMessage = error?.message || "Erro desconhecido";
+                  alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
+                }
+              }}
+            />
+          )
+        }
 
         {/* Modal Ver Todos os Membros */}
-        {showAllMembers && (
-          <AllMembersModal
-            members={teamMembers}
-            onClose={() => setShowAllMembers(false)}
-            onRemove={(memberId) => {
-              const member = teamMembers.find(m => m.id === memberId);
-              if (member) {
-                setMemberToRemove(member);
-              }
-            }}
-          />
-        )}
+        {
+          showAllMembers && (
+            <AllMembersModal
+              members={teamMembers}
+              onClose={() => setShowAllMembers(false)}
+              onRemove={(memberId) => {
+                const member = teamMembers.find(m => m.id === memberId);
+                if (member) {
+                  setMemberToRemove(member);
+                }
+              }}
+            />
+          )
+        }
 
         {/* Modal Compartilhar Projeto */}
-        {showShareProject && (
-          <ShareProjectModal
-            project={currentProject}
-            onClose={() => setShowShareProject(false)}
-          />
-        )}
+        {
+          showShareProject && (
+            <ShareProjectModal
+              project={currentProject}
+              onClose={() => setShowShareProject(false)}
+            />
+          )
+        }
 
         {/* Modal Confirmar Exclusão de Arquivo */}
-        {fileToDelete && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+        {
+          fileToDelete && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Excluir Arquivo</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Excluir Arquivo</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
+                  </p>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setFileToDelete(null)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteFile}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Excluir
-                </button>
+                <div className="p-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setFileToDelete(null)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDeleteFile}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* Modal Adicionar Link */}
-        {showAddLinkModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-primary">link</span>
+        {
+          showAddLinkModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-primary">link</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Adicionar Link</h3>
+                      <p className="text-sm text-slate-500 mt-1">Adicione um link externo ao projeto</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      URL do Link <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={newLinkUrl}
+                      onChange={(e) => setNewLinkUrl(e.target.value)}
+                      placeholder="https://exemplo.com"
+                      className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                      autoFocus
+                    />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">Adicionar Link</h3>
-                    <p className="text-sm text-slate-500 mt-1">Adicione um link externo ao projeto</p>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Título (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={newLinkTitle}
+                      onChange={(e) => setNewLinkTitle(e.target.value)}
+                      placeholder="Ex: Documento de Briefing"
+                      className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                    />
                   </div>
                 </div>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    URL do Link <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={newLinkUrl}
-                    onChange={(e) => setNewLinkUrl(e.target.value)}
-                    placeholder="https://exemplo.com"
-                    className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Título (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={newLinkTitle}
-                    onChange={(e) => setNewLinkTitle(e.target.value)}
-                    placeholder="Ex: Documento de Briefing"
-                    className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                  />
-                </div>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  onClick={() => {
-                    setShowAddLinkModal(false);
-                    setNewLinkUrl('');
-                    setNewLinkTitle('');
-                  }}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!newLinkUrl.trim()) {
-                      setToast({ message: "Digite uma URL válida", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                      return;
-                    }
-                    try {
-                      await addProjectLink(currentProject.id, newLinkUrl.trim(), newLinkTitle.trim() || undefined);
-                      setToast({ message: "Link adicionado com sucesso!", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
+                <div className="p-6 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => {
                       setShowAddLinkModal(false);
                       setNewLinkUrl('');
                       setNewLinkTitle('');
-                    } catch (error) {
-                      console.error("Error adding link:", error);
-                      setToast({ message: "Erro ao adicionar link", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  disabled={!newLinkUrl.trim()}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Adicionar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Editar Título do Arquivo/Link */}
-        {editingFileTitle && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-primary">edit</span>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Editar Título</h3>
-                    <p className="text-sm text-slate-500 mt-1">
-                      {editingFileTitle.isLink ? 'Altere o título do link' : 'Altere o título do arquivo'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Título
-                </label>
-                <input
-                  type="text"
-                  value={editingFileTitleValue}
-                  onChange={(e) => setEditingFileTitleValue(e.target.value)}
-                  placeholder="Digite um título"
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                  autoFocus
-                />
-                <p className="text-xs text-slate-400 mt-2">
-                  {editingFileTitle.isLink ? 'Link: ' : 'Arquivo: '}{editingFileTitle.name}
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  onClick={() => {
-                    setEditingFileTitle(null);
-                    setEditingFileTitleValue('');
-                  }}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await updateProjectFile(editingFileTitle.id, { title: editingFileTitleValue });
-                      setToast({ message: "Título atualizado!", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
-                      setEditingFileTitle(null);
-                      setEditingFileTitleValue('');
-                    } catch (error) {
-                      console.error("Error updating title:", error);
-                      setToast({ message: "Erro ao atualizar título", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
-                >
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Confirmar Remoção de Membro */}
-        {memberToRemove && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Remover Membro</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setMemberToRemove(null)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmRemoveMember}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Remover
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showDeleteProjectConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Excluir Projeto</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setShowDeleteProjectConfirm(false)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await deleteProject(currentProject.id);
-                      setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
-                      setTimeout(() => {
-                        setShowDeleteProjectConfirm(false);
-                        onClose();
-                      }, 1000);
-                    } catch (error) {
-                      console.error("Error deleting project:", error);
-                      setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Toast Notification */}
-        {toast && (
-          <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${toast.type === 'success'
-              ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50'
-              : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
-              }`}>
-              <span className={`material-symbols-outlined flex-shrink-0 ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                }`}>
-                {toast.type === 'success' ? 'check_circle' : 'error'}
-              </span>
-              <p className={`text-sm font-semibold flex-1 ${toast.type === 'success'
-                ? 'text-emerald-900 dark:text-emerald-100'
-                : 'text-red-900 dark:text-red-100'
-                }`}>
-                {toast.message}
-              </p>
-              <button
-                onClick={() => setToast(null)}
-                className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Adicionar Nova Fatura */}
-        {showAddInvoice && (
-          <AddInvoiceModal
-            projectId={currentProject.id}
-            workspaceId={currentProject.workspaceId}
-            defaultNumber={(() => {
-              const year = new Date().getFullYear();
-              const count = invoices.length + 1;
-              return `INV-${year}-${count.toString().padStart(3, '0')}`;
-            })()}
-            onClose={() => setShowAddInvoice(false)}
-            isRecurring={isProjectRecurring()}
-            recurringAmount={currentProject.recurringAmount || 0}
-            onSave={async (invoiceData) => {
-              try {
-                await addInvoice({
-                  ...invoiceData,
-                  projectId: currentProject.id,
-                  workspaceId: currentProject.workspaceId
-                });
-                setShowAddInvoice(false);
-                setToast({ message: "Fatura criada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error adding invoice:", error);
-                setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-              }
-            }}
-          />
-        )}
-
-        {/* Modal Editar Fatura */}
-        {editingInvoice && (
-          <EditInvoiceModal
-            invoice={editingInvoice}
-            onClose={() => setEditingInvoice(null)}
-            onSave={async (updates) => {
-              try {
-                await updateInvoice(editingInvoice.id, updates);
-                setEditingInvoice(null);
-                setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error updating invoice:", error);
-                setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-              }
-            }}
-          />
-        )}
-
-        {/* Modal Confirmar Nova Fatura Recorrente */}
-        {showRecurringConfirm && paidInvoiceForRecurring && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
-                    <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                  Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
-                </p>
-
-                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
-                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                      {(() => {
-                        let previousDate: Date;
-                        if (paidInvoiceForRecurring.date instanceof Date) {
-                          previousDate = paidInvoiceForRecurring.date;
-                        } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
-                          const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
-                          previousDate = new Date(year, month - 1, day);
-                        } else if (paidInvoiceForRecurring.date?.toDate) {
-                          previousDate = paidInvoiceForRecurring.date.toDate();
-                        } else {
-                          previousDate = new Date();
-                        }
-                        const nextDate = new Date(previousDate);
-                        nextDate.setDate(nextDate.getDate() + 30);
-                        return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                      })()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowRecurringConfirm(false);
-                      setPaidInvoiceForRecurring(null);
                     }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
                   >
-                    Não, obrigado
+                    Cancelar
                   </button>
                   <button
                     onClick={async () => {
-                      if (paidInvoiceForRecurring) {
-                        await createRecurringInvoice(paidInvoiceForRecurring);
+                      if (!newLinkUrl.trim()) {
+                        setToast({ message: "Digite uma URL válida", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                        return;
                       }
-                      setShowRecurringConfirm(false);
-                      setPaidInvoiceForRecurring(null);
+                      try {
+                        await addProjectLink(currentProject.id, newLinkUrl.trim(), newLinkTitle.trim() || undefined);
+                        setToast({ message: "Link adicionado com sucesso!", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                        setShowAddLinkModal(false);
+                        setNewLinkUrl('');
+                        setNewLinkTitle('');
+                      } catch (error) {
+                        console.error("Error adding link:", error);
+                        setToast({ message: "Erro ao adicionar link", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
                     }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    disabled={!newLinkUrl.trim()}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="material-symbols-outlined text-sm">add_circle</span>
-                    Sim, criar fatura
+                    Adicionar
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
-        {/* Modal Confirmar Redefinir Tarefas */}
-        {showResetTasksConfirm && stageToReset && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">refresh</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Redefinir Tarefas?</h3>
-                    <p className="text-sm text-slate-500">Etapa: {stageToReset.title}</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                  Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
-                </p>
-                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
-                    <span className="text-xs text-slate-500">
-                      As tarefas serão substituídas pelas definidas em Configurações.
-                    </span>
+        {/* Modal Editar Título do Arquivo/Link */}
+        {
+          editingFileTitle && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-primary">edit</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Editar Título</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {editingFileTitle.isLink ? 'Altere o título do link' : 'Altere o título do arquivo'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="p-6">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Título
+                  </label>
+                  <input
+                    type="text"
+                    value={editingFileTitleValue}
+                    onChange={(e) => setEditingFileTitleValue(e.target.value)}
+                    placeholder="Digite um título"
+                    className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                    autoFocus
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    {editingFileTitle.isLink ? 'Link: ' : 'Arquivo: '}{editingFileTitle.name}
+                  </p>
+                </div>
+                <div className="p-6 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
                   <button
                     onClick={() => {
-                      setShowResetTasksConfirm(false);
-                      setStageToReset(null);
+                      setEditingFileTitle(null);
+                      setEditingFileTitleValue('');
                     }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={async () => {
                       try {
-                        const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                        const projectCategory = categories.find(c => projectTypes.includes(c.name));
-                        await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
-                        setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
+                        await updateProjectFile(editingFileTitle.id, { title: editingFileTitleValue });
+                        setToast({ message: "Título atualizado!", type: 'success' });
                         setTimeout(() => setToast(null), 3000);
+                        setEditingFileTitle(null);
+                        setEditingFileTitleValue('');
                       } catch (error) {
-                        console.error("Error resetting tasks:", error);
-                        setToast({ message: "Erro ao redefinir tarefas", type: 'error' });
+                        console.error("Error updating title:", error);
+                        setToast({ message: "Erro ao atualizar título", type: 'error' });
                         setTimeout(() => setToast(null), 3000);
                       }
-                      setShowResetTasksConfirm(false);
-                      setStageToReset(null);
                     }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
                   >
-                    <span className="material-symbols-outlined text-sm">refresh</span>
-                    Sim, redefinir
+                    Salvar
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )
+        }
+
+        {/* Modal Confirmar Remoção de Membro */}
+        {
+          memberToRemove && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Remover Membro</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
+                  </p>
+                </div>
+                <div className="p-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setMemberToRemove(null)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmRemoveMember}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {
+          showDeleteProjectConfirm && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Excluir Projeto</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
+                  </p>
+                </div>
+                <div className="p-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setShowDeleteProjectConfirm(false)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await deleteProject(currentProject.id);
+                        setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
+                        setTimeout(() => {
+                          setShowDeleteProjectConfirm(false);
+                          onClose();
+                        }, 1000);
+                      } catch (error) {
+                        console.error("Error deleting project:", error);
+                        setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                    }}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Toast Notification */}
+        {
+          toast && (
+            <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${toast.type === 'success'
+                ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50'
+                : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
+                }`}>
+                <span className={`material-symbols-outlined flex-shrink-0 ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                  {toast.type === 'success' ? 'check_circle' : 'error'}
+                </span>
+                <p className={`text-sm font-semibold flex-1 ${toast.type === 'success'
+                  ? 'text-emerald-900 dark:text-emerald-100'
+                  : 'text-red-900 dark:text-red-100'
+                  }`}>
+                  {toast.message}
+                </p>
+                <button
+                  onClick={() => setToast(null)}
+                  className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
+                >
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Modal Adicionar Nova Fatura */}
+        {
+          showAddInvoice && (
+            <AddInvoiceModal
+              projectId={currentProject.id}
+              workspaceId={currentProject.workspaceId}
+              defaultNumber={(() => {
+                const year = new Date().getFullYear();
+                const count = invoices.length + 1;
+                return `INV-${year}-${count.toString().padStart(3, '0')}`;
+              })()}
+              onClose={() => setShowAddInvoice(false)}
+              isRecurring={isProjectRecurring()}
+              recurringAmount={currentProject.recurringAmount || 0}
+              onSave={async (invoiceData) => {
+                try {
+                  await addInvoice({
+                    ...invoiceData,
+                    projectId: currentProject.id,
+                    workspaceId: currentProject.workspaceId
+                  });
+                  setShowAddInvoice(false);
+                  setToast({ message: "Fatura criada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error adding invoice:", error);
+                  setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }}
+            />
+          )
+        }
+
+        {/* Modal Editar Fatura */}
+        {
+          editingInvoice && (
+            <EditInvoiceModal
+              invoice={editingInvoice}
+              onClose={() => setEditingInvoice(null)}
+              onSave={async (updates) => {
+                try {
+                  await updateInvoice(editingInvoice.id, updates);
+                  setEditingInvoice(null);
+                  setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error updating invoice:", error);
+                  setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }}
+            />
+          )
+        }
+
+        {/* Modal Confirmar Nova Fatura Recorrente */}
+        {
+          showRecurringConfirm && paidInvoiceForRecurring && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
+                      <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                    Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+                  </p>
+
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                        {(() => {
+                          let previousDate: Date;
+                          if (paidInvoiceForRecurring.date instanceof Date) {
+                            previousDate = paidInvoiceForRecurring.date;
+                          } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
+                            const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
+                            previousDate = new Date(year, month - 1, day);
+                          } else if (paidInvoiceForRecurring.date?.toDate) {
+                            previousDate = paidInvoiceForRecurring.date.toDate();
+                          } else {
+                            previousDate = new Date();
+                          }
+                          const nextDate = new Date(previousDate);
+                          nextDate.setDate(nextDate.getDate() + 30);
+                          return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowRecurringConfirm(false);
+                        setPaidInvoiceForRecurring(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      Não, obrigado
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (paidInvoiceForRecurring) {
+                          await createRecurringInvoice(paidInvoiceForRecurring);
+                        }
+                        setShowRecurringConfirm(false);
+                        setPaidInvoiceForRecurring(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">add_circle</span>
+                      Sim, criar fatura
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Modal Confirmar Redefinir Tarefas */}
+        {
+          showResetTasksConfirm && stageToReset && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">refresh</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">Redefinir Tarefas?</h3>
+                      <p className="text-sm text-slate-500">Etapa: {stageToReset.title}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                    Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
+                  </p>
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
+                      <span className="text-xs text-slate-500">
+                        As tarefas serão substituídas pelas definidas em Configurações.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowResetTasksConfirm(false);
+                        setStageToReset(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                          const projectCategory = categories.find(c => projectTypes.includes(c.name));
+                          await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
+                          setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error resetting tasks:", error);
+                          setToast({ message: "Erro ao redefinir tarefas", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                        setShowResetTasksConfirm(false);
+                        setStageToReset(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">refresh</span>
+                      Sim, redefinir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
+      </div >
     </>
   );
 };

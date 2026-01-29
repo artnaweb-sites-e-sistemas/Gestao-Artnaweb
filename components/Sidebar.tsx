@@ -13,7 +13,11 @@ interface SidebarProps {
   onWorkspaceChange: (workspace: Workspace | null) => void;
   onWorkspacesChange: (workspaces: Workspace[]) => void;
   userId?: string | null;
+  userEmail?: string | null;
   theme?: 'light' | 'dark';
+  permissions?: {
+    canView: (module: string) => boolean;
+  } | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -25,15 +29,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
   workspaces,
   onWorkspaceChange,
   onWorkspacesChange,
+
   userId,
-  theme
+  userEmail,
+  theme,
+  permissions
 }) => {
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [workspaceToDelete, setWorkspaceToDelete] = useState<Workspace | null>(null);
+  const [workspaceSearch, setWorkspaceSearch] = useState('');
   const currentWorkspaceRef = useRef(currentWorkspace);
   const isInitialLoadRef = useRef(true);
+
+  // Helper para iniciais do workspace
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  // Filtragem de workspaces
+  const filteredWorkspaces = workspaces.filter(w =>
+    w.name.toLowerCase().includes(workspaceSearch.toLowerCase())
+  );
 
   // ... (Efeitos e handlers permanecem iguais para manter funcionalidade)
   useEffect(() => {
@@ -62,13 +85,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return;
         }
         const updatedWorkspace = fetchedWorkspaces.find(w => w.id === current.id);
-        if (updatedWorkspace && updatedWorkspace.name !== current.name) {
+        // Sincronizar se houver qualquer mudança relevante (nome ou avatar)
+        if (updatedWorkspace && (
+          updatedWorkspace.name !== current.name ||
+          updatedWorkspace.avatar !== current.avatar
+        )) {
           onWorkspaceChange(updatedWorkspace);
         }
       }
-    }, userId);
+    }, userId, userEmail);
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, userEmail, onWorkspaceChange, onWorkspacesChange]);
 
   const handleAddWorkspace = async () => {
     if (!newWorkspaceName.trim()) return;
@@ -98,42 +125,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const menuItems: { id: ViewState; label: string; icon: string }[] = [
-    { id: 'Dashboard', label: 'Painel', icon: 'dashboard' },
-    { id: 'Timeline', label: 'Cronograma', icon: 'calendar_month' },
-    { id: 'Financial', label: 'Financeiro', icon: 'payments' },
-    { id: 'Clients', label: 'Clientes', icon: 'group' },
-    { id: 'Settings', label: 'Configurações', icon: 'settings' },
+  const menuItems: { id: ViewState; label: string; icon: string; requiredPermission?: string }[] = [
+    { id: 'Dashboard', label: 'Painel', icon: 'dashboard', requiredPermission: 'pipeline' }, // Dashboard sempre visível ou atrelado ao pipeline? Vamos assumir que pipeline 'none' = sem acesso a projetos
+    { id: 'Timeline', label: 'Cronograma', icon: 'calendar_month', requiredPermission: 'timeline' },
+    { id: 'Financial', label: 'Financeiro', icon: 'payments', requiredPermission: 'financial' },
+    { id: 'Clients', label: 'Clientes', icon: 'group', requiredPermission: 'clients' },
+    { id: 'Settings', label: 'Configurações', icon: 'settings', requiredPermission: 'settings' },
   ];
 
   if (!isOpen) return null;
 
   return (
     <aside className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-all z-20">
-      <div className="p-8 flex items-center gap-4">
-        <div className="bg-primary size-10 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/30 rotate-3">
-          <span className="material-symbols-outlined text-[24px]">auto_awesome</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-black tracking-tight font-display text-slate-900 dark:text-white">CRM PRO</h1>
-          <div className="relative">
-            <button
-              onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
-              className="text-[10px] text-slate-500 font-bold uppercase tracking-widest hover:text-primary transition-colors flex items-center gap-1 group"
-            >
-              <span className="truncate max-w-[100px]">{currentWorkspace?.name || 'Workspace'}</span>
-              <span className="material-symbols-outlined text-xs transition-transform group-hover:translate-y-0.5">expand_more</span>
-            </button>
+      {/* Premium Workspace Switcher Trigger */}
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800/50">
+        <div className="relative">
+          <button
+            onClick={() => {
+              setShowWorkspaceMenu(!showWorkspaceMenu);
+              setWorkspaceSearch('');
+            }}
+            className={`w-full flex items-center gap-3 p-2 rounded-2xl transition-all hover:bg-slate-100 dark:hover:bg-slate-800 group ${showWorkspaceMenu ? 'bg-slate-100 dark:bg-slate-800 shadow-sm' : ''}`}
+          >
+            {currentWorkspace?.avatar ? (
+              <div
+                className="size-10 rounded-xl shadow-lg shadow-primary/20 rotate-3 group-hover:rotate-0 transition-transform flex-shrink-0 bg-cover bg-center"
+                style={{ backgroundImage: `url("${currentWorkspace.avatar}")` }}
+              />
+            ) : (
+              <div className="size-10 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-black shadow-lg shadow-primary/20 rotate-3 group-hover:rotate-0 transition-transform flex-shrink-0">
+                {currentWorkspace ? getInitials(currentWorkspace.name) : <span className="material-symbols-outlined text-[20px]">auto_awesome</span>}
+              </div>
+            )}
+            <div className="flex-1 text-left min-w-0 pr-1">
+              <h2 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight">
+                {currentWorkspace?.name || 'Carregando...'}
+              </h2>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Workspace</span>
+                <span className="material-symbols-outlined text-xs text-slate-400 group-hover:text-primary transition-colors">unfold_more</span>
+              </div>
+            </div>
+          </button>
 
-            {showWorkspaceMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowWorkspaceMenu(false)} />
-                <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl z-20 p-2 animate-fade-in overflow-hidden">
-                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                    {workspaces.map((workspace) => (
-                      <div
+          {/* Premium Dropdown Menu */}
+          {showWorkspaceMenu && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowWorkspaceMenu(false)} />
+              <div className="absolute top-full left-0 mt-2 w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl z-40 p-3 animate-[slideUp_0.2s_ease-out] overflow-hidden">
+                {/* Search Header */}
+                <div className="relative mb-3 group px-1">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-focus-within:text-primary transition-colors">search</span>
+                  <input
+                    type="text"
+                    value={workspaceSearch}
+                    onChange={(e) => setWorkspaceSearch(e.target.value)}
+                    placeholder="Buscar workspace..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-slate-400"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="max-h-72 overflow-y-auto custom-scrollbar px-1 space-y-1">
+                  <div className="px-2 mb-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Meus Workspaces</span>
+                  </div>
+
+                  {filteredWorkspaces.map((workspace) => {
+                    const isActive = currentWorkspace?.id === workspace.id;
+                    return (
+                      <button
                         key={workspace.id}
-                        className={`flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-all ${currentWorkspace?.id === workspace.id ? 'bg-primary/5 text-primary' : 'text-slate-600 dark:text-slate-400'
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all group/item ${isActive
+                          ? 'bg-primary/10 text-primary shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                         onClick={() => {
                           onWorkspaceChange(workspace);
@@ -141,28 +206,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         }}
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className={`size-2 rounded-full ${currentWorkspace?.id === workspace.id ? 'bg-primary animate-pulse' : 'bg-slate-300'}`} />
-                          <span className="text-xs font-bold truncate">{workspace.name}</span>
+                          {workspace.avatar ? (
+                            <div
+                              className="size-8 rounded-lg flex-shrink-0 bg-cover bg-center shadow-sm"
+                              style={{ backgroundImage: `url("${workspace.avatar}")` }}
+                            />
+                          ) : (
+                            <div className={`size-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all ${isActive
+                              ? 'bg-primary text-white shadow-md shadow-primary/20'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover/item:bg-primary/20 group-hover/item:text-primary'
+                              }`}>
+                              {getInitials(workspace.name)}
+                            </div>
+                          )}
+                          <div className="text-left min-w-0">
+                            <p className="text-xs font-bold truncate">{workspace.name}</p>
+                            {isActive && <p className="text-[9px] font-bold text-primary/70">Ativo agora</p>}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                        <div className="flex items-center gap-2">
+                          {isActive && (
+                            <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onWorkspaceChange(workspace);
+                              setView('Settings');
+                              setShowWorkspaceMenu(false);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-primary transition-colors"
+                            title="Configurações do Workspace"
+                          >
+                            <span className="material-symbols-outlined text-lg">settings</span>
+                          </button>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {filteredWorkspaces.length === 0 && (
+                    <div className="text-center py-6">
+                      <p className="text-xs text-slate-400 italic">Nenhum workspace encontrado</p>
+                    </div>
+                  )}
+
+                  <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800/50">
                     <button
                       onClick={() => { setShowAddWorkspace(true); setShowWorkspaceMenu(false); }}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-primary mt-1 border-t border-slate-50 dark:border-slate-800"
+                      className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary hover:text-white transition-all text-xs font-bold text-primary group"
                     >
-                      <span className="material-symbols-outlined text-lg">add_circle</span>
-                      Novo Workspace
+                      <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                        <span className="material-symbols-outlined text-lg">add</span>
+                      </div>
+                      Criar Novo Workspace
                     </button>
                   </div>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       <nav className="flex-1 px-4 space-y-1.5 mt-2">
-        {menuItems.map((item) => {
+        {menuItems.filter(item => !item.requiredPermission || !permissions || permissions.canView(item.requiredPermission)).map((item) => {
           const isActive = currentView === item.id;
           return (
             <button
