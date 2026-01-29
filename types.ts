@@ -64,6 +64,22 @@ export const projectHasRecurringType = (project: Project, categories: Category[]
   });
 };
 
+// Helper para converter string "YYYY-MM-DD" em Date local sem shift de timezone
+export const parseSafeDate = (dateStr: string | null | undefined | any): Date | null => {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  if (typeof dateStr === 'object' && dateStr.seconds) return new Date(dateStr.seconds * 1000); // Firestore Timestamp
+  if (typeof dateStr !== 'string') return null;
+
+  // Se for formato ISO completo (YYYY-MM-DDTHH:mm:ss...)
+  if (dateStr.includes('T')) return new Date(dateStr);
+
+  // Se for apenas YYYY-MM-DD
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+  return new Date(year, month - 1, day);
+};
+
 export interface Transaction {
   id: string;
   client: string;
@@ -125,6 +141,7 @@ export interface ProjectStageTask {
   completed: boolean;
   completedAt?: Date | any;
   createdAt: Date | any;
+  dueDate?: Date | any; // Data de execução/entrega da tarefa
 }
 
 export interface ProjectFile {

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Workspace, Category, Stage } from '../types';
+import { Project, Workspace, Category, Stage, parseSafeDate } from '../types';
 import { subscribeToProjects, subscribeToCategories, subscribeToStages } from '../firebase/services';
 
 interface TimelineProps {
@@ -81,23 +81,29 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
         // Também verificar deadline como possível data mais antiga (caso criação não exista)
         if (project.deadline) {
-          const date = new Date(project.deadline);
-          date.setHours(0, 0, 0, 0);
-          if (!earliestDate || date < earliestDate) earliestDate = date;
+          const date = parseSafeDate(project.deadline);
+          if (date) {
+            date.setHours(0, 0, 0, 0);
+            if (!earliestDate || date < earliestDate) earliestDate = date;
+          }
         }
 
         // Verificar data de manutenção
         if (project.maintenanceDate) {
-          const date = new Date(project.maintenanceDate);
-          date.setHours(0, 0, 0, 0);
-          if (!earliestDate || date < earliestDate) earliestDate = date;
+          const date = parseSafeDate(project.maintenanceDate);
+          if (date) {
+            date.setHours(0, 0, 0, 0);
+            if (!earliestDate || date < earliestDate) earliestDate = date;
+          }
         }
 
         // Verificar data de relatório
         if (project.reportDate) {
-          const date = new Date(project.reportDate);
-          date.setHours(0, 0, 0, 0);
-          if (!earliestDate || date < earliestDate) earliestDate = date;
+          const date = parseSafeDate(project.reportDate);
+          if (date) {
+            date.setHours(0, 0, 0, 0);
+            if (!earliestDate || date < earliestDate) earliestDate = date;
+          }
         }
       }
     });
@@ -116,23 +122,29 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     projects.forEach(project => {
       // Verificar deadline
       if (project.deadline) {
-        const date = new Date(project.deadline);
-        date.setHours(0, 0, 0, 0);
-        if (!latestDate || date > latestDate) latestDate = date;
+        const date = parseSafeDate(project.deadline);
+        if (date) {
+          date.setHours(0, 0, 0, 0);
+          if (!latestDate || date > latestDate) latestDate = date;
+        }
       }
 
       // Verificar data de manutenção
       if (project.maintenanceDate) {
-        const date = new Date(project.maintenanceDate);
-        date.setHours(0, 0, 0, 0);
-        if (!latestDate || date > latestDate) latestDate = date;
+        const date = parseSafeDate(project.maintenanceDate);
+        if (date) {
+          date.setHours(0, 0, 0, 0);
+          if (!latestDate || date > latestDate) latestDate = date;
+        }
       }
 
       // Verificar data de relatório
       if (project.reportDate) {
-        const date = new Date(project.reportDate);
-        date.setHours(0, 0, 0, 0);
-        if (!latestDate || date > latestDate) latestDate = date;
+        const date = parseSafeDate(project.reportDate);
+        if (date) {
+          date.setHours(0, 0, 0, 0);
+          if (!latestDate || date > latestDate) latestDate = date;
+        }
       }
     });
 
@@ -217,7 +229,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
     let endDate: Date;
     if (project.deadline) {
-      endDate = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+      endDate = parseSafeDate(project.deadline) || new Date();
       endDate.setHours(0, 0, 0, 0);
     } else {
       endDate = new Date(projectStartDate);
@@ -339,7 +351,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       return 0; // Sem deadline, sem overlay
     }
 
-    const deadline = project.deadline instanceof Date ? project.deadline : new Date(project.deadline);
+    const deadline = parseSafeDate(project.deadline);
+    if (!deadline) return 0;
     deadline.setHours(0, 0, 0, 0);
 
     // Usar a data inicial do cronograma como referência
@@ -432,13 +445,13 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     const getSortDate = (project: Project): number => {
       // Prioridade: deadline > maintenanceDate > reportDate
       if (project.deadline) {
-        return new Date(project.deadline).getTime();
+        return parseSafeDate(project.deadline)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
       if (project.maintenanceDate) {
-        return new Date(project.maintenanceDate).getTime();
+        return parseSafeDate(project.maintenanceDate)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
       if (project.reportDate) {
-        return new Date(project.reportDate).getTime();
+        return parseSafeDate(project.reportDate)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
       // Se não tiver nenhuma data, colocar no final
       return Number.MAX_SAFE_INTEGER;
@@ -455,7 +468,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const getDateColumn = (dateString: string | undefined): number => {
     if (!dateString || days.length === 0) return -1;
 
-    const targetDate = new Date(dateString);
+    const targetDate = parseSafeDate(dateString);
+    if (!targetDate) return -1;
     targetDate.setHours(0, 0, 0, 0);
 
     const firstDayDate = days[0].date;
@@ -473,7 +487,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const getDateColorClass = (dateString: string | undefined): string => {
     if (!dateString) return 'text-slate-400 bg-slate-100 border-slate-200';
 
-    const date = new Date(dateString);
+    const date = parseSafeDate(dateString);
+    if (!date) return 'text-slate-400 bg-slate-100 border-slate-200';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const targetDate = new Date(date);
@@ -506,8 +521,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     completed: projectsForTimeline.filter(p => p.status === 'Completed' || p.status === 'Finished').length,
     late: projectsForTimeline.filter(p => {
       if (!p.deadline || p.status === 'Completed' || p.status === 'Finished') return false;
-      const deadline = new Date(p.deadline);
-      return deadline < new Date();
+      const deadline = parseSafeDate(p.deadline);
+      return deadline && deadline < new Date();
     }).length,
   };
 
@@ -754,7 +769,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const { startColumn, duration } = getProjectPosition(project);
                   const pTypes = project.types || (project.type ? [project.type] : []);
                   const categoryColor = getCategoryColor(pTypes[0] || '');
-                  const isLate = project.deadline && new Date(project.deadline) < new Date() && project.status !== 'Completed' && project.status !== 'Finished';
+                  const deadlineDate = parseSafeDate(project.deadline);
+                  const isLate = deadlineDate && deadlineDate < new Date() && project.status !== 'Completed' && project.status !== 'Finished';
                   const isReview = project.status === 'Review';
                   const temporalProgress = getTemporalProgress(project, startColumn, duration);
 

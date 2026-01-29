@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage } from '../types';
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate } from '../types';
 import {
   subscribeToProjectActivities,
   subscribeToProjectTeamMembers,
@@ -140,6 +140,90 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkTitle, setNewLinkTitle] = useState('');
+
+  // Estados para data da tarefa
+  const [editingTaskDateId, setEditingTaskDateId] = useState<string | null>(null);
+  const [taskDatePickerPosition, setTaskDatePickerPosition] = useState({ top: 0, left: 0 });
+
+  const handleTaskDateChange = async (date: Date | null) => {
+    if (!editingTaskDateId) return;
+
+    try {
+      // 1. Atualizar a tarefa
+      await updateProjectTask(editingTaskDateId, { dueDate: date });
+
+      // 2. Sincronizar com campos do projeto
+      // 2. Sincronizar com campos do projeto
+      const task = projectStageTasks.find(t => t.id === editingTaskDateId);
+      if (task) {
+        // Encontrar a etapa da tarefa para saber qual campo atualizar
+        const stage = stages.find(s => s.id === task.stageId);
+
+        if (stage) {
+          if (date) {
+            // --- CASO 1: DEFININDO UMA NOVA DATA ---
+            // Formatar data manualmente usando os componentes diretos do objeto Date
+            // O DatePicker retorna a data com horário 00:00 local. Usar métodos get* locais garante a data correta.
+            const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+            if (stage.id.includes('maintenance')) {
+              // Se for etapa de manutenção, atualiza maintenanceDate
+              // Verifica se o projeto é recorrente (tem etapa de manutenção)
+              if (currentProject.types?.some(t => {
+                const cat = categories.find(c => c.name === t);
+                return cat?.isRecurring;
+              }) || fixedStagesRecurring.some(s => s.id === stage.id)) {
+                await updateProject(currentProject.id, { maintenanceDate: formattedDate });
+                setCurrentProject(prev => ({ ...prev, maintenanceDate: formattedDate }));
+                setToast({ message: "Data da tarefa e Manutenção atualizadas", type: 'success' });
+              }
+            } else {
+              // Outras etapas (Onboarding, Dev, Review, Ajustes) -> atualiza deadline (Data de Entrega)
+              await updateProject(currentProject.id, { deadline: formattedDate });
+              setCurrentProject(prev => ({ ...prev, deadline: formattedDate }));
+              setToast({ message: "Data da tarefa e Entrega atualizadas", type: 'success' });
+            }
+          } else {
+            // --- CASO 2: LIMPANDO A DATA ---
+            // Se a data do projeto for igual à data antiga da tarefa, limpa também
+            if (task.dueDate) {
+              const oldDate = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
+              const oldDateStr = `${oldDate.getFullYear()}-${String(oldDate.getMonth() + 1).padStart(2, '0')}-${String(oldDate.getDate()).padStart(2, '0')}`;
+
+              let updateNeeded = false;
+              const updates: any = {};
+
+              if (currentProject.maintenanceDate === oldDateStr) {
+                updates.maintenanceDate = null;
+                updateNeeded = true;
+              }
+              if (currentProject.deadline === oldDateStr) {
+                updates.deadline = null;
+                updateNeeded = true;
+              }
+
+              if (updateNeeded) {
+                await updateProject(currentProject.id, updates);
+                setCurrentProject(prev => ({ ...prev, ...updates }));
+                setToast({ message: "Data removida e campos atualizados", type: 'success' });
+              } else {
+                setToast({ message: "Data removida", type: 'success' });
+              }
+            }
+          }
+        }
+      } else {
+        setToast({ message: "Data da tarefa atualizada", type: 'success' });
+      }
+
+      setEditingTaskDateId(null);
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error("Error updating task date:", error);
+      setToast({ message: "Erro ao atualizar data", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   // Estado para modal de editar título do arquivo/link
   const [editingFileTitle, setEditingFileTitle] = useState<ProjectFile | null>(null);
@@ -664,7 +748,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       >
                         <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                           {currentProject.deadline
-                            ? new Date(currentProject.deadline).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            ? parseSafeDate(currentProject.deadline)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                             : 'Selecione uma data'
                           }
                         </span>
@@ -672,9 +756,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       </button>
                       {showDatePicker && (
                         <DatePicker
-                          selectedDate={currentProject.deadline ? new Date(currentProject.deadline) : null}
+                          selectedDate={parseSafeDate(currentProject.deadline)}
                           onSelectDate={async (date) => {
-                            const newDeadline = date ? date.toISOString() : null;
+                            const newDeadline = date
+                              ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                              : null;
                             try {
                               await updateProject(currentProject.id, { deadline: newDeadline });
                               setToast({ message: "Data de entrega atualizada", type: 'success' });
@@ -751,7 +837,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               >
                                 <span className={currentProject.maintenanceDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                                   {currentProject.maintenanceDate
-                                    ? new Date(currentProject.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                    ? parseSafeDate(currentProject.maintenanceDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                                     : 'Selecione uma data'
                                   }
                                 </span>
@@ -759,9 +845,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               </button>
                               {showMaintenanceDatePicker && (
                                 <DatePicker
-                                  selectedDate={currentProject.maintenanceDate ? new Date(currentProject.maintenanceDate) : null}
+                                  selectedDate={parseSafeDate(currentProject.maintenanceDate)}
                                   onSelectDate={async (date) => {
-                                    const newDate = date ? date.toISOString() : null;
+                                    const newDate = date
+                                      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                                      : null;
                                     try {
                                       await updateProject(currentProject.id, { maintenanceDate: newDate });
                                       setToast({ message: "Data da Manutenção atualizada", type: 'success' });
@@ -793,7 +881,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               >
                                 <span className={currentProject.reportDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
                                   {currentProject.reportDate
-                                    ? new Date(currentProject.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                    ? parseSafeDate(currentProject.reportDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                                     : 'Selecione uma data'
                                   }
                                 </span>
@@ -801,9 +889,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               </button>
                               {showReportDatePicker && (
                                 <DatePicker
-                                  selectedDate={currentProject.reportDate ? new Date(currentProject.reportDate) : null}
+                                  selectedDate={parseSafeDate(currentProject.reportDate)}
                                   onSelectDate={async (date) => {
-                                    const newDate = date ? date.toISOString() : null;
+                                    const newDate = date
+                                      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                                      : null;
                                     try {
                                       await updateProject(currentProject.id, { reportDate: newDate });
                                       setToast({ message: "Data do Relatório atualizada", type: 'success' });
@@ -1721,8 +1811,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const allTasksCompleted = stageProjectTasks.length > 0 && stageProjectTasks.every(t => t.completed);
                             const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
 
-                            // Estado para controlar expansão da etapa - sempre começa expandido se for etapa atual
-                            const isExpanded = expandedStages[stage.id] !== false;
+                            // Estado para controlar expansão da etapa - sempre começa expandido se para etapa atual, caso contrário colapsado
+                            const isExpanded = expandedStages[stage.id] !== undefined ? expandedStages[stage.id] : isCurrentStage;
 
                             return (
                               <div key={stage.id} className={`rounded-xl border transition-all ${isCurrentStage
@@ -1906,7 +1996,53 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               onClick={async () => {
                                                 if (!canEdit) return;
                                                 try {
-                                                  await updateProjectTask(task.id, { completed: !isTaskCompleted });
+                                                  const newCompletedStatus = !isTaskCompleted;
+                                                  await updateProjectTask(task.id, { completed: newCompletedStatus });
+
+                                                  // Logic to clear or restore project date
+                                                  if (task.dueDate) {
+                                                    const date = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
+                                                    const taskDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                                                    let updateNeeded = false;
+                                                    const updates: any = {};
+
+                                                    if (newCompletedStatus) {
+                                                      // CLEAR logic
+                                                      if (currentProject.maintenanceDate === taskDateStr) {
+                                                        updates.maintenanceDate = null;
+                                                        updateNeeded = true;
+                                                      }
+                                                      if (currentProject.deadline === taskDateStr) {
+                                                        updates.deadline = null;
+                                                        updateNeeded = true;
+                                                      }
+                                                    } else {
+                                                      // RESTORE logic
+                                                      if (stage.id.includes('maintenance')) {
+                                                        // Check if recurring project validation is needed, or just apply if stage allows
+                                                        // Assuming if stage is maintenance, it maps to maintenanceDate
+                                                        updates.maintenanceDate = taskDateStr;
+                                                        updateNeeded = true;
+                                                      } else {
+                                                        // All other stages map to deadline
+                                                        updates.deadline = taskDateStr;
+                                                        updateNeeded = true;
+                                                      }
+                                                    }
+
+                                                    if (updateNeeded) {
+                                                      await updateProject(currentProject.id, updates);
+                                                      setCurrentProject(prev => ({ ...prev, ...updates }));
+
+                                                      const msg = newCompletedStatus
+                                                        ? "Tarefa concluída e datas limpas"
+                                                        : "Tarefa reaberta e datas restauradas";
+
+                                                      setToast({ message: msg, type: 'success' });
+                                                      setTimeout(() => setToast(null), 3000);
+                                                    }
+                                                  }
                                                 } catch (error) {
                                                   console.error("Error toggling task:", error);
                                                   setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
@@ -1981,6 +2117,31 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                     <span className="material-symbols-outlined text-sm">edit</span>
                                                   </button>
                                                 )}
+
+                                                {/* Botão de Data da Tarefa */}
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
+                                                    setEditingTaskDateId(task.id);
+                                                  }}
+                                                  className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
+                                                      ${task.dueDate
+                                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                                      : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                    }`}
+                                                  title={task.dueDate
+                                                    ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
+                                                    : "Definir data"}
+                                                >
+                                                  <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                                                  {task.dueDate && (
+                                                    <span className="text-[10px] font-medium">
+                                                      {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
+                                                    </span>
+                                                  )}
+                                                </button>
                                               </div>
                                             )}
 
@@ -1989,6 +2150,34 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 onClick={async () => {
                                                   try {
                                                     await removeProjectTask(task.id);
+
+                                                    // Logic to clear project date if task is removed
+                                                    if (task.dueDate) {
+                                                      const date = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
+                                                      const taskDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                                                      let updateNeeded = false;
+                                                      const updates: any = {};
+
+                                                      if (currentProject.maintenanceDate === taskDateStr) {
+                                                        updates.maintenanceDate = null;
+                                                        updateNeeded = true;
+                                                      }
+
+                                                      if (currentProject.deadline === taskDateStr) {
+                                                        updates.deadline = null;
+                                                        updateNeeded = true;
+                                                      }
+
+                                                      if (updateNeeded) {
+                                                        await updateProject(currentProject.id, updates);
+                                                        setCurrentProject(prev => ({ ...prev, ...updates }));
+                                                        setToast({ message: "Tarefa removida e datas atualizadas", type: 'success' }); // Combined toast
+                                                        setTimeout(() => setToast(null), 3000);
+                                                        return; // Avoid double toast
+                                                      }
+                                                    }
+
                                                     setToast({ message: "Tarefa removida", type: 'success' });
                                                     setTimeout(() => setToast(null), 3000);
                                                   } catch (error) {
@@ -3157,6 +3346,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           )
         }
       </div >
+
+      {/* DatePicker para Tarefas */}
+      {editingTaskDateId && (
+        <DatePicker
+          selectedDate={(() => {
+            const task = projectStageTasks.find(t => t.id === editingTaskDateId);
+            return parseSafeDate(task?.dueDate);
+          })()}
+          onSelectDate={handleTaskDateChange}
+          onClose={() => setEditingTaskDateId(null)}
+          position={taskDatePickerPosition}
+        />
+      )}
+
     </>
   );
 };
@@ -3178,19 +3381,58 @@ const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value 
   </div>
 );
 
-const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void; buttonRef?: React.RefObject<HTMLButtonElement> }> = ({ selectedDate, onSelectDate, onClose, buttonRef }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void; buttonRef?: React.RefObject<HTMLButtonElement>; position?: { top: number; left: number } }> = ({ selectedDate, onSelectDate, onClose, buttonRef, position: customPosition }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date()); // Iniciar com selectedDate se existir
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
-    if (buttonRef?.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 8,
-        left: rect.left
-      });
-    }
-  }, [buttonRef]);
+    const calculatePosition = () => {
+      let top = 0;
+      let left = 0;
+      const width = 270; // w-64 (256px) + padding
+      const height = 320; // approx height
+
+      if (customPosition) {
+        top = customPosition.top;
+        left = customPosition.left;
+      } else if (buttonRef?.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        top = rect.bottom + 8;
+        left = rect.left;
+      } else {
+        return;
+      }
+
+      // Viewport adjustments
+      if (left + width > window.innerWidth) {
+        left = window.innerWidth - width - 10;
+      }
+      if (left < 10) {
+        left = 10;
+      }
+
+      if (top + height > window.innerHeight) {
+        // Determine if we should flip to top
+        if (customPosition) {
+          top = customPosition.top - height - 40; // Adjust for assumed button height if needed, or just flip
+        } else if (buttonRef?.current) {
+          const rect = buttonRef.current.getBoundingClientRect();
+          top = rect.top - height - 8;
+        }
+      }
+
+      setPosition({ top, left });
+    };
+
+    calculatePosition();
+    window.addEventListener('resize', calculatePosition);
+    window.addEventListener('scroll', calculatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', calculatePosition);
+      window.removeEventListener('scroll', calculatePosition, true);
+    };
+  }, [buttonRef, customPosition]);
   const today = new Date();
 
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -3245,9 +3487,9 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
   return (
     <>
       {/* Overlay para fechar ao clicar fora */}
-      <div className="fixed inset-0 z-[59]" onClick={onClose} />
+      <div className="fixed inset-0 z-[90]" onClick={onClose} />
       <div
-        className="fixed bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl z-[60] p-3 w-64"
+        className="fixed bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl z-[100] p-3 w-64"
         style={{ top: position.top, left: position.left }}
       >
         <div className="flex items-center justify-between mb-3">
