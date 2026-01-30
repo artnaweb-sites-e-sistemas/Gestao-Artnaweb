@@ -1,0 +1,13 @@
+# Compiled JavaScript files
+lib/
+
+# Node modules
+node_modules/
+
+# Local Firebase config
+.runtimeconfig.json
+
+# Environment files
+.env
+.env.local
+

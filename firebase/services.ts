@@ -30,7 +30,7 @@ import {
   User
 } from "firebase/auth";
 import { db, storage, auth } from "./config";
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, WorkspaceMember, Workspace } from "../types";
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, WorkspaceMember, Workspace, Client } from "../types";
 
 // Habilitar persistência offline (opcional)
 try {
@@ -55,6 +55,7 @@ const PROJECT_STAGE_TASKS_COLLECTION = "projectStageTasks";
 const PROJECT_FILES_COLLECTION = "projectFiles";
 const WORKSPACES_COLLECTION = "workspaces";
 const INVOICES_COLLECTION = "invoices";
+const CLIENTS_COLLECTION = "clients";
 
 // Projects
 export const getProjects = async (): Promise<Project[]> => {
@@ -2253,5 +2254,229 @@ export const removeWorkspaceMember = async (workspaceId: string, memberEmail: st
   } catch (error) {
     console.error("Error removing workspace member:", error);
     throw error;
+  }
+};
+
+// ==========================================
+// Clients Management (Integração Asaas)
+// ==========================================
+
+// Adicionar cliente
+export const addClient = async (client: Omit<Client, 'id'>): Promise<string> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const clientData = {
+      ...client,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const docRef = await addDoc(collection(db, CLIENTS_COLLECTION), clientData);
+    console.log(`✅ [addClient] Cliente criado com sucesso! ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding client:", error);
+    throw error;
+  }
+};
+
+// Atualizar cliente
+export const updateClient = async (clientId: string, updates: Partial<Client>): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
+    await updateDoc(clientRef, {
+      ...updates,
+      updatedAt: new Date()
+    });
+    console.log(`✅ [updateClient] Cliente atualizado! ID: ${clientId}`);
+  } catch (error) {
+    console.error("Error updating client:", error);
+    throw error;
+  }
+};
+
+// Deletar cliente
+export const deleteClient = async (clientId: string): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
+    await deleteDoc(clientRef);
+    console.log(`✅ [deleteClient] Cliente deletado! ID: ${clientId}`);
+  } catch (error) {
+    console.error("Error deleting client:", error);
+    throw error;
+  }
+};
+
+// Obter cliente por ID
+export const getClient = async (clientId: string): Promise<Client | null> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
+    const clientSnap = await getDoc(clientRef);
+
+    if (!clientSnap.exists()) {
+      return null;
+    }
+
+    return {
+      id: clientSnap.id,
+      ...clientSnap.data()
+    } as Client;
+  } catch (error) {
+    console.error("Error getting client:", error);
+    throw error;
+  }
+};
+
+// Obter cliente por nome (busca aproximada)
+export const getClientByName = async (name: string, workspaceId: string): Promise<Client | null> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const q = query(
+      collection(db, CLIENTS_COLLECTION),
+      where("workspaceId", "==", workspaceId),
+      where("name", "==", name)
+    );
+
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const docData = querySnapshot.docs[0];
+    return {
+      id: docData.id,
+      ...docData.data()
+    } as Client;
+  } catch (error) {
+    console.error("Error getting client by name:", error);
+    throw error;
+  }
+};
+
+// Obter cliente por CPF/CNPJ
+export const getClientByCpfCnpj = async (cpfCnpj: string, workspaceId: string): Promise<Client | null> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    // Remover caracteres não numéricos para busca
+    const cleanCpfCnpj = cpfCnpj.replace(/\D/g, '');
+
+    const q = query(
+      collection(db, CLIENTS_COLLECTION),
+      where("workspaceId", "==", workspaceId),
+      where("cpfCnpj", "==", cleanCpfCnpj)
+    );
+
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const docData = querySnapshot.docs[0];
+    return {
+      id: docData.id,
+      ...docData.data()
+    } as Client;
+  } catch (error) {
+    console.error("Error getting client by CPF/CNPJ:", error);
+    throw error;
+  }
+};
+
+// Listar todos os clientes de um workspace
+export const getClients = async (workspaceId: string): Promise<Client[]> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const q = query(
+      collection(db, CLIENTS_COLLECTION),
+      where("workspaceId", "==", workspaceId),
+      orderBy("name", "asc")
+    );
+
+    const querySnapshot = await getDocs(q);
+    
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Client[];
+  } catch (error) {
+    console.error("Error getting clients:", error);
+    return [];
+  }
+};
+
+// Subscribe para clientes (realtime)
+export const subscribeToClients = (callback: (clients: Client[]) => void, workspaceId: string) => {
+  if (!db) {
+    console.error("Firebase não está inicializado");
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, CLIENTS_COLLECTION),
+    where("workspaceId", "==", workspaceId),
+    orderBy("name", "asc")
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const clients = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Client[];
+    
+    console.log(`📋 [subscribeToClients] Carregados ${clients.length} clientes`);
+    callback(clients);
+  }, (error) => {
+    console.error("Error subscribing to clients:", error);
+    callback([]);
+  });
+};
+
+// Vincular cliente com Asaas (atualizar asaasCustomerId)
+export const linkClientToAsaas = async (clientId: string, asaasCustomerId: string): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
+    await updateDoc(clientRef, {
+      asaasCustomerId,
+      updatedAt: new Date()
+    });
+    console.log(`✅ [linkClientToAsaas] Cliente ${clientId} vinculado ao Asaas: ${asaasCustomerId}`);
+  } catch (error) {
+    console.error("Error linking client to Asaas:", error);
+    throw error;
+  }
+};
+
+// Buscar clientes por termo (nome ou email)
+export const searchClients = async (searchTerm: string, workspaceId: string): Promise<Client[]> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    // Firebase não suporta busca "like", então buscamos todos e filtramos
+    const allClients = await getClients(workspaceId);
+    
+    const term = searchTerm.toLowerCase();
+    return allClients.filter(client => 
+      client.name.toLowerCase().includes(term) ||
+      client.email.toLowerCase().includes(term) ||
+      client.cpfCnpj.includes(term.replace(/\D/g, ''))
+    );
+  } catch (error) {
+    console.error("Error searching clients:", error);
+    return [];
   }
 };

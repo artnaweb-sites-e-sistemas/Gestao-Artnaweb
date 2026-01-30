@@ -3,6 +3,7 @@ import { Workspace, Category, Stage } from '../types';
 import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase } from '../firebase/services';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 import { TeamSettings } from '../components/TeamSettings';
+import { testAsaasConnection, getWebhookUrl } from '../firebase/asaas';
 
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
@@ -31,7 +32,7 @@ const fixedStagesRecurring: Stage[] = [
 ];
 
 export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspaceUpdate, userId, canEdit = true }) => {
-  const [activeSection, setActiveSection] = useState<'general' | 'services' | 'stages' | 'team' | 'appearance' | 'danger'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'services' | 'stages' | 'team' | 'integrations' | 'appearance' | 'danger'>('general');
   const [workspaceName, setWorkspaceName] = useState(currentWorkspace?.name || '');
   const [workspaceDescription, setWorkspaceDescription] = useState(currentWorkspace?.description || '');
   const [workspaceColor, setWorkspaceColor] = useState(currentWorkspace?.color || '#6366f1');
@@ -44,6 +45,14 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string>('all');
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados para integração Asaas
+  const [asaasApiKey, setAsaasApiKey] = useState(currentWorkspace?.asaasApiKey || '');
+  const [asaasEnvironment, setAsaasEnvironment] = useState<'sandbox' | 'production'>(currentWorkspace?.asaasEnvironment || 'sandbox');
+  const [testingAsaas, setTestingAsaas] = useState(false);
+  const [asaasStatus, setAsaasStatus] = useState<{ connected: boolean; accountName?: string; error?: string } | null>(null);
+  const [savingAsaas, setSavingAsaas] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // Cores predefinidas para o workspace
   const presetColors = [
@@ -64,6 +73,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
       setWorkspaceName(currentWorkspace.name || '');
       setWorkspaceDescription(currentWorkspace.description || '');
       setWorkspaceColor(currentWorkspace.color || '#6366f1');
+      setAsaasApiKey(currentWorkspace.asaasApiKey || '');
+      setAsaasEnvironment(currentWorkspace.asaasEnvironment || 'sandbox');
+      // Reset status quando mudar de workspace
+      setAsaasStatus(null);
     }
   }, [currentWorkspace]);
 
@@ -212,6 +225,134 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     }
   };
 
+  // Salvar configurações Asaas
+  const handleSaveAsaas = async () => {
+    if (!currentWorkspace?.id) return;
+
+    setSavingAsaas(true);
+    try {
+      await updateWorkspace(currentWorkspace.id, {
+        asaasApiKey: asaasApiKey,
+        asaasEnvironment: asaasEnvironment,
+      });
+
+      if (onWorkspaceUpdate) {
+        onWorkspaceUpdate({
+          ...currentWorkspace,
+          asaasApiKey: asaasApiKey,
+          asaasEnvironment: asaasEnvironment,
+        });
+      }
+
+      setToast({ message: 'Configurações do Asaas salvas com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+      
+      // Resetar status para testar novamente
+      setAsaasStatus(null);
+    } catch (error) {
+      console.error('Error saving Asaas settings:', error);
+      setToast({ message: 'Erro ao salvar configurações do Asaas.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSavingAsaas(false);
+    }
+  };
+
+  // Testar conexão com Asaas
+  const handleTestAsaasConnection = async () => {
+    if (!currentWorkspace?.id || !asaasApiKey) {
+      setToast({ message: 'Por favor, insira a API Key antes de testar.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    // Verificar se usuário está autenticado
+    const { getCurrentUser } = await import('../firebase/services');
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      setToast({ message: 'Você precisa estar logado para testar a conexão.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    // Primeiro salvar as configurações
+    await handleSaveAsaas();
+
+    setTestingAsaas(true);
+    setAsaasStatus(null);
+
+    try {
+      const result = await testAsaasConnection(currentWorkspace.id);
+      setAsaasStatus({
+        connected: true,
+        accountName: result.accountName,
+      });
+      setToast({ message: `Conectado com sucesso à conta: ${result.accountName}`, type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error: any) {
+      console.error('Error testing Asaas connection:', error);
+      
+      let errorMessage = 'Erro ao conectar com Asaas';
+      
+      if (error.code === 'functions/unavailable') {
+        errorMessage = 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.';
+      } else if (error.message?.includes('CORS') || error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Erro de conexão. Verifique se as Functions foram deployadas corretamente.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setAsaasStatus({
+        connected: false,
+        error: errorMessage,
+      });
+      setToast({ message: errorMessage, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setTestingAsaas(false);
+    }
+  };
+
+  // Remover integração Asaas
+  const handleRemoveAsaasIntegration = async () => {
+    if (!currentWorkspace?.id) return;
+    
+    if (!confirm('Tem certeza que deseja remover a integração com Asaas? As faturas existentes não serão afetadas.')) {
+      return;
+    }
+
+    setSavingAsaas(true);
+    try {
+      await updateWorkspace(currentWorkspace.id, {
+        asaasApiKey: '',
+        asaasEnvironment: 'sandbox',
+        asaasWebhookToken: '',
+      });
+
+      if (onWorkspaceUpdate) {
+        onWorkspaceUpdate({
+          ...currentWorkspace,
+          asaasApiKey: '',
+          asaasEnvironment: 'sandbox',
+          asaasWebhookToken: '',
+        });
+      }
+
+      setAsaasApiKey('');
+      setAsaasEnvironment('sandbox');
+      setAsaasStatus(null);
+
+      setToast({ message: 'Integração com Asaas removida!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error('Error removing Asaas integration:', error);
+      setToast({ message: 'Erro ao remover integração.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSavingAsaas(false);
+    }
+  };
+
   const getWorkspaceAvatar = () => {
     if (currentWorkspace?.avatar) {
       return currentWorkspace.avatar;
@@ -225,6 +366,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     { id: 'services', icon: 'category', label: 'Serviços' },
     { id: 'stages', icon: 'checklist', label: 'Etapas e Tarefas' },
     { id: 'team', icon: 'group', label: 'Equipe' },
+    { id: 'integrations', icon: 'extension', label: 'Integrações' },
     { id: 'appearance', icon: 'palette', label: 'Aparência' },
     { id: 'danger', icon: 'warning', label: 'Zona de Perigo' },
   ];
@@ -771,6 +913,214 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Seção Integrações */}
+          {activeSection === 'integrations' && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-2xl font-black tracking-tight mb-2">Integrações</h3>
+                <p className="text-slate-500 text-sm">Conecte serviços externos ao seu workspace</p>
+              </div>
+
+              {/* Asaas Integration */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
+                <div className="flex items-start gap-4 mb-6">
+                  <div className="size-14 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-green-500/20">
+                    <span className="material-symbols-outlined text-white text-2xl">payments</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-lg font-bold">Asaas</h4>
+                      {asaasStatus?.connected && (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] font-bold uppercase rounded-full">
+                          Conectado
+                        </span>
+                      )}
+                      {asaasStatus && !asaasStatus.connected && (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px] font-bold uppercase rounded-full">
+                          Erro
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Gere cobranças automáticas via boleto, PIX ou cartão de crédito
+                    </p>
+                    {asaasStatus?.accountName && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                        Conta: {asaasStatus.accountName}
+                      </p>
+                    )}
+                    {asaasStatus?.error && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                        {asaasStatus.error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Ambiente */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      Ambiente
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => canEdit && setAsaasEnvironment('sandbox')}
+                        disabled={!canEdit}
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                          asaasEnvironment === 'sandbox'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ring-2 ring-amber-500/50'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span className="material-symbols-outlined text-lg align-middle mr-2">science</span>
+                        Sandbox (Testes)
+                      </button>
+                      <button
+                        onClick={() => canEdit && setAsaasEnvironment('production')}
+                        disabled={!canEdit}
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                          asaasEnvironment === 'production'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 ring-2 ring-green-500/50'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span className="material-symbols-outlined text-lg align-middle mr-2">verified</span>
+                        Produção
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      {asaasEnvironment === 'sandbox' 
+                        ? 'Ambiente de testes. Cobranças não são reais.' 
+                        : 'Ambiente de produção. Cobranças serão processadas.'}
+                    </p>
+                  </div>
+
+                  {/* API Key */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      API Key
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showApiKey ? 'text' : 'password'}
+                          value={asaasApiKey}
+                          onChange={(e) => setAsaasApiKey(e.target.value)}
+                          placeholder="$aact_YTU5YTE0M2M2..."
+                          disabled={!canEdit}
+                          className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono pr-12 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <span className="material-symbols-outlined text-lg">
+                            {showApiKey ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      Encontre sua API Key em: Asaas &gt; Minha Conta &gt; Integrações &gt; Criar nova chave de API
+                    </p>
+                  </div>
+
+                  {/* Webhook URL */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      URL do Webhook
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={getWebhookUrl()}
+                        readOnly
+                        className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-500"
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(getWebhookUrl());
+                          setToast({ message: 'URL copiada!', type: 'success' });
+                          setTimeout(() => setToast(null), 2000);
+                        }}
+                        className="px-4 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors flex items-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-lg">content_copy</span>
+                        Copiar
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      Configure este URL no Asaas em: Minha Conta &gt; Integrações &gt; Webhooks
+                    </p>
+                  </div>
+
+                  {/* Ações */}
+                  <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={handleTestAsaasConnection}
+                      disabled={testingAsaas || !asaasApiKey || !canEdit}
+                      className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {testingAsaas ? (
+                        <>
+                          <span className="material-symbols-outlined text-lg animate-spin">sync</span>
+                          Testando...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-lg">wifi_tethering</span>
+                          Testar Conexão
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleSaveAsaas}
+                      disabled={savingAsaas || !asaasApiKey || !canEdit}
+                      className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {savingAsaas ? (
+                        <>
+                          <span className="material-symbols-outlined text-lg animate-spin">sync</span>
+                          Salvando...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-lg">save</span>
+                          Salvar
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Remover Integração */}
+                  {currentWorkspace?.asaasApiKey && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        onClick={handleRemoveAsaasIntegration}
+                        disabled={savingAsaas || !canEdit}
+                        className="text-sm text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-lg">link_off</span>
+                        Remover integração
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Outras integrações futuras */}
+              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-6">
+                <div className="text-center">
+                  <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-3">add_circle</span>
+                  <p className="text-sm font-medium text-slate-500">Mais integrações em breve</p>
+                  <p className="text-xs text-slate-400 mt-1">Stripe, PagSeguro, Pix direto...</p>
                 </div>
               </div>
             </div>

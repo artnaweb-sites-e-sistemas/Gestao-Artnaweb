@@ -112,6 +112,19 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({ currentWorkspace, on
 
     const handleUpdateMember = async (member: WorkspaceMember, updates: Partial<WorkspaceMember>) => {
         try {
+            // Se as permissões foram atualizadas, verificar se deve atualizar o role
+            if (updates.permissions) {
+                const hasEditorPermission = 
+                    updates.permissions.pipeline === 'edit' ||
+                    updates.permissions.financial === 'edit' ||
+                    updates.permissions.clients === 'edit' ||
+                    updates.permissions.settings === 'edit';
+                
+                // Atualizar role automaticamente baseado nas permissões
+                // Se tem permissão de editor, vira admin. Se não, vira member (mesmo que já fosse admin)
+                updates.role = hasEditorPermission ? 'admin' : 'member';
+            }
+
             await updateWorkspaceMember(currentWorkspace.id, member.email, updates);
             setToast({ message: 'Permissões atualizadas!', type: 'success' });
 
@@ -261,11 +274,28 @@ export const TeamSettings: React.FC<TeamSettingsProps> = ({ currentWorkspace, on
                                         <div>
                                             <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{member.email}</p>
                                             <div className="flex items-center gap-2">
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${member.role === 'admin'
-                                                    ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
-                                                    : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                                    }`}>
-                                                    {member.role === 'admin' ? 'Administrador' : 'Membro'}
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${(() => {
+                                                    // Verifica se tem permissão de editor em Pipeline, Financeiro, Clientes ou Configurações
+                                                    // A tag é baseada APENAS nas permissões, não no role
+                                                    const hasEditorPermission = 
+                                                        member.permissions?.pipeline === 'edit' ||
+                                                        member.permissions?.financial === 'edit' ||
+                                                        member.permissions?.clients === 'edit' ||
+                                                        member.permissions?.settings === 'edit';
+                                                    return hasEditorPermission
+                                                        ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+                                                        : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
+                                                })()}`}>
+                                                    {(() => {
+                                                        // Verifica se tem permissão de editor em Pipeline, Financeiro, Clientes ou Configurações
+                                                        // A tag é baseada APENAS nas permissões, não no role
+                                                        const hasEditorPermission = 
+                                                            member.permissions?.pipeline === 'edit' ||
+                                                            member.permissions?.financial === 'edit' ||
+                                                            member.permissions?.clients === 'edit' ||
+                                                            member.permissions?.settings === 'edit';
+                                                        return hasEditorPermission ? 'Administrador' : 'Membro';
+                                                    })()}
                                                 </span>
                                                 <span className="text-[10px] text-slate-400">
                                                     Adicionado em {new Date(member.addedAt?.seconds ? member.addedAt.seconds * 1000 : member.addedAt).toLocaleDateString()}

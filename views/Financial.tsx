@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Invoice, Project, Workspace, Category } from '../types';
 import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects, subscribeToCategories, addInvoice, updateProject } from '../firebase/services';
+import { AsaasChargeModal, AsaasChargeResultModal } from '../components/AsaasChargeModal';
+import { AsaasPaymentResult, cancelAsaasPayment } from '../firebase/asaas';
 
 interface FinancialProps {
   currentWorkspace?: Workspace | null;
@@ -20,6 +22,12 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
   const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  
+  // Estados para integração Asaas
+  const [showAsaasModal, setShowAsaasModal] = useState(false);
+  const [selectedInvoiceForAsaas, setSelectedInvoiceForAsaas] = useState<Invoice | null>(null);
+  const [asaasResult, setAsaasResult] = useState<AsaasPaymentResult | null>(null);
+  const [cancelingAsaas, setCancelingAsaas] = useState<string | null>(null);
 
   // Filtro de período (mês/ano)
   const currentDate = new Date();
@@ -354,6 +362,41 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  // Função para abrir modal de cobrança Asaas
+  const handleOpenAsaasModal = (invoice: Invoice) => {
+    setSelectedInvoiceForAsaas(invoice);
+    setShowAsaasModal(true);
+  };
+
+  // Função para lidar com sucesso na criação de cobrança
+  const handleAsaasSuccess = (result: AsaasPaymentResult) => {
+    setShowAsaasModal(false);
+    setSelectedInvoiceForAsaas(null);
+    setAsaasResult(result);
+    setToast({ message: 'Cobrança gerada com sucesso!', type: 'success' });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Função para cancelar cobrança Asaas
+  const handleCancelAsaasPayment = async (invoice: Invoice) => {
+    if (!currentWorkspace?.id || !invoice.asaasPaymentId) return;
+    
+    if (!confirm('Tem certeza que deseja cancelar esta cobrança no Asaas?')) return;
+
+    setCancelingAsaas(invoice.id);
+    try {
+      await cancelAsaasPayment(currentWorkspace.id, invoice.asaasPaymentId, invoice.id);
+      setToast({ message: 'Cobrança cancelada com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error: any) {
+      console.error('Error canceling Asaas payment:', error);
+      setToast({ message: error.message || 'Erro ao cancelar cobrança', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setCancelingAsaas(null);
+    }
+  };
+
   // Verificar se a fatura está vencida
   const isOverdue = (date: Date | any): boolean => {
     if (!date) return false;
@@ -668,6 +711,9 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                  {currentWorkspace?.asaasApiKey && (
+                    <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cobrança</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -720,6 +766,57 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                           {invoice.status === 'Paid' ? 'Pago' : 'Pendente'}
                         </button>
                       </td>
+                      {/* Coluna Asaas */}
+                      {currentWorkspace?.asaasApiKey && (
+                        <td className="px-6 py-4">
+                          {invoice.asaasPaymentId ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-lg text-[10px] font-bold uppercase">
+                                <span className="material-symbols-outlined text-xs">link</span>
+                                {invoice.asaasBillingType || 'Asaas'}
+                              </span>
+                              {invoice.asaasPaymentUrl && (
+                                <a
+                                  href={invoice.asaasPaymentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                  title="Abrir link de pagamento"
+                                >
+                                  <span className="material-symbols-outlined text-sm text-slate-500">open_in_new</span>
+                                </a>
+                              )}
+                              {canEdit && invoice.status !== 'Paid' && (
+                                <button
+                                  onClick={() => handleCancelAsaasPayment(invoice)}
+                                  disabled={cancelingAsaas === invoice.id}
+                                  className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-500"
+                                  title="Cancelar cobrança"
+                                >
+                                  <span className="material-symbols-outlined text-sm">
+                                    {cancelingAsaas === invoice.id ? 'sync' : 'cancel'}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+                          ) : invoice.status !== 'Paid' && canEdit ? (
+                            <button
+                              onClick={() => {
+                                const project = projects.find(p => p.id === invoice.projectId);
+                                if (project) {
+                                  handleOpenAsaasModal(invoice);
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg text-xs font-bold hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-sm">bolt</span>
+                              Cobrar
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -811,6 +908,28 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Cobrança Asaas */}
+      {showAsaasModal && selectedInvoiceForAsaas && currentWorkspace && (
+        <AsaasChargeModal
+          invoice={selectedInvoiceForAsaas}
+          project={projects.find(p => p.id === selectedInvoiceForAsaas.projectId)!}
+          workspace={currentWorkspace}
+          onClose={() => {
+            setShowAsaasModal(false);
+            setSelectedInvoiceForAsaas(null);
+          }}
+          onSuccess={handleAsaasSuccess}
+        />
+      )}
+
+      {/* Modal de Resultado da Cobrança */}
+      {asaasResult && (
+        <AsaasChargeResultModal
+          result={asaasResult}
+          onClose={() => setAsaasResult(null)}
+        />
       )}
     </div>
   );

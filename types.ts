@@ -17,7 +17,8 @@ export type ViewState =
 export interface Project {
   id: string;
   name: string;
-  client: string;
+  client: string; // Nome do cliente (mantido para compatibilidade)
+  clientId?: string; // ID do cliente na entidade Client (para integração Asaas)
   description: string;
   type: string; // @deprecated - usar types[] para novos projetos
   types?: string[]; // Array de serviços associados ao projeto
@@ -180,6 +181,10 @@ export interface Workspace {
   userId?: string; // ID do usuário proprietário
   members?: WorkspaceMember[]; // Membros da equipe
   memberEmails?: string[]; // Lista de emails dos membros para facilitar query
+  // Integração Asaas
+  asaasApiKey?: string; // API Key do Asaas (criptografada)
+  asaasWebhookToken?: string; // Token para validar webhooks
+  asaasEnvironment?: 'sandbox' | 'production'; // Ambiente do Asaas
   createdAt: Date | any;
   updatedAt?: Date | any;
 }
@@ -200,8 +205,38 @@ export interface Invoice {
   description: string;
   amount: number;
   date: Date | any;
-  status: 'Paid' | 'Pending' | 'Overdue';
+  status: 'Paid' | 'Pending' | 'Overdue' | 'Refunded';
   workspaceId?: string;
+  // Integração Asaas
+  asaasPaymentId?: string; // ID da cobrança no Asaas
+  asaasBillingType?: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED'; // Tipo de cobrança
+  asaasPaymentUrl?: string; // Link para pagamento
+  asaasBankSlipUrl?: string; // Link do boleto (se BOLETO)
+  asaasPixQrCode?: string; // QR Code PIX em base64 (se PIX)
+  asaasPixCopiaECola?: string; // Código PIX copia e cola
   createdAt?: Date | any;
+  updatedAt?: Date | any;
+}
+
+// Interface Client para integração com Asaas
+export interface Client {
+  id: string;
+  name: string;
+  email: string;
+  cpfCnpj: string;
+  phone?: string;
+  mobilePhone?: string;
+  address?: {
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+  };
+  asaasCustomerId?: string; // ID do cliente no Asaas
+  workspaceId: string;
+  createdAt: Date | any;
   updatedAt?: Date | any;
 }

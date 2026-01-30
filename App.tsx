@@ -196,6 +196,7 @@ const App: React.FC = () => {
           onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
           canEdit={permissions?.canEdit('pipeline')}
           canViewFinancial={permissions?.canView('financial')}
+          currentWorkspace={currentWorkspace}
         />
       ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
       case 'ProjectBilling': return selectedProject ? (

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Project, Workspace, Category } from '../types';
-import { subscribeToProjects, subscribeToCategories } from '../firebase/services';
+import { Project, Workspace, Category, Client } from '../types';
+import { subscribeToProjects, subscribeToCategories, subscribeToClients, addClient, updateClient, deleteClient } from '../firebase/services';
+import { formatCpfCnpj, validateCpfCnpj, createAsaasCustomer } from '../firebase/asaas';
 
 interface ClientProfileProps {
   currentWorkspace?: Workspace | null;
@@ -10,9 +11,36 @@ interface ClientProfileProps {
 export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, onProjectClick }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [viewMode, setViewMode] = useState<'registered' | 'byProject'>('registered');
+  
+  // Modal de cliente
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [savingClient, setSavingClient] = useState(false);
+  const [syncingAsaas, setSyncingAsaas] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  
+  // Form do cliente
+  const [clientForm, setClientForm] = useState({
+    name: '',
+    email: '',
+    cpfCnpj: '',
+    phone: '',
+    mobilePhone: '',
+    address: {
+      street: '',
+      number: '',
+      complement: '',
+      neighborhood: '',
+      city: '',
+      state: '',
+      postalCode: '',
+    }
+  });
 
   // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
   const getProjectTypes = (project: Project): string[] => {
@@ -41,17 +69,27 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
   useEffect(() => {
     if (!currentWorkspace?.id) {
       setProjects([]);
+      setClients([]);
       setLoading(false);
       return;
     }
 
-    const unsubscribe = subscribeToProjects((fetchedProjects) => {
+    setLoading(true);
+
+    const unsubscribeProjects = subscribeToProjects((fetchedProjects) => {
       const workspaceProjects = fetchedProjects.filter(p => p.workspaceId === currentWorkspace.id);
       setProjects(workspaceProjects);
       setLoading(false);
     }, currentWorkspace.id);
 
-    return () => unsubscribe();
+    const unsubscribeClients = subscribeToClients((fetchedClients) => {
+      setClients(fetchedClients);
+    }, currentWorkspace.id);
+
+    return () => {
+      unsubscribeProjects();
+      unsubscribeClients();
+    };
   }, [currentWorkspace?.id]);
 
   useEffect(() => {
@@ -109,19 +147,214 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
       });
   }, [filteredProjects, searchQuery]);
 
+  // Filtrar clientes cadastrados
+  const filteredClients = useMemo(() => {
+    if (!searchQuery.trim()) return clients;
+    const query = searchQuery.toLowerCase();
+    return clients.filter(client =>
+      client.name.toLowerCase().includes(query) ||
+      client.email.toLowerCase().includes(query) ||
+      client.cpfCnpj.includes(query.replace(/\D/g, ''))
+    );
+  }, [clients, searchQuery]);
+
   // Contadores
   const activeCount = projects.filter(p => p.status === 'Lead' || p.status === 'Active' || p.status === 'Review').length;
   const completedCount = projects.filter(p => p.status === 'Completed' || p.status === 'Finished').length;
 
-  const totalClients = groupedClients.length;
+  const totalClients = clients.length;
   const totalProjects = projects.length;
+
+  // Resetar form do cliente
+  const resetClientForm = () => {
+    setClientForm({
+      name: '',
+      email: '',
+      cpfCnpj: '',
+      phone: '',
+      mobilePhone: '',
+      address: {
+        street: '',
+        number: '',
+        complement: '',
+        neighborhood: '',
+        city: '',
+        state: '',
+        postalCode: '',
+      }
+    });
+    setEditingClient(null);
+  };
+
+  // Abrir modal para novo cliente
+  const handleNewClient = () => {
+    resetClientForm();
+    setShowClientModal(true);
+  };
+
+  // Abrir modal para editar cliente
+  const handleEditClient = (client: Client) => {
+    setEditingClient(client);
+    setClientForm({
+      name: client.name,
+      email: client.email,
+      cpfCnpj: formatCpfCnpj(client.cpfCnpj),
+      phone: client.phone || '',
+      mobilePhone: client.mobilePhone || '',
+      address: {
+        street: client.address?.street || '',
+        number: client.address?.number || '',
+        complement: client.address?.complement || '',
+        neighborhood: client.address?.neighborhood || '',
+        city: client.address?.city || '',
+        state: client.address?.state || '',
+        postalCode: client.address?.postalCode || '',
+      }
+    });
+    setShowClientModal(true);
+  };
+
+  // Salvar cliente
+  const handleSaveClient = async () => {
+    if (!currentWorkspace?.id) return;
+    
+    // Validações
+    if (!clientForm.name.trim()) {
+      setToast({ message: 'Nome é obrigatório', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    
+    if (!clientForm.email.trim()) {
+      setToast({ message: 'E-mail é obrigatório', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    
+    if (!clientForm.cpfCnpj.trim()) {
+      setToast({ message: 'CPF/CNPJ é obrigatório', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    
+    if (!validateCpfCnpj(clientForm.cpfCnpj)) {
+      setToast({ message: 'CPF/CNPJ inválido', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    setSavingClient(true);
+    try {
+      const clientData = {
+        name: clientForm.name.trim(),
+        email: clientForm.email.trim(),
+        cpfCnpj: clientForm.cpfCnpj.replace(/\D/g, ''),
+        phone: clientForm.phone.replace(/\D/g, '') || undefined,
+        mobilePhone: clientForm.mobilePhone.replace(/\D/g, '') || undefined,
+        address: {
+          street: clientForm.address.street.trim() || undefined,
+          number: clientForm.address.number.trim() || undefined,
+          complement: clientForm.address.complement.trim() || undefined,
+          neighborhood: clientForm.address.neighborhood.trim() || undefined,
+          city: clientForm.address.city.trim() || undefined,
+          state: clientForm.address.state.trim() || undefined,
+          postalCode: clientForm.address.postalCode.replace(/\D/g, '') || undefined,
+        },
+        workspaceId: currentWorkspace.id,
+      };
+
+      if (editingClient) {
+        await updateClient(editingClient.id, clientData);
+        setToast({ message: 'Cliente atualizado com sucesso!', type: 'success' });
+      } else {
+        await addClient(clientData as any);
+        setToast({ message: 'Cliente cadastrado com sucesso!', type: 'success' });
+      }
+      
+      setTimeout(() => setToast(null), 3000);
+      setShowClientModal(false);
+      resetClientForm();
+    } catch (error: any) {
+      console.error('Error saving client:', error);
+      setToast({ message: error.message || 'Erro ao salvar cliente', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSavingClient(false);
+    }
+  };
+
+  // Excluir cliente
+  const handleDeleteClient = async (client: Client) => {
+    if (!confirm(`Tem certeza que deseja excluir o cliente "${client.name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteClient(client.id);
+      setToast({ message: 'Cliente excluído com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error: any) {
+      console.error('Error deleting client:', error);
+      setToast({ message: error.message || 'Erro ao excluir cliente', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  // Sincronizar com Asaas
+  const handleSyncWithAsaas = async (client: Client) => {
+    if (!currentWorkspace?.id || !currentWorkspace.asaasApiKey) {
+      setToast({ message: 'Configure a integração com Asaas nas Configurações primeiro', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    setSyncingAsaas(true);
+    try {
+      await createAsaasCustomer({
+        workspaceId: currentWorkspace.id,
+        clientId: client.id,
+        name: client.name,
+        email: client.email,
+        cpfCnpj: client.cpfCnpj,
+        phone: client.phone,
+        mobilePhone: client.mobilePhone,
+        address: client.address,
+      });
+      
+      setToast({ message: 'Cliente sincronizado com Asaas!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error: any) {
+      console.error('Error syncing with Asaas:', error);
+      setToast({ message: error.message || 'Erro ao sincronizar com Asaas', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSyncingAsaas(false);
+    }
+  };
+
+  // Contar projetos de um cliente
+  const getClientProjectCount = (clientName: string) => {
+    return projects.filter(p => p.client?.toLowerCase() === clientName.toLowerCase()).length;
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-right ${
+          toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <span className="material-symbols-outlined text-lg">
+            {toast.type === 'success' ? 'check_circle' : 'error'}
+          </span>
+          {toast.message}
+        </div>
+      )}
+
       <div className="flex flex-wrap justify-between items-end gap-4 mb-8">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-black leading-tight tracking-tight">Clientes</h1>
-          <p className="text-slate-500 text-base font-normal">Veja todos os clientes e seus projetos vinculados</p>
+          <p className="text-slate-500 text-base font-normal">Gerencie seus clientes e veja projetos vinculados</p>
         </div>
         <div className="flex gap-3">
           <div className="flex items-center gap-2 px-4 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold">
@@ -132,6 +365,13 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
             <span className="material-symbols-outlined text-lg text-primary">folder_open</span>
             {totalProjects} projetos
           </div>
+          <button
+            onClick={handleNewClient}
+            className="flex items-center gap-2 px-4 h-10 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg">person_add</span>
+            Novo Cliente
+          </button>
         </div>
       </div>
 
@@ -145,50 +385,76 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar cliente ou projeto..."
+              placeholder="Buscar cliente..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-sm font-semibold focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none"
             />
           </div>
 
-          {/* Filtro de Status */}
+          {/* Modo de Visualização */}
           <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'all'
+              onClick={() => setViewMode('registered')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewMode === 'registered'
                 ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
-              Todos
-              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-600/50 text-[10px]">
-                {projects.length}
-              </span>
+              <span className="material-symbols-outlined text-sm align-middle mr-1">badge</span>
+              Cadastrados
             </button>
             <button
-              onClick={() => setStatusFilter('active')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'active'
-                ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+              onClick={() => setViewMode('byProject')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${viewMode === 'byProject'
+                ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
-              Ativos
-              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 text-[10px]">
-                {activeCount}
-              </span>
-            </button>
-            <button
-              onClick={() => setStatusFilter('completed')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'completed'
-                ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                }`}
-            >
-              Concluídos
-              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 text-[10px]">
-                {completedCount}
-              </span>
+              <span className="material-symbols-outlined text-sm align-middle mr-1">folder</span>
+              Por Projeto
             </button>
           </div>
+
+          {/* Filtro de Status (só para visualização por projeto) */}
+          {viewMode === 'byProject' && (
+            <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'all'
+                  ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+              >
+                Todos
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-600/50 text-[10px]">
+                  {projects.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setStatusFilter('active')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'active'
+                  ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+              >
+                Ativos
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 text-[10px]">
+                  {activeCount}
+                </span>
+              </button>
+              <button
+                onClick={() => setStatusFilter('completed')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${statusFilter === 'completed'
+                  ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+              >
+                Concluídos
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 text-[10px]">
+                  {completedCount}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -196,90 +462,450 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
         <div className="flex items-center justify-center h-40">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      ) : groupedClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-          <span className="material-symbols-outlined text-5xl mb-3">group_off</span>
-          <p className="text-base font-medium">Nenhum cliente encontrado</p>
-          <p className="text-sm">Crie projetos para começar a ver clientes aqui</p>
-        </div>
-      ) : (
-        <div className="columns-1 lg:columns-2 gap-6">
-          {groupedClients.map(({ client, projects: clientProjects }) => {
-            // Pegar a foto do cliente do primeiro projeto que tiver avatar
-            const clientAvatar = clientProjects.find(p => p.avatar)?.avatar || getClientAvatar(client);
-
-            return (
-              <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between">
+      ) : viewMode === 'registered' ? (
+        // Visualização de Clientes Cadastrados
+        filteredClients.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <span className="material-symbols-outlined text-5xl mb-3">person_add</span>
+            <p className="text-base font-medium">Nenhum cliente cadastrado</p>
+            <p className="text-sm mb-4">Cadastre clientes para gerar cobranças automáticas</p>
+            <button
+              onClick={handleNewClient}
+              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors"
+            >
+              Cadastrar Cliente
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredClients.map(client => {
+              const projectCount = getClientProjectCount(client.name);
+              return (
+                <div
+                  key={client.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-lg hover:border-primary/30 transition-all"
+                >
+                  <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      {/* Avatar do Cliente */}
                       <div
                         className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
                         style={{
-                          backgroundImage: `url('${clientAvatar}')`,
+                          backgroundImage: `url('${getClientAvatar(client.name)}')`,
                           backgroundSize: 'cover',
                           backgroundPosition: 'center'
                         }}
                       />
                       <div>
-                        <h3 className="text-lg font-bold">{client}</h3>
-                        <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
+                        <h3 className="font-bold text-base">{client.name}</h3>
+                        <p className="text-xs text-slate-500">{formatCpfCnpj(client.cpfCnpj)}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {/* Indicador de projetos ativos/concluídos */}
-                      {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
-                        <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                          {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
+                    <div className="flex items-center gap-1">
+                      {client.asaasCustomerId ? (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">link</span>
+                          Asaas
                         </span>
+                      ) : currentWorkspace?.asaasApiKey && (
+                        <button
+                          onClick={() => handleSyncWithAsaas(client)}
+                          disabled={syncingAsaas}
+                          className="px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] font-bold uppercase rounded-full flex items-center gap-1 hover:bg-amber-200 transition-colors disabled:opacity-50"
+                          title="Sincronizar com Asaas"
+                        >
+                          <span className="material-symbols-outlined text-xs">sync</span>
+                          Sincronizar
+                        </button>
                       )}
                     </div>
                   </div>
-                </div>
 
+                  <div className="space-y-2 mb-4 text-sm">
+                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                      <span className="material-symbols-outlined text-base text-slate-400">mail</span>
+                      <span className="truncate">{client.email}</span>
+                    </div>
+                    {client.phone && (
+                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                        <span className="material-symbols-outlined text-base text-slate-400">call</span>
+                        <span>{client.phone}</span>
+                      </div>
+                    )}
+                    {projectCount > 0 && (
+                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                        <span className="material-symbols-outlined text-base text-slate-400">folder</span>
+                        <span>{projectCount} projeto{projectCount !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+                  </div>
 
-                <div className="space-y-2">
-                  {clientProjects.map(project => (
-                    <div
-                      key={project.id}
-                      onClick={() => onProjectClick?.(project)}
-                      className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                  <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={() => handleEditClient(client)}
+                      className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-1"
                     >
+                      <span className="material-symbols-outlined text-base">edit</span>
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClient(client)}
+                      className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-base">delete</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        // Visualização por Projeto (agrupado)
+        groupedClients.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <span className="material-symbols-outlined text-5xl mb-3">group_off</span>
+            <p className="text-base font-medium">Nenhum cliente encontrado</p>
+            <p className="text-sm">Crie projetos para começar a ver clientes aqui</p>
+          </div>
+        ) : (
+          <div className="columns-1 lg:columns-2 gap-6">
+            {groupedClients.map(({ client, projects: clientProjects }) => {
+              // Pegar a foto do cliente do primeiro projeto que tiver avatar
+              const clientAvatar = clientProjects.find(p => p.avatar)?.avatar || getClientAvatar(client);
+
+              return (
+                <div key={client} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6 break-inside-avoid">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        {/* Foto do Projeto */}
+                        {/* Avatar do Cliente */}
                         <div
-                          className="size-8 rounded-lg bg-slate-200"
+                          className="size-12 rounded-xl bg-slate-200 ring-2 ring-white dark:ring-slate-800 shadow-sm"
                           style={{
-                            backgroundImage: project.projectImage
-                              ? `url('${project.projectImage}')`
-                              : `url('${getProjectAvatar(project.name)}')`,
+                            backgroundImage: `url('${clientAvatar}')`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center'
                           }}
                         />
-                        <div className="flex flex-col gap-0.5">
-                          <p className="text-sm font-bold group-hover:text-primary transition-colors">{project.name}</p>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                            <span className="material-symbols-outlined text-xs">
-                              {project.status === 'Completed' || project.status === 'Finished' ? 'check_circle' : 'progress_activity'}
-                            </span>
-                            <span>{getProjectTypes(project).join(', ')}</span>
-                          </div>
+                        <div>
+                          <h3 className="text-lg font-bold">{client}</h3>
+                          <p className="text-xs text-slate-500">{clientProjects.length} projeto{clientProjects.length !== 1 ? 's' : ''}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <StatusBadge project={project} categories={categories} />
-                        <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">
-                          chevron_right
-                        </span>
+                        {/* Indicador de projetos ativos/concluídos */}
+                        {clientProjects.some(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review') && (
+                          <span className="px-2 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                            {clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length} ativo{clientProjects.filter(p => p.status === 'Active' || p.status === 'Lead' || p.status === 'Review').length !== 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+
+                  <div className="space-y-2">
+                    {clientProjects.map(project => (
+                      <div
+                        key={project.id}
+                        onClick={() => onProjectClick?.(project)}
+                        className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Foto do Projeto */}
+                          <div
+                            className="size-8 rounded-lg bg-slate-200"
+                            style={{
+                              backgroundImage: project.projectImage
+                                ? `url('${project.projectImage}')`
+                                : `url('${getProjectAvatar(project.name)}')`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center'
+                            }}
+                          />
+                          <div className="flex flex-col gap-0.5">
+                            <p className="text-sm font-bold group-hover:text-primary transition-colors">{project.name}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                              <span className="material-symbols-outlined text-xs">
+                                {project.status === 'Completed' || project.status === 'Finished' ? 'check_circle' : 'progress_activity'}
+                              </span>
+                              <span>{getProjectTypes(project).join(', ')}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge project={project} categories={categories} />
+                          <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">
+                            chevron_right
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+
+      {/* Modal de Cliente */}
+      {showClientModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-900 px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h2 className="text-xl font-black">
+                {editingClient ? 'Editar Cliente' : 'Novo Cliente'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowClientModal(false);
+                  resetClientForm();
+                }}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Dados Básicos */}
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Dados Básicos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Nome Completo / Razão Social *
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.name}
+                      onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="João da Silva ou Empresa LTDA"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      E-mail *
+                    </label>
+                    <input
+                      type="email"
+                      value={clientForm.email}
+                      onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      CPF / CNPJ *
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.cpfCnpj}
+                      onChange={(e) => setClientForm({ ...clientForm, cpfCnpj: formatCpfCnpj(e.target.value) })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                      maxLength={18}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Telefone
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.phone}
+                      onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="(00) 0000-0000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Celular
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.mobilePhone}
+                      onChange={(e) => setClientForm({ ...clientForm, mobilePhone: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
                 </div>
               </div>
-            );
-          })}
+
+              {/* Endereço */}
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Endereço (opcional)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      CEP
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.postalCode}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, postalCode: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="00000-000"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Rua / Logradouro
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.street}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, street: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="Rua das Flores"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Número
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.number}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, number: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="123"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Complemento
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.complement}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, complement: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="Apto 101"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Bairro
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.neighborhood}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, neighborhood: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="Centro"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Cidade
+                    </label>
+                    <input
+                      type="text"
+                      value={clientForm.address.city}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, city: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      placeholder="São Paulo"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Estado
+                    </label>
+                    <select
+                      value={clientForm.address.state}
+                      onChange={(e) => setClientForm({
+                        ...clientForm,
+                        address: { ...clientForm.address, state: e.target.value }
+                      })}
+                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="AC">AC</option>
+                      <option value="AL">AL</option>
+                      <option value="AP">AP</option>
+                      <option value="AM">AM</option>
+                      <option value="BA">BA</option>
+                      <option value="CE">CE</option>
+                      <option value="DF">DF</option>
+                      <option value="ES">ES</option>
+                      <option value="GO">GO</option>
+                      <option value="MA">MA</option>
+                      <option value="MT">MT</option>
+                      <option value="MS">MS</option>
+                      <option value="MG">MG</option>
+                      <option value="PA">PA</option>
+                      <option value="PB">PB</option>
+                      <option value="PR">PR</option>
+                      <option value="PE">PE</option>
+                      <option value="PI">PI</option>
+                      <option value="RJ">RJ</option>
+                      <option value="RN">RN</option>
+                      <option value="RS">RS</option>
+                      <option value="RO">RO</option>
+                      <option value="RR">RR</option>
+                      <option value="SC">SC</option>
+                      <option value="SP">SP</option>
+                      <option value="SE">SE</option>
+                      <option value="TO">TO</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-white dark:bg-slate-900 px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowClientModal(false);
+                  resetClientForm();
+                }}
+                className="px-4 py-2.5 text-slate-600 dark:text-slate-400 rounded-xl text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveClient}
+                disabled={savingClient}
+                className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingClient ? (
+                  <>
+                    <span className="material-symbols-outlined text-lg animate-spin">sync</span>
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-lg">save</span>
+                    {editingClient ? 'Salvar Alterações' : 'Cadastrar Cliente'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -348,4 +974,3 @@ const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ p
     </span>
   );
 };
-

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Project, Stage, Workspace, Category } from '../types';
+import { Project, Stage, Workspace, Category, parseSafeDate, projectHasRecurringType } from '../types';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 import {
   subscribeToProjects,
@@ -2192,7 +2192,8 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
   const getDateColor = (dateString: string | undefined): string => {
     if (!dateString) return 'text-slate-500 dark:text-slate-400';
 
-    const date = new Date(dateString);
+    const date = parseSafeDate(dateString);
+    if (!date) return 'text-slate-500 dark:text-slate-400';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const targetDate = new Date(date);
@@ -2422,10 +2423,11 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       )}
 
       {project.deadline ? (() => {
-        const deadlineDate = new Date(project.deadline);
+        const date = parseSafeDate(project.deadline);
+        if (!date) return null;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const deadline = new Date(deadlineDate);
+        const deadline = new Date(date);
         deadline.setHours(0, 0, 0, 0);
 
         const diffTime = deadline.getTime() - today.getTime();
@@ -2447,7 +2449,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
             <span className="material-symbols-outlined text-sm">calendar_today</span>
             <span>
               {project.status === 'Completed' ? 'Data de conclusão: ' : 'Data de entrega: '}
-              {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              {parseSafeDate(project.deadline)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </span>
           </div>
         );
@@ -2477,7 +2479,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
                 <span className="material-symbols-outlined text-sm">build</span>
                 <span>
-                  Manutenção: {new Date(project.maintenanceDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  Manutenção: {parseSafeDate(project.maintenanceDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
             )}
@@ -2485,7 +2487,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
                 <span className="material-symbols-outlined text-sm">description</span>
                 <span>
-                  Relatório: {new Date(project.reportDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  Relatório: {parseSafeDate(project.reportDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
             )}
@@ -2802,46 +2804,83 @@ const ListView: React.FC<{
                     )}
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
-                    {project.deadline ? (() => {
-                      const deadlineDate = new Date(project.deadline);
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const deadline = new Date(deadlineDate);
-                      deadline.setHours(0, 0, 0, 0);
+                    <div className="flex flex-col gap-1 min-w-0">
+                      {/* Prazo Principal (Deadline) */}
+                      {project.deadline ? (() => {
+                        const date = parseSafeDate(project.deadline);
+                        if (!date) return null;
 
-                      const diffTime = deadline.getTime() - today.getTime();
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const deadline = new Date(date);
+                        deadline.setHours(0, 0, 0, 0);
 
-                      let deadlineColor = '';
-                      if (project.status === 'Completed') {
-                        deadlineColor = 'text-emerald-600 dark:text-emerald-400';
-                      } else if (diffDays < 0) {
-                        deadlineColor = 'text-rose-600 dark:text-rose-400';
-                      } else if (diffDays === 0 || diffDays === 1) {
-                        deadlineColor = 'text-amber-600 dark:text-amber-400';
-                      } else {
-                        deadlineColor = 'text-slate-500 dark:text-slate-400';
-                      }
+                        const diffTime = deadline.getTime() - today.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                      return (
-                        <div className={`flex items-center gap-1 min-w-0 ${deadlineColor}`}>
-                          <span className="material-symbols-outlined text-sm flex-shrink-0">schedule</span>
-                          <span className="text-xs truncate whitespace-nowrap">
-                            {deadlineDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                          </span>
-                        </div>
-                      );
-                    })() : (
-                      // Só mostrar aviso se não estiver em etapa final
-                      !isInFinalStage(project) ? (
-                        <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                          <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
-                          <span className="text-xs font-bold whitespace-nowrap">Definir data</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">-</span>
-                      )
-                    )}
+                        let deadlineColor = '';
+                        if (project.status === 'Completed') {
+                          deadlineColor = 'text-emerald-600 dark:text-emerald-400';
+                        } else if (diffDays < 0) {
+                          deadlineColor = 'text-rose-600 dark:text-rose-400 font-bold';
+                        } else if (diffDays === 0 || diffDays === 1) {
+                          deadlineColor = 'text-amber-600 dark:text-amber-400 font-bold';
+                        } else {
+                          deadlineColor = 'text-slate-500 dark:text-slate-400';
+                        }
+
+                        return (
+                          <div className={`flex items-center gap-1 min-w-0 ${deadlineColor}`} title="Prazo de Entrega">
+                            <span className="material-symbols-outlined text-sm flex-shrink-0">schedule</span>
+                            <span className="text-xs truncate whitespace-nowrap">
+                              {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </span>
+                          </div>
+                        );
+                      })() : null}
+
+                      {/* Datas de Recorrência (Manutenção e Relatório) */}
+                      {projectHasRecurringType(project, categories) && (
+                        <>
+                          {project.maintenanceDate && (() => {
+                            const date = parseSafeDate(project.maintenanceDate);
+                            if (!date) return null;
+                            return (
+                              <div className="flex items-center gap-1 min-w-0 text-blue-600 dark:text-blue-400" title="Data da Manutenção">
+                                <span className="material-symbols-outlined text-[14px] flex-shrink-0">build</span>
+                                <span className="text-[10px] font-bold truncate whitespace-nowrap">
+                                  Manutenção: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                          {project.reportDate && (() => {
+                            const date = parseSafeDate(project.reportDate);
+                            if (!date) return null;
+                            return (
+                              <div className="flex items-center gap-1 min-w-0 text-purple-600 dark:text-purple-400" title="Data do Relatório">
+                                <span className="material-symbols-outlined text-[14px] flex-shrink-0">description</span>
+                                <span className="text-[10px] font-bold truncate whitespace-nowrap">
+                                  Relatório: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      )}
+
+                      {/* Aviso se não houver datas e não estiver finalizado */}
+                      {!project.deadline && !project.maintenanceDate && !project.reportDate && (
+                        !isInFinalStage(project) ? (
+                          <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                            <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
+                            <span className="text-xs font-bold whitespace-nowrap">Definir data</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2886,7 +2925,9 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
     activeProjects.forEach(project => {
       if (project.deadline) {
-        const deadline = new Date(project.deadline);
+        const date = parseSafeDate(project.deadline);
+        if (!date) return;
+        const deadline = new Date(date);
         deadline.setHours(0, 0, 0, 0);
 
         if (!earliestDeadline || deadline < earliestDeadline) {
@@ -2911,7 +2952,9 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
     // Encontrar a deadline mais distante entre todos os projetos
     projects.forEach(project => {
       if (project.deadline) {
-        const deadline = new Date(project.deadline);
+        const date = parseSafeDate(project.deadline);
+        if (!date) return;
+        const deadline = new Date(date);
         deadline.setHours(0, 0, 0, 0);
 
         if (!maxDeadline || deadline > maxDeadline) {
