@@ -75,12 +75,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
       if (fetchedWorkspaces.length > 0) isInitialLoadRef.current = false;
       if (!current && fetchedWorkspaces.length > 0) {
+        // Tentar carregar o último workspace acessado
+        const storageKey = `lastWorkspace_${userId}`;
+        const lastWorkspaceId = localStorage.getItem(storageKey);
+        if (lastWorkspaceId) {
+          const lastWorkspace = fetchedWorkspaces.find(w => w.id === lastWorkspaceId);
+          if (lastWorkspace) {
+            onWorkspaceChange(lastWorkspace);
+            return;
+          }
+        }
+        // Se não encontrou o último workspace, usar o primeiro da lista
         onWorkspaceChange(fetchedWorkspaces[0]);
         return;
       }
       if (current && fetchedWorkspaces.length > 0) {
         const workspaceExists = fetchedWorkspaces.find(w => w.id === current.id);
         if (!workspaceExists) {
+          // Workspace atual não existe mais, tentar carregar o último salvo
+          const storageKey = `lastWorkspace_${userId}`;
+          const lastWorkspaceId = localStorage.getItem(storageKey);
+          if (lastWorkspaceId) {
+            const lastWorkspace = fetchedWorkspaces.find(w => w.id === lastWorkspaceId);
+            if (lastWorkspace) {
+              onWorkspaceChange(lastWorkspace);
+              return;
+            }
+          }
+          // Se não encontrou, usar o primeiro da lista
           onWorkspaceChange(fetchedWorkspaces[0]);
           return;
         }

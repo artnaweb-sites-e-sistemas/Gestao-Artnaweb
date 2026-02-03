@@ -61,28 +61,73 @@ export async function createAsaasCustomer(
   data: CustomerData, 
   context: functions.https.CallableContext
 ) {
+  console.log('[asaasCreateCustomer] Iniciando função', { 
+    workspaceId: data?.workspaceId, 
+    clientId: data?.clientId,
+    hasAuth: !!context.auth,
+    authUid: context.auth?.uid,
+    timestamp: new Date().toISOString()
+  });
+  
   if (!context.auth) {
+    console.error('[asaasCreateCustomer] Usuário não autenticado');
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+
+  if (!data || !data.workspaceId || !data.clientId) {
+    console.error('[asaasCreateCustomer] Dados inválidos', { 
+      hasWorkspaceId: !!data?.workspaceId,
+      hasClientId: !!data?.clientId 
+    });
+    throw new functions.https.HttpsError('invalid-argument', 'workspaceId e clientId são obrigatórios');
   }
 
   const { workspaceId, clientId, name, email, cpfCnpj, phone, mobilePhone, address } = data;
 
   try {
+    console.log('[asaasCreateCustomer] Buscando configuração do Asaas', { workspaceId });
     const { apiKey, baseUrl } = await getAsaasConfig(workspaceId);
+    console.log('[asaasCreateCustomer] Configuração obtida', { hasApiKey: !!apiKey, baseUrl });
 
     // Formatar CPF/CNPJ (remover caracteres especiais)
-    const cleanCpfCnpj = cpfCnpj.replace(/\D/g, '');
+    const cleanCpfCnpj = cpfCnpj?.replace(/\D/g, '') || '';
+    
+    if (!cleanCpfCnpj) {
+      console.error('[asaasCreateCustomer] CPF/CNPJ não fornecido');
+      throw new functions.https.HttpsError('invalid-argument', 'CPF/CNPJ é obrigatório');
+    }
 
+    console.log('[asaasCreateCustomer] Verificando se cliente já existe no Asaas', { cleanCpfCnpj });
+    
     // Verificar se cliente já existe no Asaas pelo CPF/CNPJ
-    const searchResponse = await axios.get(`${baseUrl}/customers`, {
-      headers: {
-        'access_token': apiKey,
-        'Content-Type': 'application/json'
-      },
-      params: {
-        cpfCnpj: cleanCpfCnpj
+    let searchResponse;
+    try {
+      searchResponse = await axios.get(`${baseUrl}/customers`, {
+        headers: {
+          'access_token': apiKey,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          cpfCnpj: cleanCpfCnpj
+        },
+        timeout: 15000
+      });
+      console.log('[asaasCreateCustomer] Busca no Asaas concluída', { 
+        found: searchResponse.data.data?.length > 0 
+      });
+    } catch (searchError: any) {
+      console.error('[asaasCreateCustomer] Erro ao buscar cliente no Asaas:', {
+        message: searchError.message,
+        status: searchError.response?.status,
+        data: searchError.response?.data
+      });
+      // Se for erro 401, significa que a API key está inválida
+      if (searchError.response?.status === 401) {
+        throw new functions.https.HttpsError('permission-denied', 'API Key do Asaas inválida ou expirada');
       }
-    });
+      // Continuar tentando criar o cliente mesmo se a busca falhar
+      searchResponse = { data: { data: [] } };
+    }
 
     let asaasCustomerId: string;
 
@@ -92,6 +137,8 @@ export async function createAsaasCustomer(
       console.log(`Cliente já existe no Asaas: ${asaasCustomerId}`);
     } else {
       // Criar novo cliente no Asaas
+      console.log('[asaasCreateCustomer] Criando novo cliente no Asaas', { name, email });
+      
       const customerPayload: any = {
         name,
         email,
@@ -110,39 +157,80 @@ export async function createAsaasCustomer(
         if (address.neighborhood) customerPayload.province = address.neighborhood;
       }
 
-      const createResponse = await axios.post(`${baseUrl}/customers`, customerPayload, {
-        headers: {
-          'access_token': apiKey,
-          'Content-Type': 'application/json'
+      let createResponse;
+      try {
+        createResponse = await axios.post(`${baseUrl}/customers`, customerPayload, {
+          headers: {
+            'access_token': apiKey,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+        asaasCustomerId = createResponse.data.id;
+        console.log('[asaasCreateCustomer] Cliente criado no Asaas:', asaasCustomerId);
+      } catch (createError: any) {
+        console.error('[asaasCreateCustomer] Erro ao criar cliente no Asaas:', {
+          message: createError.message,
+          status: createError.response?.status,
+          data: createError.response?.data
+        });
+        
+        if (createError.response?.status === 400) {
+          const errors = createError.response.data?.errors || [];
+          const errorMessages = errors.map((e: any) => e.description).join(', ');
+          throw new functions.https.HttpsError('invalid-argument', errorMessages || 'Dados inválidos para criar cliente no Asaas');
         }
-      });
-
-      asaasCustomerId = createResponse.data.id;
-      console.log(`Cliente criado no Asaas: ${asaasCustomerId}`);
+        
+        if (createError.response?.status === 401) {
+          throw new functions.https.HttpsError('permission-denied', 'API Key do Asaas inválida ou expirada');
+        }
+        
+        throw new functions.https.HttpsError('internal', `Erro ao criar cliente no Asaas: ${createError.message}`);
+      }
     }
 
     // Atualizar cliente no Firestore com o ID do Asaas
+    console.log('[asaasCreateCustomer] Atualizando cliente no Firestore', { clientId, asaasCustomerId });
     const db = admin.firestore();
-    await db.collection('clients').doc(clientId).update({
-      asaasCustomerId,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    try {
+      await db.collection('clients').doc(clientId).update({
+        asaasCustomerId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log('[asaasCreateCustomer] Cliente atualizado no Firestore com sucesso');
+    } catch (firestoreError: any) {
+      console.error('[asaasCreateCustomer] Erro ao atualizar cliente no Firestore:', firestoreError);
+      // Mesmo se falhar a atualização no Firestore, retornar sucesso pois o cliente foi criado no Asaas
+      // O usuário pode sincronizar manualmente depois
+    }
 
+    console.log('[asaasCreateCustomer] Função concluída com sucesso');
     return {
       success: true,
       asaasCustomerId,
       message: 'Cliente sincronizado com Asaas'
     };
   } catch (error: any) {
-    console.error('Erro ao criar cliente no Asaas:', error.response?.data || error.message);
+    console.error('[asaasCreateCustomer] Erro capturado:', {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      isHttpsError: error instanceof functions.https.HttpsError,
+      response: error.response?.data
+    });
     
-    if (error.response?.status === 400) {
-      const errors = error.response.data?.errors || [];
-      const errorMessages = errors.map((e: any) => e.description).join(', ');
-      throw new functions.https.HttpsError('invalid-argument', errorMessages || 'Dados inválidos');
+    // Se for um HttpsError do Firebase, re-lançar
+    if (error instanceof functions.https.HttpsError) {
+      console.log('[asaasCreateCustomer] Re-lançando HttpsError:', error.code, error.message);
+      throw error;
     }
     
-    throw new functions.https.HttpsError('internal', error.message || 'Erro ao criar cliente no Asaas');
+    // Para qualquer outro erro, converter para HttpsError
+    console.error('[asaasCreateCustomer] Convertendo erro genérico para HttpsError');
+    throw new functions.https.HttpsError(
+      'internal', 
+      error.message || 'Erro desconhecido ao criar cliente no Asaas'
+    );
   }
 }
 

@@ -3,7 +3,7 @@ import { Workspace, Category, Stage } from '../types';
 import { updateWorkspace, uploadWorkspaceAvatar, subscribeToCategories, deleteCategoryById, subscribeToStages, getStages, deleteStage as deleteStageFromFirebase } from '../firebase/services';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 import { TeamSettings } from '../components/TeamSettings';
-import { testAsaasConnection, getWebhookUrl } from '../firebase/asaas';
+import { testAsaasConnection, getWebhookUrl, testConnection } from '../firebase/asaas';
 
 interface SettingsProps {
   currentWorkspace?: Workspace | null;
@@ -282,6 +282,17 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     setAsaasStatus(null);
 
     try {
+      // Primeiro testar se funções callable estão funcionando
+      console.log('Testando função básica...');
+      try {
+        await testConnection();
+        console.log('Função básica funcionou!');
+      } catch (testError: any) {
+        console.error('Erro ao testar função básica:', testError);
+        throw new Error('Não foi possível conectar com o servidor. Verifique sua conexão e se as Functions foram deployadas corretamente.');
+      }
+
+      // Se a função básica funcionou, testar conexão com Asaas
       const result = await testAsaasConnection(currentWorkspace.id);
       setAsaasStatus({
         connected: true,
@@ -296,8 +307,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
       
       if (error.code === 'functions/unavailable') {
         errorMessage = 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.';
-      } else if (error.message?.includes('CORS') || error.message?.includes('Failed to fetch')) {
-        errorMessage = 'Erro de conexão. Verifique se as Functions foram deployadas corretamente.';
+      } else if (error.message?.includes('CORS') || error.message?.includes('Failed to fetch') || error.message?.includes('servidor')) {
+        errorMessage = 'Erro de conexão. Verifique se as Functions foram deployadas corretamente e se você está logado.';
       } else if (error.message) {
         errorMessage = error.message;
       }

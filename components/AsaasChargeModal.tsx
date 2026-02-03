@@ -64,7 +64,7 @@ export const AsaasChargeModal: React.FC<AsaasChargeModalProps> = ({
     }
 
     if (!selectedClient.asaasCustomerId) {
-      setError('O cliente selecionado não está vinculado ao Asaas. Por favor, sincronize o cliente primeiro na tela de Clientes.');
+      setError('O cliente selecionado não está vinculado ao Asaas. Clique no botão "Sincronizar" na tela de Clientes para vincular o cliente ao Asaas e poder gerar faturas automaticamente.');
       return;
     }
 

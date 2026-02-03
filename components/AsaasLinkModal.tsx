@@ -219,3 +219,8 @@ export const AsaasLinkModal: React.FC<AsaasLinkModalProps> = ({
   );
 };
 
+
+
+
+
+

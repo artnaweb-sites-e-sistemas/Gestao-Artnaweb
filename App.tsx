@@ -81,7 +81,12 @@ const App: React.FC = () => {
   const handleWorkspaceChange = useCallback((workspace: Workspace | null) => {
     console.log('Mudando workspace para:', workspace);
     setCurrentWorkspace(workspace);
-  }, []);
+    // Salvar o último workspace acessado no localStorage
+    if (workspace && user) {
+      const storageKey = `lastWorkspace_${user.uid}`;
+      localStorage.setItem(storageKey, workspace.id);
+    }
+  }, [user]);
 
   const handleWorkspacesChange = useCallback((newWorkspaces: Workspace[]) => {
     console.log('Atualizando lista de workspaces:', newWorkspaces.length);

@@ -5,7 +5,7 @@ interface ConfirmationModalProps {
     onClose: () => void;
     onConfirm: () => void;
     title: string;
-    message: string;
+    message: string | React.ReactNode;
     confirmText?: string;
     cancelText?: string;
     type?: 'danger' | 'warning' | 'info';
@@ -54,9 +54,11 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                         <div className={`size-12 rounded-full flex items-center justify-center flex-shrink-0 ${iconColors[type]}`}>
                             <span className="material-symbols-outlined text-2xl">{icons[type]}</span>
                         </div>
-                        <div>
+                        <div className="flex-1">
                             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">{title}</h3>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{message}</p>
+                            <div className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
+                                {typeof message === 'string' ? <p>{message}</p> : message}
+                            </div>
                         </div>
                     </div>
                 </div>

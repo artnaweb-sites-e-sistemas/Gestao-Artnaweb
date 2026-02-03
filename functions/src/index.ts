@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import cors from 'cors';
+import axios from 'axios';
 
 // Inicializar Firebase Admin apenas se ainda não foi inicializado
 if (!admin.apps.length) {
@@ -17,7 +18,29 @@ import { asaasWebhookHandler } from './asaas/webhook';
 
 // Exportar funções de cliente Asaas
 export const asaasCreateCustomer = functions.https.onCall(async (data, context) => {
-  return createAsaasCustomer(data, context);
+  try {
+    console.log('[asaasCreateCustomer wrapper] Função chamada', {
+      hasData: !!data,
+      hasContext: !!context,
+      hasAuth: !!context?.auth
+    });
+    const result = await createAsaasCustomer(data, context);
+    console.log('[asaasCreateCustomer wrapper] Função concluída com sucesso');
+    return result;
+  } catch (error: any) {
+    console.error('[asaasCreateCustomer wrapper] Erro capturado:', {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    });
+    // Se for HttpsError, re-lançar
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    // Converter para HttpsError
+    throw new functions.https.HttpsError('internal', error.message || 'Erro desconhecido');
+  }
 });
 
 export const asaasSearchCustomers = functions.https.onCall(async (data, context) => {
@@ -48,29 +71,41 @@ export const asaasWebhook = functions.https.onRequest((req, res) => {
   });
 });
 
+// Função de teste simples para verificar se callable functions funcionam
+export const testConnection = functions.https.onCall(async (data, context) => {
+  return { success: true, message: 'Função callable funcionando!', timestamp: new Date().toISOString() };
+});
+
 // Função para testar conexão com Asaas
 export const asaasTestConnection = functions.https.onCall(async (data, context) => {
-  console.log('asaasTestConnection chamada', { workspaceId: data?.workspaceId, hasAuth: !!context.auth });
-  
-  // Verificar se data foi passado
-  if (!data || !data.workspaceId) {
-    console.error('workspaceId não fornecido');
-    throw new functions.https.HttpsError('invalid-argument', 'workspaceId é obrigatório');
-  }
-  
-  const { workspaceId } = data;
-  
-  if (!context.auth) {
-    console.error('Usuário não autenticado');
-    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
-  }
+  console.log('[asaasTestConnection] Iniciando função', {
+    workspaceId: data?.workspaceId,
+    hasAuth: !!context.auth,
+    authUid: context.auth?.uid,
+    timestamp: new Date().toISOString()
+  });
 
   try {
+    // Verificar autenticação primeiro
+    if (!context.auth) {
+      console.error('[asaasTestConnection] Usuário não autenticado');
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    // Verificar se data foi passado
+    if (!data || !data.workspaceId) {
+      console.error('[asaasTestConnection] workspaceId não fornecido');
+      throw new functions.https.HttpsError('invalid-argument', 'workspaceId é obrigatório');
+    }
+
+    const { workspaceId } = data;
+    console.log('[asaasTestConnection] Buscando workspace:', workspaceId);
+
     const db = admin.firestore();
     const workspaceDoc = await db.collection('workspaces').doc(workspaceId).get();
-    
+
     if (!workspaceDoc.exists) {
-      console.error('Workspace não encontrado:', workspaceId);
+      console.error('[asaasTestConnection] Workspace não encontrado:', workspaceId);
       throw new functions.https.HttpsError('not-found', 'Workspace não encontrado');
     }
 
@@ -79,54 +114,98 @@ export const asaasTestConnection = functions.https.onCall(async (data, context) 
     const environment = workspace?.asaasEnvironment || 'sandbox';
 
     if (!apiKey) {
-      console.error('API Key não configurada');
+      console.error('[asaasTestConnection] API Key não configurada');
       throw new functions.https.HttpsError('failed-precondition', 'API Key do Asaas não configurada');
     }
 
-    console.log('Testando conexão com Asaas', { environment, hasApiKey: !!apiKey });
-    
-    // Importar axios dinamicamente
-    const axios = (await import('axios')).default;
-    
-    const baseUrl = environment === 'production' 
+    console.log('[asaasTestConnection] Testando conexão com Asaas', {
+      environment,
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length
+    });
+
+    // Axios já importado no topo do arquivo
+
+    const baseUrl = environment === 'production'
       ? 'https://api.asaas.com/v3'
       : 'https://sandbox.asaas.com/api/v3';
 
-    // Testar conexão buscando informações da conta
-    const response = await axios.get(`${baseUrl}/myAccount`, {
-      headers: {
-        'access_token': apiKey,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000 // 10 segundos de timeout
-    });
+    console.log('[asaasTestConnection] Fazendo requisição para:', baseUrl);
 
-    console.log('Conexão com Asaas bem-sucedida', { accountName: response.data.name });
+    // Testar conexão buscando informações da conta
+    let response;
+    try {
+      response = await axios.get(`${baseUrl}/myAccount`, {
+        headers: {
+          'access_token': apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000 // 15 segundos de timeout
+      });
+      console.log('[asaasTestConnection] Resposta recebida:', {
+        status: response.status,
+        hasData: !!response.data,
+        accountName: response.data?.name
+      });
+    } catch (axiosError: any) {
+      console.error('[asaasTestConnection] Erro na requisição axios:', {
+        message: axiosError.message,
+        code: axiosError.code,
+        response: axiosError.response?.data,
+        status: axiosError.response?.status
+      });
+
+      if (axiosError.response?.status === 401) {
+        throw new functions.https.HttpsError('permission-denied', 'API Key inválida ou expirada');
+      }
+
+      if (axiosError.code === 'ECONNABORTED' || axiosError.message?.includes('timeout')) {
+        throw new functions.https.HttpsError('deadline-exceeded', 'Timeout ao conectar com Asaas. Verifique sua conexão e tente novamente.');
+      }
+
+      if (axiosError.response?.status) {
+        throw new functions.https.HttpsError('internal', `Erro do Asaas: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
+      }
+
+      throw new functions.https.HttpsError('internal', `Erro ao conectar com Asaas: ${axiosError.message}`);
+    }
+
+    if (!response || !response.data) {
+      console.error('[asaasTestConnection] Resposta inválida do Asaas');
+      throw new functions.https.HttpsError('internal', 'Resposta inválida do Asaas');
+    }
+
+    console.log('[asaasTestConnection] Conexão bem-sucedida', {
+      accountName: response.data.name,
+      email: response.data.email
+    });
 
     return {
       success: true,
-      accountName: response.data.name,
-      email: response.data.email,
+      accountName: response.data.name || 'Conta Asaas',
+      email: response.data.email || '',
       environment
     };
   } catch (error: any) {
-    console.error('Erro ao testar conexão Asaas:', error);
-    console.error('Detalhes do erro:', {
+    console.error('[asaasTestConnection] Erro capturado:', {
       message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-      code: error.code
+      code: error.code,
+      name: error.name,
+      isHttpsError: error instanceof functions.https.HttpsError
     });
-    
-    if (error.response?.status === 401) {
-      throw new functions.https.HttpsError('permission-denied', 'API Key inválida');
+
+    // Se for um HttpsError do Firebase, re-lançar (isso garante que o Firebase trata corretamente)
+    if (error instanceof functions.https.HttpsError) {
+      console.log('[asaasTestConnection] Re-lançando HttpsError:', error.code, error.message);
+      throw error;
     }
-    
-    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      throw new functions.https.HttpsError('deadline-exceeded', 'Timeout ao conectar com Asaas. Tente novamente.');
-    }
-    
-    throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com Asaas');
+
+    // Para qualquer outro erro, converter para HttpsError
+    console.error('[asaasTestConnection] Convertendo erro genérico para HttpsError');
+    throw new functions.https.HttpsError(
+      'internal',
+      error.message || 'Erro desconhecido ao conectar com Asaas'
+    );
   }
 });
 

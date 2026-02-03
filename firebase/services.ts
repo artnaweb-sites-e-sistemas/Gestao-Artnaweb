@@ -209,34 +209,56 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
 };
 
 // Atualizar avatar de todos os projetos do mesmo cliente
-export const updateClientAvatarInAllProjects = async (clientName: string, avatarUrl: string, workspaceId?: string | null, userId?: string | null): Promise<void> => {
+export const updateClientAvatarInAllProjects = async (
+  clientName: string, 
+  avatarUrl: string, 
+  workspaceId?: string | null, 
+  userId?: string | null,
+  clientId?: string | null
+): Promise<void> => {
   try {
     if (!db) {
       throw new Error("Firebase não está inicializado");
     }
 
-    const conditions: any[] = [where("client", "==", clientName)];
-
+    // Buscar projetos por clientId (prioridade) ou por nome do cliente
+    const projectIds = new Set<string>();
+    
+    // Buscar por clientId se fornecido
+    if (clientId) {
+      const conditionsById: any[] = [where("clientId", "==", clientId)];
+      if (workspaceId) {
+        conditionsById.push(where("workspaceId", "==", workspaceId));
+      }
+      const qById = query(collection(db, PROJECTS_COLLECTION), ...conditionsById);
+      const snapshotById = await getDocs(qById);
+      snapshotById.docs.forEach(doc => projectIds.add(doc.id));
+    }
+    
+    // Buscar por nome do cliente (compatibilidade com projetos antigos)
+    const conditionsByName: any[] = [where("client", "==", clientName)];
     if (workspaceId) {
-      conditions.push(where("workspaceId", "==", workspaceId));
+      conditionsByName.push(where("workspaceId", "==", workspaceId));
     }
-
     if (userId) {
-      conditions.push(where("userId", "==", userId));
+      conditionsByName.push(where("userId", "==", userId));
     }
+    const qByName = query(collection(db, PROJECTS_COLLECTION), ...conditionsByName);
+    const snapshotByName = await getDocs(qByName);
+    snapshotByName.docs.forEach(doc => projectIds.add(doc.id));
 
-    const q = query(collection(db, PROJECTS_COLLECTION), ...conditions);
-    const querySnapshot = await getDocs(q);
+    // Atualizar todos os projetos encontrados
+    if (projectIds.size > 0) {
+      const updatePromises = Array.from(projectIds).map(projectId =>
+        updateDoc(doc(db, PROJECTS_COLLECTION, projectId), {
+          avatar: avatarUrl,
+          updatedAt: new Date()
+        })
+      );
 
-    // Atualizar todos os projetos do mesmo cliente
-    const updatePromises = querySnapshot.docs.map(docRef =>
-      updateDoc(docRef.ref, {
-        avatar: avatarUrl,
-        updatedAt: new Date()
-      })
-    );
-
-    await Promise.all(updatePromises);
+      await Promise.all(updatePromises);
+      console.log(`✅ [updateClientAvatarInAllProjects] ${projectIds.size} projeto(s) atualizado(s) com novo avatar`);
+    }
   } catch (error) {
     console.error("Error updating client avatar in all projects:", error);
     throw error;
@@ -1649,6 +1671,29 @@ export const uploadProjectAvatar = async (projectId: string, file: File): Promis
   }
 };
 
+// Upload client avatar
+export const uploadClientAvatar = async (clientId: string, file: File): Promise<string> => {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage não está inicializado");
+    }
+
+    // Criar referência no Storage
+    const fileRef = ref(storage, `clients/${clientId}/avatar/${Date.now()}_${file.name}`);
+
+    // Fazer upload do arquivo
+    const snapshot = await uploadBytes(fileRef, file);
+
+    // Obter URL de download
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    return downloadURL;
+  } catch (error) {
+    console.error("Error uploading client avatar:", error);
+    throw error;
+  }
+};
+
 export const uploadProjectImage = async (projectId: string, file: File, userId?: string | null): Promise<string> => {
   try {
     if (!storage) {
@@ -2266,11 +2311,47 @@ export const addClient = async (client: Omit<Client, 'id'>): Promise<string> => 
   try {
     if (!db) throw new Error("Firebase não está inicializado");
 
-    const clientData = {
-      ...client,
-      createdAt: new Date(),
+    // Remover campos undefined (Firestore não aceita undefined)
+    const clientData: any = {
+      name: client.name,
+      workspaceId: client.workspaceId,
+      createdAt: client.createdAt || new Date(),
       updatedAt: new Date()
     };
+
+    // Adicionar campos opcionais apenas se não forem undefined
+    if (client.email !== undefined && client.email !== null && client.email !== '') {
+      clientData.email = client.email;
+    }
+    if (client.cpfCnpj !== undefined && client.cpfCnpj !== null && client.cpfCnpj !== '') {
+      clientData.cpfCnpj = client.cpfCnpj;
+    }
+    if (client.phone !== undefined && client.phone !== null && client.phone !== '') {
+      clientData.phone = client.phone;
+    }
+    if (client.mobilePhone !== undefined && client.mobilePhone !== null && client.mobilePhone !== '') {
+      clientData.mobilePhone = client.mobilePhone;
+    }
+    if (client.avatar !== undefined && client.avatar !== null && client.avatar !== '') {
+      clientData.avatar = client.avatar;
+    }
+    if (client.asaasCustomerId !== undefined && client.asaasCustomerId !== null && client.asaasCustomerId !== '') {
+      clientData.asaasCustomerId = client.asaasCustomerId;
+    }
+    if (client.address !== undefined && client.address !== null) {
+      const address: any = {};
+      if (client.address.street) address.street = client.address.street;
+      if (client.address.number) address.number = client.address.number;
+      if (client.address.complement) address.complement = client.address.complement;
+      if (client.address.neighborhood) address.neighborhood = client.address.neighborhood;
+      if (client.address.city) address.city = client.address.city;
+      if (client.address.state) address.state = client.address.state;
+      if (client.address.postalCode) address.postalCode = client.address.postalCode;
+      
+      if (Object.keys(address).length > 0) {
+        clientData.address = address;
+      }
+    }
 
     const docRef = await addDoc(collection(db, CLIENTS_COLLECTION), clientData);
     console.log(`✅ [addClient] Cliente criado com sucesso! ID: ${docRef.id}`);
@@ -2286,11 +2367,30 @@ export const updateClient = async (clientId: string, updates: Partial<Client>): 
   try {
     if (!db) throw new Error("Firebase não está inicializado");
 
-    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
-    await updateDoc(clientRef, {
-      ...updates,
+    // Remover campos undefined (Firestore não aceita undefined)
+    const updateData: any = {
       updatedAt: new Date()
+    };
+
+    // Adicionar apenas campos que não são undefined
+    Object.keys(updates).forEach(key => {
+      const value = (updates as any)[key];
+      if (value !== undefined && value !== null) {
+        // Se for objeto (como address), verificar se tem propriedades
+        if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          const objKeys = Object.keys(value);
+          if (objKeys.length > 0) {
+            updateData[key] = value;
+          }
+        } else if (value !== '') {
+          // Não adicionar strings vazias
+          updateData[key] = value;
+        }
+      }
     });
+
+    const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
+    await updateDoc(clientRef, updateData);
     console.log(`✅ [updateClient] Cliente atualizado! ID: ${clientId}`);
   } catch (error) {
     console.error("Error updating client:", error);
@@ -2398,18 +2498,28 @@ export const getClients = async (workspaceId: string): Promise<Client[]> => {
   try {
     if (!db) throw new Error("Firebase não está inicializado");
 
+    // Remover orderBy temporariamente enquanto índice está sendo construído
+    // A ordenação será feita no cliente
     const q = query(
       collection(db, CLIENTS_COLLECTION),
-      where("workspaceId", "==", workspaceId),
-      orderBy("name", "asc")
+      where("workspaceId", "==", workspaceId)
     );
 
     const querySnapshot = await getDocs(q);
     
-    return querySnapshot.docs.map(doc => ({
+    const clients = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     })) as Client[];
+    
+    // Ordenar no cliente por nome (enquanto índice está sendo construído)
+    clients.sort((a, b) => {
+      const nameA = (a.name || '').toLowerCase();
+      const nameB = (b.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    
+    return clients;
   } catch (error) {
     console.error("Error getting clients:", error);
     return [];
@@ -2424,10 +2534,11 @@ export const subscribeToClients = (callback: (clients: Client[]) => void, worksp
     return () => {};
   }
 
+  // Usar apenas where enquanto o índice composto está sendo construído
+  // A ordenação será feita no cliente
   const q = query(
     collection(db, CLIENTS_COLLECTION),
-    where("workspaceId", "==", workspaceId),
-    orderBy("name", "asc")
+    where("workspaceId", "==", workspaceId)
   );
 
   return onSnapshot(q, (snapshot) => {
@@ -2436,11 +2547,25 @@ export const subscribeToClients = (callback: (clients: Client[]) => void, worksp
       ...doc.data()
     })) as Client[];
     
+    // Ordenar no cliente por nome (enquanto índice está sendo construído)
+    clients.sort((a, b) => {
+      const nameA = (a.name || '').toLowerCase();
+      const nameB = (b.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    
     console.log(`📋 [subscribeToClients] Carregados ${clients.length} clientes`);
     callback(clients);
   }, (error) => {
     console.error("Error subscribing to clients:", error);
-    callback([]);
+    // Se o erro for sobre índice ainda sendo construído, tentar novamente sem orderBy
+    if (error.code === 'failed-precondition' && error.message?.includes('index')) {
+      console.log('⚠️ Índice ainda sendo construído, usando ordenação no cliente');
+      // A query já está sem orderBy, então apenas retornar array vazio
+      callback([]);
+    } else {
+      callback([]);
+    }
   });
 };
 
@@ -2478,5 +2603,130 @@ export const searchClients = async (searchTerm: string, workspaceId: string): Pr
   } catch (error) {
     console.error("Error searching clients:", error);
     return [];
+  }
+};
+
+// Sincronizar clientes antigos dos projetos (migração)
+export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
+  clientsCreated: number;
+  projectsUpdated: number;
+  clients: { name: string; clientId: string; projectCount: number }[];
+}> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    console.log('🔄 [syncOldClientsFromProjects] Iniciando sincronização de clientes antigos...');
+
+    // 1. Buscar todos os projetos do workspace que têm `client` mas não têm `clientId`
+    const projectsQuery = query(
+      collection(db, PROJECTS_COLLECTION),
+      where("workspaceId", "==", workspaceId)
+    );
+    const projectsSnapshot = await getDocs(projectsQuery);
+    
+    const projectsWithoutClientId: Array<{ id: string; client: string }> = [];
+    projectsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.client && !data.clientId) {
+        projectsWithoutClientId.push({
+          id: doc.id,
+          client: data.client.trim()
+        });
+      }
+    });
+
+    if (projectsWithoutClientId.length === 0) {
+      console.log('✅ [syncOldClientsFromProjects] Nenhum projeto antigo encontrado para sincronizar');
+      return { clientsCreated: 0, projectsUpdated: 0, clients: [] };
+    }
+
+    console.log(`📋 [syncOldClientsFromProjects] Encontrados ${projectsWithoutClientId.length} projetos sem clientId`);
+
+    // 2. Agrupar por nome de cliente (case-insensitive)
+    const clientNamesMap = new Map<string, string[]>(); // nome normalizado -> [nomes originais]
+    const clientNamesToProjects = new Map<string, string[]>(); // nome normalizado -> [projectIds]
+    
+    projectsWithoutClientId.forEach(project => {
+      const normalizedName = project.client.toLowerCase().trim();
+      if (!clientNamesMap.has(normalizedName)) {
+        clientNamesMap.set(normalizedName, []);
+        clientNamesToProjects.set(normalizedName, []);
+      }
+      // Guardar o nome original (primeira ocorrência)
+      if (!clientNamesMap.get(normalizedName)!.includes(project.client)) {
+        clientNamesMap.get(normalizedName)!.push(project.client);
+      }
+      clientNamesToProjects.get(normalizedName)!.push(project.id);
+    });
+
+    console.log(`👥 [syncOldClientsFromProjects] Encontrados ${clientNamesMap.size} clientes únicos para processar`);
+
+    // 3. Para cada cliente único, verificar se já existe na coleção `clients`
+    let clientsCreated = 0;
+    let projectsUpdated = 0;
+    const createdClients: { name: string; clientId: string; projectCount: number }[] = [];
+
+    for (const [normalizedName, originalNames] of clientNamesMap.entries()) {
+      const clientName = originalNames[0]; // Usar o primeiro nome original encontrado
+      const projectIds = clientNamesToProjects.get(normalizedName)!;
+
+      // Verificar se já existe um cliente com esse nome
+      let existingClient = await getClientByName(clientName, workspaceId);
+
+      if (!existingClient) {
+        // Criar novo cliente (só com nome, sem email/CPF pois não temos esses dados dos projetos antigos)
+        // Não gerar avatar automaticamente - deixar sem foto (aparecerá com bordas tracejadas)
+        console.log(`➕ [syncOldClientsFromProjects] Criando cliente: "${clientName}"`);
+        const newClientId = await addClient({
+          name: clientName,
+          workspaceId,
+          createdAt: new Date()
+        });
+        
+        existingClient = await getClient(newClientId);
+        clientsCreated++;
+        
+        if (existingClient) {
+          createdClients.push({
+            name: clientName,
+            clientId: existingClient.id,
+            projectCount: projectIds.length
+          });
+        }
+      } else {
+        console.log(`✓ [syncOldClientsFromProjects] Cliente já existe: "${clientName}"`);
+        createdClients.push({
+          name: clientName,
+          clientId: existingClient.id,
+          projectCount: projectIds.length
+        });
+      }
+
+      // 4. Atualizar todos os projetos desse cliente para incluir o `clientId`
+      if (existingClient) {
+        const updatePromises = projectIds.map(projectId => 
+          updateDoc(doc(db, PROJECTS_COLLECTION, projectId), {
+            clientId: existingClient!.id,
+            updatedAt: new Date()
+          })
+        );
+        await Promise.all(updatePromises);
+        projectsUpdated += projectIds.length;
+        console.log(`🔗 [syncOldClientsFromProjects] ${projectIds.length} projetos vinculados ao cliente "${clientName}"`);
+      }
+    }
+
+    console.log(`✅ [syncOldClientsFromProjects] Sincronização concluída!`);
+    console.log(`   - Clientes criados: ${clientsCreated}`);
+    console.log(`   - Projetos atualizados: ${projectsUpdated}`);
+
+    return {
+      clientsCreated,
+      projectsUpdated,
+      clients: createdClients
+    };
+  } catch (error) {
+    console.error("Error syncing old clients from projects:", error);
+    throw error;
   }
 };

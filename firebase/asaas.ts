@@ -82,9 +82,29 @@ export const createAsaasCustomer = async (data: AsaasCustomerData): Promise<{
   asaasCustomerId: string;
   message: string;
 }> => {
-  const createCustomer = httpsCallable(functions, 'asaasCreateCustomer');
-  const result = await createCustomer(data);
-  return result.data as any;
+  try {
+    console.log('[createAsaasCustomer frontend] Chamando função', { 
+      workspaceId: data.workspaceId, 
+      clientId: data.clientId 
+    });
+    const createCustomer = httpsCallable(functions, 'asaasCreateCustomer');
+    const result = await createCustomer(data);
+    console.log('[createAsaasCustomer frontend] Função retornou com sucesso');
+    return result.data as any;
+  } catch (error: any) {
+    console.error('[createAsaasCustomer frontend] Erro ao chamar função:', {
+      code: error.code,
+      message: error.message,
+      details: error.details
+    });
+    
+    // Se for erro de CORS ou rede, dar mensagem mais clara
+    if (error.code === 'functions/unavailable' || error.message?.includes('CORS') || error.message?.includes('Failed to fetch')) {
+      throw new Error('Não foi possível conectar com o servidor. Verifique sua conexão e se as Functions foram deployadas corretamente.');
+    }
+    
+    throw error;
+  }
 };
 
 /**
@@ -179,6 +199,20 @@ export const cancelAsaasPayment = async (
 // ==========================================
 // Funções de Configuração/Teste
 // ==========================================
+
+/**
+ * Testar se funções callable estão funcionando
+ */
+export const testConnection = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const testFn = httpsCallable(functions, 'testConnection');
+    const result = await testFn({});
+    return result.data as any;
+  } catch (error: any) {
+    console.error('Erro ao testar conexão básica:', error);
+    throw error;
+  }
+};
 
 /**
  * Testar conexão com Asaas

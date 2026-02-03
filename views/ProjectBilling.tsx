@@ -1180,7 +1180,7 @@ const EditInvoiceModal: React.FC<{
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">Editar Fatura</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Editar Fatura</h2>
             <button
               type="button"
               onClick={onClose}
@@ -1191,24 +1191,24 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Número da Fatura</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Número da Fatura</label>
             <input
               type="text"
               value={formData.number}
               onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary focus:border-primary"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Descrição</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Descrição</label>
             <input
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Ex: Fatura principal do projeto"
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary focus:border-primary"
               required
             />
           </div>
@@ -1272,11 +1272,11 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Status</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Status</label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Paid' | 'Pending' | 'Overdue' })}
-              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
             >
               <option value="Pending">Pendente</option>
               <option value="Paid">Pago</option>
@@ -1288,7 +1288,7 @@ const EditInvoiceModal: React.FC<{
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+              className="px-6 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 transition-colors"
             >
               Cancelar
             </button>

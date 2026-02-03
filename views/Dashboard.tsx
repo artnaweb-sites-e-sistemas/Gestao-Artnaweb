@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Project, Stage, Workspace, Category, parseSafeDate, projectHasRecurringType } from '../types';
+import { Project, Stage, Workspace, Category, parseSafeDate, projectHasRecurringType, Client } from '../types';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
 import {
   subscribeToProjects,
@@ -21,8 +21,12 @@ import {
   deleteProject,
   removeProjectStageId,
   addInvoice,
-  updateCategoriesOrder
+  updateCategoriesOrder,
+  getClients,
+  addClient,
+  updateClient
 } from '../firebase/services';
+import { createAsaasCustomer } from '../firebase/asaas';
 
 interface DashboardProps {
   onProjectClick?: (project: Project) => void;
@@ -1463,6 +1467,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
             ? recalculateStageProgress(currentFixedStages.map(s => ({ ...s, workspaceId: currentWorkspace?.id })))
             : stages}
           workspaceId={currentWorkspace?.id}
+          workspace={currentWorkspace}
           selectedFilter={selectedFilter}
           existingProjects={projects}
           userId={userId}
@@ -1546,6 +1551,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 projectImage: '',
                 budget: projectData.budget || 0,
                 isPaid: projectData.isPaid || false,
+                // Vincular projeto ao cliente via clientId (para integração Asaas)
+                clientId: (projectData as any).clientId,
               };
               const projectId = await addProjectToFirebase(newProject, currentWorkspace?.id, userId);
 
@@ -2477,7 +2484,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
           <div className="space-y-2 mb-3">
             {project.maintenanceDate && (
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
-                <span className="material-symbols-outlined text-sm">build</span>
+                <span className={`material-symbols-outlined text-sm ${getDateColor(project.maintenanceDate)}`}>build</span>
                 <span>
                   Manutenção: {parseSafeDate(project.maintenanceDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
@@ -2485,7 +2492,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
             )}
             {project.reportDate && (
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
-                <span className="material-symbols-outlined text-sm">description</span>
+                <span className={`material-symbols-outlined text-sm ${getDateColor(project.reportDate)}`}>description</span>
                 <span>
                   Relatório: {parseSafeDate(project.reportDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
@@ -2845,8 +2852,12 @@ const ListView: React.FC<{
                           {project.maintenanceDate && (() => {
                             const date = parseSafeDate(project.maintenanceDate);
                             if (!date) return null;
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                            const isLate = dateOnly < today;
                             return (
-                              <div className="flex items-center gap-1 min-w-0 text-blue-600 dark:text-blue-400" title="Data da Manutenção">
+                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`} title="Data da Manutenção">
                                 <span className="material-symbols-outlined text-[14px] flex-shrink-0">build</span>
                                 <span className="text-[10px] font-bold truncate whitespace-nowrap">
                                   Manutenção: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
@@ -2857,8 +2868,12 @@ const ListView: React.FC<{
                           {project.reportDate && (() => {
                             const date = parseSafeDate(project.reportDate);
                             if (!date) return null;
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                            const isLate = dateOnly < today;
                             return (
-                              <div className="flex items-center gap-1 min-w-0 text-purple-600 dark:text-purple-400" title="Data do Relatório">
+                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} title="Data do Relatório">
                                 <span className="material-symbols-outlined text-[14px] flex-shrink-0">description</span>
                                 <span className="text-[10px] font-bold truncate whitespace-nowrap">
                                   Relatório: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
@@ -3542,12 +3557,13 @@ const AddProjectModal: React.FC<{
   categories: Category[];
   stages: Stage[];
   workspaceId?: string | null;
+  workspace?: Workspace | null;
   selectedFilter?: string;
   existingProjects?: Project[];
   userId?: string | null;
   onClose: () => void;
   onSave: (project: Partial<Project>) => Promise<void>
-}> = ({ categories, stages, workspaceId, selectedFilter, existingProjects = [], userId, onClose, onSave }) => {
+}> = ({ categories, stages, workspaceId, workspace, selectedFilter, existingProjects = [], userId, onClose, onSave }) => {
   // Determinar o tipo/serviço inicial baseado no filtro selecionado
   const getInitialType = () => {
     if (selectedFilter && selectedFilter !== 'all' && selectedFilter !== 'sem-categoria') {
@@ -3642,47 +3658,110 @@ const AddProjectModal: React.FC<{
       return { ...prev, types: newTypes, type: newTypes[0] || '' };
     });
   };
-  const [availableClients, setAvailableClients] = useState<string[]>([]);
+  // Estados para clientes completos
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
-  const [filteredClients, setFilteredClients] = useState<string[]>([]);
+  const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const clientInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientAvatar, setClientAvatar] = useState<string>(''); // Avatar do cliente selecionado
+  const clientManuallySelectedRef = useRef(false); // Flag para rastrear seleção manual
+  
+  // Estados para campos expandidos de cliente
+  const [showClientFields, setShowClientFields] = useState(false);
+  const [clientData, setClientData] = useState({
+    email: '',
+    cpfCnpj: '',
+    phone: ''
+  });
 
   // Estados para autocomplete de projetos
   const [availableProjectNames, setAvailableProjectNames] = useState<string[]>([]);
   const [showProjectSuggestions, setShowProjectSuggestions] = useState(false);
   const [filteredProjects, setFilteredProjects] = useState<string[]>([]);
   const projectInputRef = useRef<HTMLInputElement>(null);
+  const projectManuallySelectedRef = useRef(false); // Flag para rastrear seleção manual
 
+  // Carregar clientes completos
   useEffect(() => {
-    getUniqueClients(workspaceId).then(clients => {
-      setAvailableClients(clients);
-    });
+    if (workspaceId) {
+      getClients(workspaceId).then(clientsList => {
+        setClients(clientsList);
+        // Também manter lista de nomes para compatibilidade com sugestões
+        const clientNames = clientsList.map(c => c.name);
+        setFilteredClients(clientsList);
+      });
+    }
   }, [workspaceId]);
 
-  // Carregar nomes de projetos existentes do workspace
+  // Carregar nomes de projetos existentes do workspace, filtrados por cliente selecionado
   useEffect(() => {
-    const projectNames = existingProjects.map(p => p.name).filter(Boolean);
+    let projectNames: string[] = [];
+    
+    if (selectedClient) {
+      // Se há cliente selecionado, filtrar apenas projetos desse cliente
+      projectNames = existingProjects
+        .filter(p => {
+          // Verificar se o projeto pertence ao cliente pelo nome ou pelo ID
+          return (p.client && p.client.toLowerCase() === selectedClient.name.toLowerCase()) ||
+                 (p.clientId && p.clientId === selectedClient.id);
+        })
+        .map(p => p.name)
+        .filter(Boolean);
+    } else if (formData.client.trim()) {
+      // Se há nome de cliente digitado mas não selecionado, filtrar por nome
+      projectNames = existingProjects
+        .filter(p => p.client && p.client.toLowerCase() === formData.client.toLowerCase())
+        .map(p => p.name)
+        .filter(Boolean);
+    } else {
+      // Se não há cliente, não mostrar nenhum projeto
+      projectNames = [];
+    }
+    
     setAvailableProjectNames([...new Set(projectNames)]);
-  }, [existingProjects]);
+  }, [existingProjects, selectedClient, formData.client]);
 
   // Buscar avatar do cliente quando o cliente for selecionado
   useEffect(() => {
     if (formData.client.trim()) {
-      // Buscar o primeiro projeto desse cliente que tenha avatar
-      const clientProject = existingProjects.find(p =>
-        p.client === formData.client && p.avatar && p.avatar.trim() !== ''
-      );
-      if (clientProject) {
-        setClientAvatar(clientProject.avatar);
+      // Priorizar avatar da entidade Client
+      if (selectedClient) {
+        // Se cliente completo tem avatar, usar diretamente
+        if (selectedClient.avatar && selectedClient.avatar.trim() !== '') {
+          setClientAvatar(selectedClient.avatar);
+        } else {
+          // Se não tem avatar no cliente, buscar em projetos existentes como fallback
+          const clientProject = existingProjects.find(p =>
+            (p.client === formData.client || p.clientId === selectedClient.id) && 
+            p.avatar && p.avatar.trim() !== ''
+          );
+          if (clientProject) {
+            setClientAvatar(clientProject.avatar);
+          } else {
+            // Gerar avatar baseado no nome se não encontrar
+            const seed = selectedClient.name.toLowerCase().replace(/\s+/g, '');
+            setClientAvatar(`https://picsum.photos/seed/${seed}/80/80`);
+          }
+        }
       } else {
-        setClientAvatar(''); // Limpar avatar se não encontrar
+        // Buscar o primeiro projeto desse cliente que tenha avatar
+        const clientProject = existingProjects.find(p =>
+          p.client === formData.client && p.avatar && p.avatar.trim() !== ''
+        );
+        if (clientProject) {
+          setClientAvatar(clientProject.avatar);
+        } else {
+          // Gerar avatar baseado no nome se não encontrar
+          const seed = formData.client.toLowerCase().replace(/\s+/g, '');
+          setClientAvatar(`https://picsum.photos/seed/${seed}/80/80`);
+        }
       }
     } else {
       setClientAvatar(''); // Limpar avatar se cliente estiver vazio
     }
-  }, [formData.client, existingProjects]);
+  }, [formData.client, existingProjects, selectedClient]);
 
   // Atualizar tipos quando categorias forem carregadas e selectedFilter estiver definido
   useEffect(() => {
@@ -3738,19 +3817,130 @@ const AddProjectModal: React.FC<{
     }
   }, [formData.types, availableStages]);
 
+  // Funções de formatação
+  const formatCpfCnpj = (value: string): string => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+      // CPF: 000.000.000-00
+      return numbers
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    } else {
+      // CNPJ: 00.000.000/0000-00
+      return numbers
+        .replace(/(\d{2})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1/$2')
+        .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+    }
+  };
+
+  const formatPhone = (value: string): string => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 10) {
+      // Telefone fixo: (00) 0000-0000
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d{1,4})$/, '$1-$2');
+    } else {
+      // Celular: (00) 00000-0000
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
+    }
+  };
+
+  // Detectar se cliente existe e tem dados completos
+  const previousClientIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const clientName = formData.client.trim();
+    if (clientName) {
+      // Buscar cliente por nome
+      const foundClient = clients.find(c => 
+        c.name.toLowerCase() === clientName.toLowerCase()
+      );
+      
+      if (foundClient) {
+        // Se o cliente mudou, limpar o campo de projeto para forçar nova seleção
+        if (previousClientIdRef.current !== foundClient.id) {
+          setFormData(prev => ({ ...prev, name: '' }));
+          previousClientIdRef.current = foundClient.id;
+        }
+        setSelectedClient(foundClient);
+        // Verificar se tem dados completos (email e CPF/CNPJ)
+        const hasCompleteData = foundClient.email && foundClient.cpfCnpj;
+        setShowClientFields(!hasCompleteData);
+        
+        // Se não tem dados completos, preencher campos com dados existentes
+        if (!hasCompleteData) {
+          setClientData({
+            email: foundClient.email || '',
+            cpfCnpj: foundClient.cpfCnpj || '',
+            phone: foundClient.phone || foundClient.mobilePhone || ''
+          });
+        } else {
+          // Limpar campos se cliente tem dados completos
+          setClientData({ email: '', cpfCnpj: '', phone: '' });
+        }
+      } else {
+        // Cliente não existe, mostrar campos para cadastro
+        // Se havia um cliente selecionado antes, limpar o campo de projeto
+        if (previousClientIdRef.current !== null) {
+          setFormData(prev => ({ ...prev, name: '' }));
+          previousClientIdRef.current = null;
+        }
+        setSelectedClient(null);
+        setShowClientFields(true);
+        setClientData({ email: '', cpfCnpj: '', phone: '' });
+      }
+    } else {
+      // Se o campo de cliente foi limpo, também limpar o campo de projeto
+      if (previousClientIdRef.current !== null) {
+        setFormData(prev => ({ ...prev, name: '' }));
+        previousClientIdRef.current = null;
+      }
+      setSelectedClient(null);
+      setShowClientFields(false);
+      setClientData({ email: '', cpfCnpj: '', phone: '' });
+    }
+  }, [formData.client, clients]);
+
   // Filter clients based on input
   useEffect(() => {
     if (formData.client.trim()) {
-      const filtered = availableClients.filter(client =>
-        client.toLowerCase().includes(formData.client.toLowerCase())
+      const filtered = clients.filter(client =>
+        client.name.toLowerCase().includes(formData.client.toLowerCase())
       );
       setFilteredClients(filtered);
-      setShowClientSuggestions(filtered.length > 0);
+      
+      // Se foi selecionado manualmente, não mostrar dropdown
+      if (clientManuallySelectedRef.current) {
+        clientManuallySelectedRef.current = false; // Resetar flag
+        setShowClientSuggestions(false);
+      } else {
+        // Se não foi selecionado manualmente e há resultados, mostrar sugestões
+        if (filtered.length > 0) {
+          // Só mostrar se o input estiver focado ou se houver múltiplos resultados
+          const exactMatch = clients.find(c => 
+            c.name.toLowerCase() === formData.client.toLowerCase()
+          );
+          // Se não for correspondência exata ou houver múltiplos resultados, mostrar
+          if (!exactMatch || filtered.length > 1) {
+            setShowClientSuggestions(true);
+          } else {
+            setShowClientSuggestions(false);
+          }
+        } else {
+          setShowClientSuggestions(false);
+        }
+      }
     } else {
       setFilteredClients([]);
       setShowClientSuggestions(false);
+      clientManuallySelectedRef.current = false; // Resetar quando limpar
     }
-  }, [formData.client, availableClients]);
+  }, [formData.client, clients]);
 
   // Filter project names based on input
   useEffect(() => {
@@ -3759,25 +3949,62 @@ const AddProjectModal: React.FC<{
         name.toLowerCase().includes(formData.name.toLowerCase())
       );
       setFilteredProjects(filtered);
-      setShowProjectSuggestions(filtered.length > 0);
+      
+      // Se foi selecionado manualmente, não mostrar dropdown
+      if (projectManuallySelectedRef.current) {
+        projectManuallySelectedRef.current = false; // Resetar flag
+        setShowProjectSuggestions(false);
+      } else {
+        // Se não foi selecionado manualmente e há resultados, mostrar sugestões
+        if (filtered.length > 0) {
+          // Só mostrar se o input estiver focado ou se houver múltiplos resultados
+          const exactMatch = availableProjectNames.find(n => 
+            n.toLowerCase() === formData.name.toLowerCase()
+          );
+          // Se não for correspondência exata ou houver múltiplos resultados, mostrar
+          if (!exactMatch || filtered.length > 1) {
+            setShowProjectSuggestions(true);
+          } else {
+            setShowProjectSuggestions(false);
+          }
+        } else {
+          setShowProjectSuggestions(false);
+        }
+      }
     } else {
       setFilteredProjects([]);
       setShowProjectSuggestions(false);
+      projectManuallySelectedRef.current = false; // Resetar quando limpar
     }
   }, [formData.name, availableProjectNames]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (clientInputRef.current && !clientInputRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      
+      // Verificar se o clique foi dentro do container do dropdown
+      const clientContainer = clientInputRef.current;
+      const projectContainer = projectInputRef.current;
+      
+      // Verificar se clicou dentro do container de cliente (incluindo dropdown)
+      if (clientContainer && !clientContainer.contains(target)) {
         setShowClientSuggestions(false);
       }
-      if (projectInputRef.current && !projectInputRef.current.contains(event.target as Node)) {
+      
+      // Verificar se clicou dentro do container de projeto (incluindo dropdown)
+      if (projectContainer && !projectContainer.contains(target)) {
         setShowProjectSuggestions(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
+    
+    // Usar um pequeno delay para garantir que o onMouseDown execute primeiro
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 0);
+    
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
@@ -3825,11 +4052,124 @@ const AddProjectModal: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Validações
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateCpfCnpj = (cpfCnpj: string): boolean => {
+    const numbers = cpfCnpj.replace(/\D/g, '');
+    return numbers.length === 11 || numbers.length === 14;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.name && formData.client && !isSubmitting) {
+      // Validar campos de cliente apenas se preenchidos (não são obrigatórios)
+      if (showClientFields) {
+        // Validar email apenas se foi preenchido
+        if (clientData.email && !validateEmail(clientData.email)) {
+          alert('Por favor, insira um e-mail válido ou deixe o campo vazio.');
+          return;
+        }
+        // Validar CPF/CNPJ apenas se foi preenchido
+        if (clientData.cpfCnpj && !validateCpfCnpj(clientData.cpfCnpj)) {
+          alert('Por favor, insira um CPF (11 dígitos) ou CNPJ (14 dígitos) válido, ou deixe o campo vazio.');
+          return;
+        }
+      }
+
       setIsSubmitting(true);
       try {
+        let clientId: string | undefined = undefined;
+
+        // Criar ou atualizar cliente se necessário
+        if (showClientFields && workspaceId) {
+          if (selectedClient) {
+            // Cliente existe mas não tem dados completos, atualizar
+            // Preparar dados para atualização (sem campos undefined)
+            const clientUpdates: any = {};
+            if (clientData.email && clientData.email.trim()) {
+              clientUpdates.email = clientData.email.trim();
+            }
+            if (clientData.cpfCnpj && clientData.cpfCnpj.trim()) {
+              clientUpdates.cpfCnpj = clientData.cpfCnpj.replace(/\D/g, '');
+            }
+            if (clientData.phone && clientData.phone.trim()) {
+              clientUpdates.phone = clientData.phone.replace(/\D/g, '');
+            }
+            
+            if (Object.keys(clientUpdates).length > 0) {
+              await updateClient(selectedClient.id, clientUpdates);
+            }
+            clientId = selectedClient.id;
+            
+            // Se Asaas estiver configurado e cliente não estiver vinculado, tentar criar no Asaas automaticamente
+            // Só cria se tiver email e CPF/CNPJ (obrigatórios para Asaas)
+            if (workspace?.asaasApiKey && !selectedClient.asaasCustomerId && clientData.email && clientData.cpfCnpj) {
+              try {
+                await createAsaasCustomer({
+                  workspaceId: workspaceId,
+                  clientId: selectedClient.id,
+                  name: formData.client,
+                  email: clientData.email,
+                  cpfCnpj: clientData.cpfCnpj.replace(/\D/g, ''),
+                  phone: clientData.phone,
+                });
+                console.log('✅ Cliente criado no Asaas automaticamente');
+              } catch (error) {
+                console.error('Erro ao criar cliente no Asaas (não crítico):', error);
+                // Não bloquear criação do projeto se falhar criação no Asaas
+              }
+            }
+          } else {
+            // Cliente não existe, criar novo
+            // Preparar dados do cliente (sem campos undefined)
+            // Não gerar avatar automaticamente - deixar sem foto (aparecerá com bordas tracejadas)
+            const clientToAdd: any = {
+              name: formData.client,
+              workspaceId: workspaceId,
+            };
+            
+            // Adicionar campos opcionais apenas se tiverem valor
+            if (clientData.email && clientData.email.trim()) {
+              clientToAdd.email = clientData.email.trim();
+            }
+            if (clientData.cpfCnpj && clientData.cpfCnpj.trim()) {
+              clientToAdd.cpfCnpj = clientData.cpfCnpj.replace(/\D/g, '');
+            }
+            if (clientData.phone && clientData.phone.trim()) {
+              clientToAdd.phone = clientData.phone.replace(/\D/g, '');
+            }
+            
+            const newClientId = await addClient(clientToAdd);
+            clientId = newClientId;
+            
+            // Se Asaas estiver configurado, tentar criar no Asaas automaticamente
+            // Só cria se tiver email e CPF/CNPJ (obrigatórios para Asaas)
+            if (workspace?.asaasApiKey && clientData.email && clientData.cpfCnpj) {
+              try {
+                await createAsaasCustomer({
+                  workspaceId: workspaceId,
+                  clientId: newClientId,
+                  name: formData.client,
+                  email: clientData.email,
+                  cpfCnpj: clientData.cpfCnpj.replace(/\D/g, ''),
+                  phone: clientData.phone,
+                });
+                console.log('✅ Cliente criado no Asaas automaticamente');
+              } catch (error) {
+                console.error('Erro ao criar cliente no Asaas (não crítico):', error);
+                // Não bloquear criação do projeto se falhar criação no Asaas
+              }
+            }
+          }
+        } else if (selectedClient && selectedClient.id) {
+          // Cliente existe e tem dados completos, usar ID existente
+          clientId = selectedClient.id;
+        }
+
         // Incluir avatar do cliente se existir e o array de tipos
         // Se não houver tipos selecionados, usar array vazio (não adicionar "Sem categoria" automaticamente)
         const finalTypes = formData.types.length > 0
@@ -3839,23 +4179,30 @@ const AddProjectModal: React.FC<{
         // Se realmente não houver nenhum tipo, adicionar "Sem categoria"
         const projectTypes = finalTypes.length > 0 ? finalTypes : ['Sem categoria'];
 
-        const projectData = {
+        const projectData: any = {
           ...formData,
-          avatar: clientAvatar,
           types: projectTypes,
           type: projectTypes[0] || '', // Primeiro tipo para compatibilidade
           stageId: formData.stageId, // Garantir que stageId seja passado
+          clientId: clientId, // Vincular projeto ao cliente
         };
+        
+        // Adicionar avatar apenas se existir (não gerar automaticamente)
+        if (clientAvatar && clientAvatar.trim() !== '') {
+          projectData.avatar = clientAvatar;
+        }
         console.log('📝 [AddProjectModal] Enviando dados do projeto:', {
           stageId: projectData.stageId,
           status: projectData.status,
-          types: projectData.types
+          types: projectData.types,
+          clientId: projectData.clientId
         });
         await onSave(projectData as any);
         // Modal será fechado pelo onSave
       } catch (error) {
         console.error("Error in handleSubmit:", error);
         setIsSubmitting(false);
+        alert('Erro ao criar projeto. Tente novamente.');
       }
     }
   };
@@ -3879,7 +4226,11 @@ const AddProjectModal: React.FC<{
               <input
                 type="text"
                 value={formData.client}
-                onChange={(e) => setFormData({ ...formData, client: e.target.value })}
+                onChange={(e) => {
+                  // Resetar flag quando usuário começar a digitar
+                  clientManuallySelectedRef.current = false;
+                  setFormData({ ...formData, client: e.target.value });
+                }}
                 onFocus={() => {
                   if (formData.client.trim() && filteredClients.length > 0) {
                     setShowClientSuggestions(true);
@@ -3891,22 +4242,91 @@ const AddProjectModal: React.FC<{
               />
               {showClientSuggestions && filteredClients.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                  {filteredClients.map((client, index) => (
+                  {filteredClients.map((client) => (
                     <button
-                      key={index}
+                      key={client.id}
                       type="button"
-                      onClick={() => {
-                        setFormData({ ...formData, client });
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Marcar como selecionado manualmente
+                        clientManuallySelectedRef.current = true;
+                        // Atualizar o valor do cliente
+                        setFormData(prev => ({ ...prev, client: client.name }));
+                        // Fechar dropdown imediatamente
                         setShowClientSuggestions(false);
                       }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 text-slate-900 dark:text-white cursor-pointer"
                     >
-                      {client}
+                      {client.name}
                     </button>
                   ))}
                 </div>
               )}
             </div>
+            
+            {/* Campos expandidos para cadastro de cliente */}
+            {showClientFields && (
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-sm">info</span>
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    Dados opcionais. Preencha E-mail e CPF/CNPJ para sincronizar automaticamente com Asaas e gerar faturas.
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    E-mail <span className="text-xs text-slate-400">(opcional - necessário para Asaas)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={clientData.email}
+                    onChange={(e) => setClientData({ ...clientData, email: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                    placeholder="email@exemplo.com (opcional)"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    CPF / CNPJ <span className="text-xs text-slate-400">(opcional - necessário para Asaas)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={clientData.cpfCnpj}
+                    onChange={(e) => {
+                      const formatted = formatCpfCnpj(e.target.value);
+                      setClientData({ ...clientData, cpfCnpj: formatted });
+                    }}
+                    className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00 (opcional)"
+                    maxLength={18}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Telefone (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={clientData.phone}
+                    onChange={(e) => {
+                      const formatted = formatPhone(e.target.value);
+                      setClientData({ ...clientData, phone: formatted });
+                    }}
+                    className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                    placeholder="(00) 00000-0000"
+                    maxLength={15}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Nome da Empresa/Projeto</label>
@@ -3914,7 +4334,11 @@ const AddProjectModal: React.FC<{
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => {
+                  // Resetar flag quando usuário começar a digitar
+                  projectManuallySelectedRef.current = false;
+                  setFormData({ ...formData, name: e.target.value });
+                }}
                 onFocus={() => {
                   if (formData.name.trim() && filteredProjects.length > 0) {
                     setShowProjectSuggestions(true);
@@ -3930,11 +4354,21 @@ const AddProjectModal: React.FC<{
                     <button
                       key={index}
                       type="button"
-                      onClick={() => {
-                        setFormData({ ...formData, name: projectName });
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Marcar como selecionado manualmente
+                        projectManuallySelectedRef.current = true;
+                        // Atualizar o valor do projeto
+                        setFormData(prev => ({ ...prev, name: projectName }));
+                        // Fechar dropdown imediatamente
                         setShowProjectSuggestions(false);
                       }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 last:border-b-0 cursor-pointer"
                     >
                       {projectName}
                     </button>

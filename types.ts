@@ -38,6 +38,7 @@ export interface Project {
   isImplementationPaid?: boolean; // Status de pagamento da implementação (projetos recorrentes)
   isRecurringPaid?: boolean; // Status de pagamento da mensalidade (projetos recorrentes)
   workspaceId?: string;
+  credentials?: Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>;
   createdAt?: Date | any;
   updatedAt?: Date | any;
 }
@@ -222,10 +223,11 @@ export interface Invoice {
 export interface Client {
   id: string;
   name: string;
-  email: string;
-  cpfCnpj: string;
+  email?: string; // Opcional
+  cpfCnpj?: string; // Opcional
   phone?: string;
   mobilePhone?: string;
+  avatar?: string; // Foto do perfil do cliente
   address?: {
     street?: string;
     number?: string;

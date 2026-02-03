@@ -441,18 +441,38 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     return selectedCategoryFilter.some(filter => p.type === filter);
   }).sort((a, b) => {
     // Ordenar por data de vencimento (mais próximos primeiro)
-    // Para projetos recorrentes, usar data de manutenção ou relatório
+    // Para projetos recorrentes, usar a data mais próxima entre manutenção e relatório
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTime = today.getTime();
+
     const getSortDate = (project: Project): number => {
-      // Prioridade: deadline > maintenanceDate > reportDate
+      // Prioridade: deadline > (manutenção ou relatório - a mais próxima)
       if (project.deadline) {
         return parseSafeDate(project.deadline)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
-      if (project.maintenanceDate) {
-        return parseSafeDate(project.maintenanceDate)?.getTime() || Number.MAX_SAFE_INTEGER;
+      
+      // Se tem tanto maintenanceDate quanto reportDate, usar a mais próxima de hoje
+      const maintenanceDate = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
+      const reportDate = project.reportDate ? parseSafeDate(project.reportDate) : null;
+      
+      if (maintenanceDate && reportDate) {
+        // Calcular a diferença em dias de cada data em relação a hoje
+        const maintenanceDiff = Math.abs(maintenanceDate.getTime() - todayTime);
+        const reportDiff = Math.abs(reportDate.getTime() - todayTime);
+        
+        // Usar a data mais próxima (menor diferença)
+        return maintenanceDiff < reportDiff ? maintenanceDate.getTime() : reportDate.getTime();
       }
-      if (project.reportDate) {
-        return parseSafeDate(project.reportDate)?.getTime() || Number.MAX_SAFE_INTEGER;
+      
+      // Se tem apenas uma das duas, usar ela
+      if (maintenanceDate) {
+        return maintenanceDate.getTime();
       }
+      if (reportDate) {
+        return reportDate.getTime();
+      }
+      
       // Se não tiver nenhuma data, colocar no final
       return Number.MAX_SAFE_INTEGER;
     };
@@ -770,8 +790,43 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const pTypes = project.types || (project.type ? [project.type] : []);
                   const categoryColor = getCategoryColor(pTypes[0] || '');
                   const deadlineDate = parseSafeDate(project.deadline);
-                  const isLate = deadlineDate && deadlineDate < new Date() && project.status !== 'Completed' && project.status !== 'Finished';
-                  const isReview = project.status === 'Review';
+                  // Verificar se está atrasado (comparando apenas a data, sem horas)
+                  let isLate = false;
+                  if (deadlineDate && project.status !== 'Completed' && project.status !== 'Finished') {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const deadline = new Date(deadlineDate);
+                    deadline.setHours(0, 0, 0, 0);
+                    isLate = deadline < today;
+                    
+                    // Log para debug
+                    if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
+                      console.log(`🔍 [Timeline] Projeto: ${project.name}`, {
+                        deadlineDate: deadlineDate,
+                        deadline: deadline.toISOString(),
+                        today: today.toISOString(),
+                        isLate: isLate,
+                        status: project.status,
+                        stageId: project.stageId,
+                        deadlineTimestamp: deadline.getTime(),
+                        todayTimestamp: today.getTime(),
+                        comparison: deadline < today
+                      });
+                    }
+                  } else {
+                    // Log quando não tem deadline ou está concluído
+                    if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
+                      console.log(`🔍 [Timeline] Projeto: ${project.name} - Sem deadline ou concluído`, {
+                        hasDeadline: !!deadlineDate,
+                        status: project.status,
+                        deadlineDate: project.deadline
+                      });
+                    }
+                  }
+                  // Verificar se está na etapa "Em Revisão" APENAS pelo stageId
+                  // Não usar status porque tanto "Em Revisão" quanto "Ajustes" têm status 'Review'
+                  const isReviewStage = project.stageId?.includes('review') && !project.stageId?.includes('adjustments');
+                  const isReview = isReviewStage; // Só considerar em revisão se realmente estiver na etapa de revisão pelo stageId
                   const temporalProgress = getTemporalProgress(project, startColumn, duration);
 
                   const maintenanceCol = getDateColumn(project.maintenanceDate);
@@ -894,46 +949,67 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
                           // Definir classe de cor baseada no estágio do projeto
                           const getStageColorClass = (type: 'bg' | 'border' | 'text' | 'overlay') => {
+                            // Log para debug dos projetos específicos
+                            if ((project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') && type === 'bg') {
+                              console.log(`🎨 [Timeline] Determinando cor para: ${project.name}`, {
+                                isReview,
+                                isLate,
+                                isAdjustmentsStage,
+                                isDevelopmentStage,
+                                isOnboardingStage,
+                                isMaintenanceStage,
+                                status: project.status,
+                                stageId: project.stageId
+                              });
+                            }
+                            
+                            // Prioridade: Revisão > Atraso > Outros estágios
+                            // Se está em revisão → Laranja (prioridade máxima)
+                            if (isReview) {
+                              // Em Revisão - laranja/amber
+                              if (type === 'bg') return 'bg-amber-500/10 dark:bg-amber-500/20';
+                              if (type === 'border') return 'border-l-4 border-l-amber-500 ring-2 ring-amber-500/30';
+                              if (type === 'text') return 'text-amber-700 dark:text-amber-300 font-semibold';
+                              return 'bg-amber-500/40 dark:bg-amber-500/50';
+                            }
+                            // Se está atrasado E não está em revisão → Vermelho (para qualquer etapa, exceto concluído)
+                            if (isLate && !isReview) {
+                              // Log quando aplica cor vermelha
+                              if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
+                                console.log(`🔴 [Timeline] Aplicando cor VERMELHA para: ${project.name}`, { type });
+                              }
+                              if (type === 'bg') return 'bg-rose-500/10 dark:bg-rose-500/20';
+                              if (type === 'border') return 'border-l-4 border-l-rose-500';
+                              if (type === 'text') return 'text-rose-700 dark:text-rose-300 font-semibold';
+                              return 'bg-rose-500/40 dark:bg-rose-500/50';
+                            }
+                            // Outros estágios (só se não estiver atrasado ou em revisão)
                             if (isMaintenanceStage) {
                               // Manutenção - marrom
-                              if (type === 'bg') return 'bg-amber-800/10';
+                              if (type === 'bg') return 'bg-amber-800/10 dark:bg-amber-800/20';
                               if (type === 'border') return 'border-l-4 border-l-amber-800';
-                              if (type === 'text') return 'text-amber-800';
-                              return 'bg-amber-800/40';
-                            }
-                            if (isReview && !isAdjustmentsStage) {
-                              // Em Revisão - amarelo
-                              if (type === 'bg') return 'bg-amber-500/10';
-                              if (type === 'border') return 'border-l-4 border-l-amber-500 ring-2 ring-amber-500/30';
-                              if (type === 'text') return 'text-amber-700';
-                              return 'bg-amber-500/40';
+                              if (type === 'text') return 'text-amber-800 dark:text-amber-300 font-semibold';
+                              return 'bg-amber-800/40 dark:bg-amber-800/50';
                             }
                             if (isAdjustmentsStage || isDevelopmentStage) {
                               // Em Desenvolvimento ou Ajustes - azul
-                              if (type === 'bg') return 'bg-blue-500/10';
+                              if (type === 'bg') return 'bg-blue-500/10 dark:bg-blue-500/20';
                               if (type === 'border') return 'border-l-4 border-l-blue-500';
-                              if (type === 'text') return 'text-blue-700';
-                              return 'bg-blue-500/40';
+                              if (type === 'text') return 'text-blue-700 dark:text-blue-300 font-semibold';
+                              return 'bg-blue-500/40 dark:bg-blue-500/50';
                             }
                             if (isOnboardingStage) {
                               // On-boarding - cinza
-                              if (type === 'bg') return 'bg-slate-400/10';
+                              if (type === 'bg') return 'bg-slate-400/10 dark:bg-slate-400/20';
                               if (type === 'border') return 'border-l-4 border-l-slate-400';
-                              if (type === 'text') return 'text-slate-600';
-                              return 'bg-slate-400/40';
-                            }
-                            if (isLate) {
-                              // Atrasado - vermelho
-                              if (type === 'bg') return 'bg-rose-500/10';
-                              if (type === 'border') return 'border-l-4 border-l-rose-500';
-                              if (type === 'text') return 'text-rose-700';
-                              return 'bg-rose-500/40';
+                              if (type === 'text') return 'text-slate-600 dark:text-slate-300 font-semibold';
+                              return 'bg-slate-400/40 dark:bg-slate-400/50';
                             }
                             // Fallback - azul
-                            if (type === 'bg') return 'bg-blue-500/10';
+                            if (type === 'bg') return 'bg-blue-500/10 dark:bg-blue-500/20';
                             if (type === 'border') return 'border-l-4 border-l-blue-500';
-                            if (type === 'text') return 'text-blue-700';
-                            return 'bg-blue-500/40';
+                            if (type === 'text') return 'text-blue-700 dark:text-blue-300 font-semibold';
+                            return 'bg-blue-500/40 dark:bg-blue-500/50';
                           };
 
                           return (
@@ -950,50 +1026,89 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                 style={{ width: `${overlayWidth}%` }}
                                 title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
                               />
-                              <span className={`text-[10px] font-bold relative z-10 truncate flex-1 min-w-0 ${getStageColorClass('text')}`}>
-                                {getStatusLabel(project)}
+                              <span className={`text-[11px] font-bold relative z-10 truncate flex-1 min-w-0 ${getStageColorClass('text')} drop-shadow-sm`}>
+                                {isLate && !isReview ? 'Atrasado' : getStatusLabel(project)}
                               </span>
-                              {isAdjustmentsStage && <span className="material-symbols-outlined text-blue-600 text-sm relative z-10 flex-shrink-0">tune</span>}
-                              {isReview && !isAdjustmentsStage && <span className="material-symbols-outlined text-amber-600 text-sm relative z-10 flex-shrink-0">rate_review</span>}
-                              {isLate && !isReview && <span className="material-symbols-outlined text-rose-500 text-sm relative z-10 flex-shrink-0">priority_high</span>}
+                              {isAdjustmentsStage && (
+                                <span className={`material-symbols-outlined text-sm relative z-10 flex-shrink-0 drop-shadow-sm ${
+                                  isLate && !isReview 
+                                    ? 'text-rose-500 dark:text-rose-400' 
+                                    : 'text-blue-600 dark:text-blue-400'
+                                }`}>
+                                  build
+                                </span>
+                              )}
+                              {isReview && !isAdjustmentsStage && <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-sm relative z-10 flex-shrink-0 drop-shadow-sm">rate_review</span>}
+                              {isLate && !isReview && !isAdjustmentsStage && <span className="material-symbols-outlined text-rose-500 dark:text-rose-400 text-sm relative z-10 flex-shrink-0 drop-shadow-sm">priority_high</span>}
                             </div>
                           );
                         })()}
 
                         {/* Marcadores de Manutenção e Relatório (para Recorrência) */}
-                        {maintenanceCol !== -1 && (
-                          <div
-                            className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
-                            style={{
-                              left: `${maintenanceCol * 100 + 50}px`,
-                              transform: 'translate(-50%, -50%)'
-                            }}
-                          >
-                            <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.maintenanceDate)}`}>
-                              <span className="material-symbols-outlined text-xl">build</span>
-                            </div>
-                            <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
-                              Manutenção: {new Date(project.maintenanceDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                            </span>
-                          </div>
-                        )}
+                        {(() => {
+                          // Verificar se ambos estão no mesmo dia
+                          const sameDay = maintenanceCol !== -1 && reportCol !== -1 && maintenanceCol === reportCol;
+                          // Offset harmonioso quando estão no mesmo dia (12px para um espaçamento mais natural)
+                          const offset = sameDay ? 12 : 0;
+                          
+                          // Verificar se as datas já passaram
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          
+                          const maintenanceDate = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
+                          const maintenanceDateOnly = maintenanceDate ? new Date(maintenanceDate.getFullYear(), maintenanceDate.getMonth(), maintenanceDate.getDate()) : null;
+                          const isMaintenanceLate = maintenanceDateOnly && maintenanceDateOnly < today;
+                          
+                          const reportDate = project.reportDate ? parseSafeDate(project.reportDate) : null;
+                          const reportDateOnly = reportDate ? new Date(reportDate.getFullYear(), reportDate.getMonth(), reportDate.getDate()) : null;
+                          const isReportLate = reportDateOnly && reportDateOnly < today;
+                          
+                          return (
+                            <>
+                              {maintenanceCol !== -1 && (
+                                <div
+                                  className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                                  style={{
+                                    left: `${maintenanceCol * 100 + 50 - (sameDay ? offset : 0)}px`,
+                                    transform: 'translate(-50%, -50%)'
+                                  }}
+                                >
+                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${
+                                    isMaintenanceLate
+                                      ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
+                                      : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400'
+                                  }`}>
+                                    <span className="material-symbols-outlined text-xl">build</span>
+                                  </div>
+                                  <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
+                                    Manutenção: {new Date(project.maintenanceDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                  </span>
+                                </div>
+                              )}
 
-                        {reportCol !== -1 && (
-                          <div
-                            className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
-                            style={{
-                              left: `${reportCol * 100 + 50}px`,
-                              transform: 'translate(-50%, -50%)'
-                            }}
-                          >
-                            <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${getDateColorClass(project.reportDate)}`}>
-                              <span className="material-symbols-outlined text-xl">description</span>
-                            </div>
-                            <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
-                              Relatório: {new Date(project.reportDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                            </span>
-                          </div>
-                        )}
+                              {reportCol !== -1 && (
+                                <div
+                                  className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                                  style={{
+                                    left: `${reportCol * 100 + 50 + (sameDay ? offset : 0)}px`,
+                                    transform: 'translate(-50%, -50%)'
+                                  }}
+                                >
+                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${
+                                    isReportLate
+                                      ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
+                                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-600 dark:text-amber-400'
+                                  }`}>
+                                    <span className="material-symbols-outlined text-xl">description</span>
+                                  </div>
+                                  <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
+                                    Relatório: {new Date(project.reportDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

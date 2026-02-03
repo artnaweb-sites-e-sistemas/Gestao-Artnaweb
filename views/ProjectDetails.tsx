@@ -112,6 +112,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMaintenanceDatePicker, setShowMaintenanceDatePicker] = useState(false);
   const [showReportDatePicker, setShowReportDatePicker] = useState(false);
+  const [showNextDateModal, setShowNextDateModal] = useState(false);
+  const [nextDateType, setNextDateType] = useState<'maintenance' | 'report' | null>(null);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [selectedDays, setSelectedDays] = useState<number | null>(null);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -140,6 +144,19 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   // Estado para debounce de salvamento da descrição
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Cleanup: salvar descrição ao desmontar o componente
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      // Salvar descrição imediatamente ao desmontar se houver mudanças
+      if (tempDescription !== (currentProject.description || '')) {
+        updateProject(currentProject.id, { description: tempDescription }).catch(console.error);
+      }
+    };
+  }, [tempDescription, currentProject.id, currentProject.description]);
 
   // Estado para edição de tarefas
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -153,6 +170,34 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Estados para data da tarefa
   const [editingTaskDateId, setEditingTaskDateId] = useState<string | null>(null);
   const [taskDatePickerPosition, setTaskDatePickerPosition] = useState({ top: 0, left: 0 });
+
+  const handleNextDateConfirm = async (nextDate: Date) => {
+    if (!nextDateType) return;
+    
+    try {
+      const formattedDate = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+      
+      if (nextDateType === 'maintenance') {
+        await updateProject(currentProject.id, { maintenanceDate: formattedDate });
+        setCurrentProject(prev => ({ ...prev, maintenanceDate: formattedDate }));
+        setToast({ message: "Próxima data de manutenção definida", type: 'success' });
+      } else {
+        await updateProject(currentProject.id, { reportDate: formattedDate });
+        setCurrentProject(prev => ({ ...prev, reportDate: formattedDate }));
+        setToast({ message: "Próxima data de relatório definida", type: 'success' });
+      }
+      
+      setTimeout(() => setToast(null), 3000);
+      setShowNextDateModal(false);
+      setNextDateType(null);
+      setSelectedDays(null);
+      setShowCustomDatePicker(false);
+    } catch (error) {
+      console.error("Error setting next date:", error);
+      setToast({ message: "Erro ao definir próxima data", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   const handleTaskDateChange = async (date: Date | null) => {
     if (!editingTaskDateId) return;
@@ -247,6 +292,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   useEffect(() => {
     setCurrentProject(project);
     setTempDescription(project.description || '');
+    // Carregar credenciais do projeto
+    setCredentials(project.credentials || []);
     // Sincronizar estados temporários apenas se não estiver editando
     if (!editingNameSidebar) {
       setTempNameSidebar(project.name);
@@ -295,6 +342,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       if (updatedProject) {
         console.log("Project updated:", updatedProject);
         setCurrentProject(updatedProject);
+        // Carregar credenciais do projeto atualizado
+        setCredentials(updatedProject.credentials || []);
         // Sincronizar estados temporários apenas se não estiver editando
         if (!editingNameSidebar) {
           setTempNameSidebar(updatedProject.name);
@@ -649,8 +698,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           currentProject.client,
                           avatarUrl,
                           currentProject.workspaceId,
-                          user?.uid || null
+                          user?.uid || null,
+                          currentProject.clientId || null
                         );
+                        
+                        // Se o projeto tem clientId, atualizar também o avatar do cliente na entidade Client
+                        if (currentProject.clientId) {
+                          const { updateClient } = await import('../firebase/services');
+                          await updateClient(currentProject.clientId, { avatar: avatarUrl });
+                        }
 
                         setToast({ message: "Foto do cliente atualizada em todos os projetos!", type: 'success' });
                         setTimeout(() => setToast(null), 3000);
@@ -821,36 +877,37 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                   </div>
 
-                  {/* Botão Pendente - aparece logo após Data de Entrega */}
+                  {/* Botão "Novos ajustes" - aparece quando projeto está concluído */}
                   {currentProject.status === 'Completed' && (
                     <div className="mt-2 w-full">
                       <button
                         onClick={async () => {
+                          if (!canEdit) return;
                           try {
-                            // Buscar a etapa "Em Desenvolvimento" para voltar
-                            const activeStage = stages.find(s => s.status === 'Active') ||
-                              stages.find(s => s.status === 'Review') ||
-                              stages.find(s => s.status === 'Lead') ||
-                              stages[Math.max(0, stages.length - 2)];
+                            // Buscar a etapa "Ajustes"
+                            const adjustmentsStage = stages.find(s => 
+                              s.id === 'adjustments' || s.id === 'adjustments-recurring'
+                            );
                             await updateProject(currentProject.id, {
-                              status: (activeStage?.status || 'Active') as Project['status'],
-                              stageId: activeStage?.id, // Atualizar stageId
-                              progress: activeStage ? activeStage.progress : 50
+                              status: 'Review' as Project['status'],
+                              stageId: adjustmentsStage?.id, // Atualizar stageId para Ajustes
+                              progress: adjustmentsStage ? adjustmentsStage.progress : 75,
+                              updatedAt: new Date()
                             });
-                            setToast({ message: "Projeto marcado como pendente", type: 'success' });
+                            setToast({ message: "Projeto movido para ajustes", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
-                            console.error("Error updating project status pending:", error);
-                            setToast({ message: "Erro ao marcar projeto como pendente", type: 'error' });
+                            console.error("Error moving project to adjustments:", error);
+                            setToast({ message: "Erro ao mover projeto para ajustes", type: 'error' });
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
                         disabled={!canEdit}
-                        className={`w-full px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="Marcar como pendente"
+                        className={`w-full px-3 py-1.5 bg-primary hover:bg-primary/90 text-blue-50 dark:text-blue-50 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title="Iniciar novos ajustes"
                       >
-                        <span className="material-symbols-outlined text-sm">pending</span>
-                        <span className="hidden sm:inline">Pendente</span>
+                        <span className="material-symbols-outlined text-sm">build</span>
+                        <span className="hidden sm:inline">Novos ajustes</span>
                       </button>
                     </div>
                   )}
@@ -909,6 +966,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               )}
                             </div>
                           </div>
+                          {currentProject.maintenanceDate && canEdit && (
+                            <button
+                              onClick={() => {
+                                setNextDateType('maintenance');
+                                setShowNextDateModal(true);
+                              }}
+                              className="mt-2 w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              Concluído
+                            </button>
+                          )}
                         </div>
 
                         <div className="py-2">
@@ -953,74 +1022,188 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               )}
                             </div>
                           </div>
+                          {currentProject.reportDate && canEdit && (
+                            <button
+                              onClick={() => {
+                                setNextDateType('report');
+                                setShowNextDateModal(true);
+                              }}
+                              className="mt-2 w-full px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              Concluído
+                            </button>
+                          )}
                         </div>
                       </>
                     );
                   })()}
 
-                  {/* Botões Concluir e Revisar */}
+                  {/* Botões específicos por etapa */}
                   {currentProject.status !== 'Completed' && (
                     <div className="flex items-center gap-2 mt-2 w-full">
-                      <button
-                        onClick={async () => {
-                          if (!canEdit) return;
-                          try {
-                            // Buscar a etapa "Concluído"
-                            const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
-                            await updateProject(currentProject.id, {
-                              status: 'Completed' as Project['status'],
-                              stageId: completedStage?.id, // Atualizar stageId
-                              progress: completedStage ? completedStage.progress : 100
-                            });
-                            setToast({ message: "Projeto marcado como concluído", type: 'success' });
-                            setTimeout(() => setToast(null), 3000);
-                          } catch (error) {
-                            console.error("Error marking project as completed:", error);
-                            setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
-                            setTimeout(() => setToast(null), 3000);
-                          }
-                        }}
-                        disabled={!canEdit}
-                        className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Completed'
-                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-white hover:border-emerald-500'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="Marcar como concluído"
-                      >
-                        <span className="material-symbols-outlined text-sm">check_circle</span>
-                        <span className="hidden sm:inline">Concluir</span>
-                      </button>
-                      {currentProject.status !== 'Completed' && (
+                      {/* Se estiver na etapa Ajustes com data definida, mostrar botão "Ajustes finalizado" */}
+                      {currentProject.stageId?.includes('adjustments') && currentProject.deadline ? (
                         <button
                           onClick={async () => {
                             if (!canEdit) return;
                             try {
-                              // Buscar a etapa "Em Revisão"
-                              const reviewStage = stages.find(s => s.status === 'Review');
+                              // Buscar a etapa "Em Revisão" (não a etapa de Ajustes)
+                              const reviewStage = stages.find(s => 
+                                s.status === 'Review' && 
+                                (s.id === 'review' || s.id === 'review-recurring')
+                              );
                               await updateProject(currentProject.id, {
                                 status: 'Review' as Project['status'],
                                 stageId: reviewStage?.id, // Atualizar stageId
                                 progress: reviewStage ? reviewStage.progress : 75,
                                 updatedAt: new Date()
                               });
-                              setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                              setToast({ message: "Ajustes finalizados! Projeto enviado para revisão", type: 'success' });
                               setTimeout(() => setToast(null), 3000);
                             } catch (error) {
-                              console.error("Error marking project as review:", error);
-                              setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                              console.error("Error finishing adjustments:", error);
+                              setToast({ message: "Erro ao finalizar ajustes", type: 'error' });
                               setTimeout(() => setToast(null), 3000);
                             }
                           }}
                           disabled={!canEdit}
-                          className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Review'
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title="Enviar para revisão"
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-amber-500 hover:bg-amber-600 text-amber-950 dark:text-amber-50"
+                          style={{
+                            animation: 'pulse-subtle 2s ease-in-out infinite'
+                          }}
+                          title="Finalizar ajustes e enviar para revisão"
                         >
-                          <span className="material-symbols-outlined text-sm">rate_review</span>
-                          <span className="hidden sm:inline">Revisar</span>
+                          <span className="material-symbols-outlined text-sm">check_circle</span>
+                          <span className="hidden sm:inline">Ajustes finalizado</span>
                         </button>
+                      ) : currentProject.stageId === 'review' || currentProject.stageId === 'review-recurring' ? (
+                        /* Se estiver na etapa "Em Revisão", mostrar dois botões */
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (!canEdit) return;
+                              try {
+                                // Buscar a etapa "Ajustes"
+                                const adjustmentsStage = stages.find(s => 
+                                  s.id === 'adjustments' || s.id === 'adjustments-recurring'
+                                );
+                                await updateProject(currentProject.id, {
+                                  status: 'Review' as Project['status'],
+                                  stageId: adjustmentsStage?.id, // Atualizar stageId
+                                  progress: adjustmentsStage ? adjustmentsStage.progress : 75,
+                                  updatedAt: new Date()
+                                });
+                                setToast({ message: "Projeto enviado para ajustes", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error moving to adjustments:", error);
+                                setToast({ message: "Erro ao enviar projeto para ajustes", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            }}
+                            disabled={!canEdit}
+                            className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-blue-500 hover:bg-blue-600 text-blue-50 dark:text-blue-50"
+                            title="Enviar para ajustes"
+                          >
+                            <span className="material-symbols-outlined text-sm">build</span>
+                            <span className="hidden sm:inline">Realizar ajustes</span>
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!canEdit) return;
+                              try {
+                                // Buscar a etapa "Concluído"
+                                const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
+                                await updateProject(currentProject.id, {
+                                  status: 'Completed' as Project['status'],
+                                  stageId: completedStage?.id, // Atualizar stageId
+                                  progress: completedStage ? completedStage.progress : 100
+                                });
+                                setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error marking project as completed:", error);
+                                setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            }}
+                            disabled={!canEdit}
+                            className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50"
+                            title="Marcar como concluído"
+                          >
+                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                            <span className="hidden sm:inline">Concluir</span>
+                          </button>
+                        </>
+                      ) : (
+                        /* Para outras etapas, mostrar botões padrão */
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (!canEdit) return;
+                              try {
+                                // Buscar a etapa "Concluído"
+                                const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
+                                await updateProject(currentProject.id, {
+                                  status: 'Completed' as Project['status'],
+                                  stageId: completedStage?.id, // Atualizar stageId
+                                  progress: completedStage ? completedStage.progress : 100
+                                });
+                                setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                                setTimeout(() => setToast(null), 3000);
+                              } catch (error) {
+                                console.error("Error marking project as completed:", error);
+                                setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            }}
+                            disabled={!canEdit}
+                            className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Completed'
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-emerald-950 dark:hover:text-emerald-50 hover:border-emerald-500'
+                              } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="Marcar como concluído"
+                          >
+                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                            <span className="hidden sm:inline">Concluir</span>
+                          </button>
+                          {currentProject.status !== 'Completed' && (
+                            <button
+                              onClick={async () => {
+                                if (!canEdit) return;
+                                try {
+                                  // Buscar a etapa "Em Revisão"
+                                  const reviewStage = stages.find(s => 
+                                    s.status === 'Review' && 
+                                    (s.id === 'review' || s.id === 'review-recurring')
+                                  );
+                                  await updateProject(currentProject.id, {
+                                    status: 'Review' as Project['status'],
+                                    stageId: reviewStage?.id, // Atualizar stageId
+                                    progress: reviewStage ? reviewStage.progress : 75,
+                                    updatedAt: new Date()
+                                  });
+                                  setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                } catch (error) {
+                                  console.error("Error marking project as review:", error);
+                                  setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                }
+                              }}
+                              disabled={!canEdit}
+                              className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Review'
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
+                                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title="Enviar para revisão"
+                            >
+                              <span className="material-symbols-outlined text-sm">rate_review</span>
+                              <span className="hidden sm:inline">Revisar</span>
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -1932,6 +2115,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     return (
                                       <div
                                         key={task.id}
+                                            className="cursor-grab active:cursor-grabbing"
                                             draggable={canEdit}
                                             onDragStart={(e) => {
                                               e.stopPropagation();
@@ -2050,14 +2234,42 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                     const updates: any = {};
 
                                                     if (newCompletedStatus) {
-                                                      // CLEAR logic
-                                                      if (currentProject.maintenanceDate === taskDateStr) {
-                                                        updates.maintenanceDate = null;
-                                                        updateNeeded = true;
-                                                      }
-                                                      if (currentProject.deadline === taskDateStr) {
-                                                        updates.deadline = null;
-                                                        updateNeeded = true;
+                                                      // CLEAR logic - Check if there are other pending tasks with the same date
+                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t => 
+                                                        t.id !== task.id && 
+                                                        !t.completed && 
+                                                        t.dueDate
+                                                      ).filter(t => {
+                                                        const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                                        return dStr === taskDateStr;
+                                                      });
+
+                                                      // Only update date if there are no other pending tasks with the same date
+                                                      if (otherPendingTasksWithSameDate.length === 0) {
+                                                        // Find next closest date among remaining pending tasks
+                                                        const pendingTasksWithDates = projectStageTasks.filter(t => 
+                                                          t.id !== task.id && 
+                                                          !t.completed && 
+                                                          t.dueDate
+                                                        ).map(t => {
+                                                          const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                          return {
+                                                            date: d,
+                                                            dateStr: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                                                          };
+                                                        }).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                                                        const nextDate = pendingTasksWithDates.length > 0 ? pendingTasksWithDates[0].dateStr : null;
+
+                                                        if (currentProject.maintenanceDate === taskDateStr) {
+                                                          updates.maintenanceDate = nextDate;
+                                                          updateNeeded = true;
+                                                        }
+                                                        if (currentProject.deadline === taskDateStr) {
+                                                          updates.deadline = nextDate;
+                                                          updateNeeded = true;
+                                                        }
                                                       }
                                                     } else {
                                                       // RESTORE logic
@@ -2078,7 +2290,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       setCurrentProject(prev => ({ ...prev, ...updates }));
 
                                                       const msg = newCompletedStatus
-                                                        ? "Tarefa concluída e datas limpas"
+                                                        ? (updates.deadline || updates.maintenanceDate 
+                                                            ? "Tarefa concluída e data atualizada para próxima pendente"
+                                                            : "Tarefa concluída e datas limpas")
                                                         : "Tarefa reaberta e datas restauradas";
 
                                                       setToast({ message: msg, type: 'success' });
@@ -2131,7 +2345,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                     setEditingTaskId(null);
                                                   }
                                                 }}
-                                                className="flex-1 px-2 py-1 text-sm bg-white dark:bg-slate-700 border border-primary rounded outline-none"
+                                                className="flex-1 px-2 py-1 text-sm bg-white dark:bg-slate-700 border border-primary rounded outline-none cursor-text"
                                                 autoFocus
                                               />
                                             ) : (
@@ -2142,7 +2356,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                     setEditingTaskId(task.id);
                                                     setEditingTaskTitle(task.title || '');
                                                   }}
-                                                  className={`text-sm flex-1 cursor-text ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
+                                                  className={`text-sm flex-1 ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
                                                   title="Clique duplo para editar"
                                                 >
                                           {task.title || 'Sem título'}
@@ -2161,29 +2375,61 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 )}
 
                                                 {/* Botão de Data da Tarefa */}
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
-                                                    setEditingTaskDateId(task.id);
-                                                  }}
-                                                  className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
-                                                      ${task.dueDate
-                                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                                      : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                                    }`}
-                                                  title={task.dueDate
-                                                    ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
-                                                    : "Definir data"}
-                                                >
-                                                  <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-                                                  {task.dueDate && (
-                                                    <span className="text-[10px] font-medium">
-                                                      {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
-                                                    </span>
-                                                  )}
-                                                </button>
+                                                {(() => {
+                                                  const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
+                                                    if (!dueDate) return '';
+                                                    
+                                                    // Se a tarefa está concluída, sempre verde
+                                                    if (isCompleted) {
+                                                      return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
+                                                    }
+                                                    
+                                                    const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    taskDate.setHours(0, 0, 0, 0);
+                                                    
+                                                    const diffTime = taskDate.getTime() - today.getTime();
+                                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                                    
+                                                    if (diffDays < 0) {
+                                                      // Data passou - vermelho
+                                                      return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
+                                                    } else if (diffDays < 7) {
+                                                      // Data próxima (menos de 7 dias) - amarelo
+                                                      return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50';
+                                                    } else {
+                                                      // Data distante (7 dias ou mais) - cinza
+                                                      return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+                                                    }
+                                                  };
+                                                  
+                                                  return (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                        setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
+                                                        setEditingTaskDateId(task.id);
+                                                      }}
+                                                      className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
+                                                          ${task.dueDate
+                                                          ? getTaskDateColor(task.dueDate, isTaskCompleted)
+                                                          : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                        }`}
+                                                      title={task.dueDate
+                                                        ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
+                                                        : "Definir data"}
+                                                    >
+                                                      <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                                                      {task.dueDate && (
+                                                        <span className="text-[10px] font-medium">
+                                                          {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
+                                                        </span>
+                                                      )}
+                                                    </button>
+                                                  );
+                                                })()}
                                               </div>
                                             )}
 
@@ -2201,20 +2447,52 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       let updateNeeded = false;
                                                       const updates: any = {};
 
-                                                      if (currentProject.maintenanceDate === taskDateStr) {
-                                                        updates.maintenanceDate = null;
-                                                        updateNeeded = true;
-                                                      }
+                                                      // Check if there are other pending tasks with the same date
+                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t => 
+                                                        t.id !== task.id && 
+                                                        !t.completed && 
+                                                        t.dueDate
+                                                      ).filter(t => {
+                                                        const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                                        return dStr === taskDateStr;
+                                                      });
 
-                                                      if (currentProject.deadline === taskDateStr) {
-                                                        updates.deadline = null;
-                                                        updateNeeded = true;
+                                                      // Only update date if there are no other pending tasks with the same date
+                                                      if (otherPendingTasksWithSameDate.length === 0) {
+                                                        // Find next closest date among remaining pending tasks
+                                                        const pendingTasksWithDates = projectStageTasks.filter(t => 
+                                                          t.id !== task.id && 
+                                                          !t.completed && 
+                                                          t.dueDate
+                                                        ).map(t => {
+                                                          const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                          return {
+                                                            date: d,
+                                                            dateStr: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                                                          };
+                                                        }).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                                                        const nextDate = pendingTasksWithDates.length > 0 ? pendingTasksWithDates[0].dateStr : null;
+
+                                                        if (currentProject.maintenanceDate === taskDateStr) {
+                                                          updates.maintenanceDate = nextDate;
+                                                          updateNeeded = true;
+                                                        }
+
+                                                        if (currentProject.deadline === taskDateStr) {
+                                                          updates.deadline = nextDate;
+                                                          updateNeeded = true;
+                                                        }
                                                       }
 
                                                       if (updateNeeded) {
                                                         await updateProject(currentProject.id, updates);
                                                         setCurrentProject(prev => ({ ...prev, ...updates }));
-                                                        setToast({ message: "Tarefa removida e datas atualizadas", type: 'success' }); // Combined toast
+                                                        const msg = updates.deadline || updates.maintenanceDate
+                                                          ? "Tarefa removida e data atualizada para próxima pendente"
+                                                          : "Tarefa removida e datas limpas";
+                                                        setToast({ message: msg, type: 'success' });
                                                         setTimeout(() => setToast(null), 3000);
                                                         return; // Avoid double toast
                                                       }
@@ -2317,10 +2595,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               user={credential.user}
                               password={credential.password}
                               onEdit={canEdit ? () => setShowEditCredential(credential) : undefined}
-                              onDelete={canEdit ? () => {
-                                setCredentials(credentials.filter(c => c.id !== credential.id));
-                                setToast({ message: "Credencial removida com sucesso!", type: 'success' });
-                                setTimeout(() => setToast(null), 3000);
+                              onDelete={canEdit ? async () => {
+                                const updatedCredentials = credentials.filter(c => c.id !== credential.id);
+                                setCredentials(updatedCredentials);
+                                try {
+                                  await updateProject(currentProject.id, { credentials: updatedCredentials });
+                                  setToast({ message: "Credencial removida com sucesso!", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                } catch (error) {
+                                  console.error("Error deleting credential:", error);
+                                  setToast({ message: "Erro ao remover credencial", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                  // Reverter mudança local em caso de erro
+                                  setCredentials(credentials);
+                                }
                               } : undefined}
                             />
                           ))}
@@ -2816,15 +3104,25 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           showAddCredential && (
           <AddCredentialModal
             onClose={() => setShowAddCredential(false)}
-            onSave={(credentialData) => {
+            onSave={async (credentialData) => {
               const newCredential = {
                 id: Date.now().toString(),
                 ...credentialData
               };
-              setCredentials([...credentials, newCredential]);
+              const updatedCredentials = [...credentials, newCredential];
+              setCredentials(updatedCredentials);
+              try {
+                await updateProject(currentProject.id, { credentials: updatedCredentials });
+                setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              } catch (error) {
+                console.error("Error saving credential:", error);
+                setToast({ message: "Erro ao salvar credencial", type: 'error' });
+                setTimeout(() => setToast(null), 3000);
+                // Reverter mudança local em caso de erro
+                setCredentials(credentials);
+              }
               setShowAddCredential(false);
-              setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
             }}
           />
           )
@@ -2836,11 +3134,21 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           <EditCredentialModal
             credential={showEditCredential}
             onClose={() => setShowEditCredential(null)}
-            onSave={(credentialData) => {
-              setCredentials(credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c));
+            onSave={async (credentialData) => {
+              const updatedCredentials = credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c);
+              setCredentials(updatedCredentials);
+              try {
+                await updateProject(currentProject.id, { credentials: updatedCredentials });
+                setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
+                setTimeout(() => setToast(null), 3000);
+              } catch (error) {
+                console.error("Error updating credential:", error);
+                setToast({ message: "Erro ao atualizar credencial", type: 'error' });
+                setTimeout(() => setToast(null), 3000);
+                // Reverter mudança local em caso de erro
+                setCredentials(credentials);
+              }
               setShowEditCredential(null);
-              setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
-              setTimeout(() => setToast(null), 3000);
             }}
           />
           )
@@ -3436,6 +3744,149 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           </div>
           )
         }
+
+        {/* Modal Marcar Próxima Data */}
+        {showNextDateModal && nextDateType && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className={`size-12 rounded-full flex items-center justify-center ${
+                    nextDateType === 'maintenance' 
+                      ? 'bg-blue-100 dark:bg-blue-900/20' 
+                      : 'bg-amber-100 dark:bg-amber-900/20'
+                  }`}>
+                    <span className={`material-symbols-outlined ${
+                      nextDateType === 'maintenance' 
+                        ? 'text-blue-600 dark:text-blue-400' 
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}>
+                      {nextDateType === 'maintenance' ? 'build' : 'description'}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      Marcar {nextDateType === 'maintenance' ? 'Manutenção' : 'Relatório'} como Concluído?
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Deseja definir a próxima data?
+                    </p>
+                  </div>
+                </div>
+                
+                {!selectedDays && !showCustomDatePicker ? (
+                  <>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                      Selecione quando será a próxima {nextDateType === 'maintenance' ? 'manutenção' : 'relatório'}:
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                      {[3, 7, 15, 30].map((days) => (
+                        <button
+                          key={days}
+                          onClick={() => setSelectedDays(days)}
+                          className="px-4 py-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300"
+                        >
+                          {days} dias
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowCustomDatePicker(true)}
+                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300 mb-6 flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">calendar_today</span>
+                      Data Personalizada
+                    </button>
+                  </>
+                ) : showCustomDatePicker ? (
+                  <div className="mb-6">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Selecione a data:
+                    </p>
+                    <div className="flex justify-center">
+                      <InlineDatePicker
+                        selectedDate={null}
+                        onSelectDate={(date) => {
+                          if (date) {
+                            handleNextDateConfirm(date);
+                          }
+                        }}
+                        onClose={() => {
+                          setShowCustomDatePicker(false);
+                          setSelectedDays(null);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowNextDateModal(false);
+                      setNextDateType(null);
+                      setSelectedDays(null);
+                      setShowCustomDatePicker(false);
+                    }}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  {selectedDays && !showCustomDatePicker && (
+                    <button
+                      onClick={() => {
+                        const currentDate = nextDateType === 'maintenance' 
+                          ? parseSafeDate(currentProject.maintenanceDate)
+                          : parseSafeDate(currentProject.reportDate);
+                        if (currentDate) {
+                          const nextDate = new Date(currentDate);
+                          nextDate.setDate(nextDate.getDate() + selectedDays);
+                          handleNextDateConfirm(nextDate);
+                        }
+                      }}
+                      className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                        nextDateType === 'maintenance'
+                          ? 'bg-blue-500 hover:bg-blue-600'
+                          : 'bg-amber-500 hover:bg-amber-600'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">check_circle</span>
+                      Confirmar
+                    </button>
+                  )}
+                  {!selectedDays && !showCustomDatePicker && (
+                    <button
+                      onClick={async () => {
+                        // Apenas limpar a data atual sem definir próxima
+                        try {
+                          if (nextDateType === 'maintenance') {
+                            await updateProject(currentProject.id, { maintenanceDate: null });
+                            setCurrentProject(prev => ({ ...prev, maintenanceDate: null }));
+                            setToast({ message: "Manutenção marcada como concluída", type: 'success' });
+                          } else {
+                            await updateProject(currentProject.id, { reportDate: null });
+                            setCurrentProject(prev => ({ ...prev, reportDate: null }));
+                            setToast({ message: "Relatório marcado como concluído", type: 'success' });
+                          }
+                          setTimeout(() => setToast(null), 3000);
+                          setShowNextDateModal(false);
+                          setNextDateType(null);
+                        } catch (error) {
+                          console.error("Error completing:", error);
+                          setToast({ message: "Erro ao marcar como concluído", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      Não, apenas concluir
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div >
 
       {/* DatePicker para Tarefas */}
@@ -3493,6 +3944,124 @@ const ContactInfo: React.FC<{ label: string; value: string }> = ({ label, value 
     <p className="text-sm font-semibold">{value}</p>
   </div>
 );
+
+// DatePicker inline para uso em modais (sem posicionamento absoluto)
+const InlineDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+  const today = new Date();
+
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+  const startingDayOfWeek = firstDayOfMonth.getDay();
+  const daysInMonth = lastDayOfMonth.getDate();
+
+  const days = [];
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
+  }
+
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const isToday = (date: Date | null) => {
+    if (!date) return false;
+    return date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate();
+  };
+
+  const isSelected = (date: Date | null) => {
+    if (!date || !selectedDate) return false;
+    return date.getFullYear() === selectedDate.getFullYear() &&
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
+  };
+
+  const handleDateClick = (date: Date | null) => {
+    if (date) {
+      onSelectDate(date);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl p-3 w-64">
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={prevMonth}
+          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_left</span>
+        </button>
+        <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+          {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        </h3>
+        <button
+          onClick={nextMonth}
+          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_right</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {weekDays.map((day) => (
+          <div key={day} className="text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 py-0.5">
+            {day.substring(0, 1)}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5">
+        {days.map((date, index) => (
+          <button
+            key={index}
+            onClick={() => handleDateClick(date)}
+            disabled={!date}
+            className={`
+              aspect-square flex items-center justify-center text-[10px] font-medium rounded transition-all
+              ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
+              ${date && isToday(date) ? 'ring-1 ring-primary' : ''}
+              ${date && isSelected(date)
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : date
+                  ? 'text-slate-700 dark:text-slate-300 hover:text-primary'
+                  : 'text-transparent'
+              }
+            `}
+          >
+            {date ? date.getDate() : ''}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+        <button
+          onClick={() => onSelectDate(null)}
+          className="text-[10px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        >
+          Limpar data
+        </button>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void; buttonRef?: React.RefObject<HTMLButtonElement>; position?: { top: number; left: number } }> = ({ selectedDate, onSelectDate, onClose, buttonRef, position: customPosition }) => {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date()); // Iniciar com selectedDate se existir
@@ -4933,7 +5502,7 @@ const EditInvoiceModal: React.FC<{
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">Editar Fatura</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Editar Fatura</h2>
             <button
               type="button"
               onClick={onClose}
@@ -4944,31 +5513,31 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Número da Fatura</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Número da Fatura</label>
             <input
               type="text"
               value={formData.number}
               onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary focus:border-primary"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Descrição</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Descrição</label>
             <input
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Ex: Fatura principal do projeto"
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary focus:border-primary"
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-1.5">Valor</label>
+              <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Valor</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none font-medium">R$</span>
                 <input
@@ -4977,21 +5546,21 @@ const EditInvoiceModal: React.FC<{
                   onChange={handleAmountChange}
                   onFocus={handleAmountFocus}
                   placeholder="0,00"
-                  className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  className="w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-primary focus:border-primary"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1.5">Data</label>
+              <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Data</label>
               <div className="relative date-picker-container overflow-visible" ref={datePickerRef}>
                 <button
                   type="button"
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors"
                 >
-                  <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                  <span className={formData.date ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}>
                     {formData.date
                       ? (() => {
                         const [year, month, day] = formData.date.split('-').map(Number);
@@ -5000,7 +5569,7 @@ const EditInvoiceModal: React.FC<{
                       : 'Selecione uma data'
                     }
                   </span>
-                  <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                  <span className="material-symbols-outlined text-sm text-slate-400 dark:text-slate-500">calendar_today</span>
                 </button>
                 {showDatePicker && (
                   <InvoiceDatePicker
@@ -5025,11 +5594,11 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Status</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Status</label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Paid' | 'Pending' | 'Overdue' })}
-              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
             >
               <option value="Pending">Pendente</option>
               <option value="Paid">Pago</option>
@@ -5041,7 +5610,7 @@ const EditInvoiceModal: React.FC<{
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+              className="px-6 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 transition-colors"
             >
               Cancelar
             </button>

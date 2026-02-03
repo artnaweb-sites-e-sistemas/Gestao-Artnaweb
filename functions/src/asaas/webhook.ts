@@ -222,3 +222,8 @@ async function handlePaymentUpdated(
   console.log(`Fatura ${invoiceId} atualizada para status: ${internalStatus}`);
 }
 
+
+
+
+
+
