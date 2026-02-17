@@ -18,7 +18,6 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasMovedRef = useRef(false); // Rastrear se houve movimento significativo
   const clickPreventedRef = useRef(false); // Prevenir clique se houve arrasto
-
   // Carregar projetos do Firebase
   useEffect(() => {
     if (!currentWorkspace?.id) return;
@@ -107,6 +106,15 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         }
       }
     });
+
+    // Limitar a data de início a no máximo 7 dias antes de hoje
+    // Para evitar que o cronograma fique muito extenso com projetos antigos
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+
+    if (earliestDate && earliestDate < sevenDaysAgo) {
+      return sevenDaysAgo;
+    }
 
     if (earliestDate && earliestDate < today) {
       return earliestDate;
@@ -258,11 +266,18 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     durationColumns = Math.max(1, durationColumns);
 
     const maxStartColumn = Math.max(0, days.length - 1);
-    const finalStartColumn = Math.min(startColumn, maxStartColumn);
+    let finalStartColumn = Math.min(startColumn, maxStartColumn);
 
     const maxDuration = days.length - finalStartColumn;
 
-    const finalDuration = Math.min(durationColumns, maxDuration);
+    let finalDuration = Math.min(durationColumns, maxDuration);
+
+    // Preencher o espaço à esquerda: se a barra não começa na primeira coluna, estender para a esquerda até o início da janela visível
+    if (finalStartColumn > 0) {
+      finalStartColumn = 0;
+      finalDuration = Math.min(endColumn + 1, days.length);
+      finalDuration = Math.max(1, finalDuration);
+    }
 
     return {
       startColumn: finalStartColumn,
@@ -568,14 +583,6 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             <h2 className="text-2xl font-bold tracking-tight">Cronograma e Prazos</h2>
             <p className="text-sm text-slate-500">Visualização global de entregas e marcos de projetos</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-              <span className="material-symbols-outlined text-sm">filter_list</span> Filtros
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 shadow-sm shadow-primary/20 transition-colors">
-              <span className="material-symbols-outlined text-sm">ios_share</span> Exportar
-            </button>
-          </div>
         </div>
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex gap-2 flex-wrap">
@@ -708,9 +715,9 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
           </div>
         ) : (
           <div className="min-w-full">
-            <div className="sticky top-0 z-10 flex bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-400">Projetos / Clientes</div>
-              <div className="flex-1 flex bg-white dark:bg-slate-900">
+            <div className="sticky top-0 z-10 flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="w-64 flex-shrink-0 sticky left-0 z-20 p-4 border-r border-slate-200 dark:border-slate-600 font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-[4px_0_16px_-2px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_16px_-2px_rgba(0,0,0,0.5)]">Projetos / Clientes</div>
+              <div className="flex-1 flex bg-white/70 dark:bg-slate-900/70 backdrop-blur-md">
                 {days.map((day, i) => {
                   const today = isToday(day.date);
 
@@ -832,6 +839,20 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const maintenanceCol = getDateColumn(project.maintenanceDate);
                   const reportCol = getDateColumn(project.reportDate);
                   const isRecurring = pTypes.some(typeName => categories.find(cat => cat.name === typeName && cat.isRecurring));
+
+                  // Recorrentes: verificar se manutenção ou relatório estão vencidos (para sinalização no cronograma)
+                  const todayForLate = new Date();
+                  todayForLate.setHours(0, 0, 0, 0);
+                  const maintenanceDateParsed = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
+                  const isMaintenanceLate = maintenanceDateParsed
+                    ? new Date(maintenanceDateParsed.getFullYear(), maintenanceDateParsed.getMonth(), maintenanceDateParsed.getDate()) < todayForLate
+                    : false;
+                  const reportDateParsed = project.reportDate ? parseSafeDate(project.reportDate) : null;
+                  const isReportLate = reportDateParsed
+                    ? new Date(reportDateParsed.getFullYear(), reportDateParsed.getMonth(), reportDateParsed.getDate()) < todayForLate
+                    : false;
+                  const isRecurringOverdue = isRecurring && (isMaintenanceLate || isReportLate);
+
                   const showProjectBar = project.deadline && project.status !== 'Completed' && project.status !== 'Finished';
 
                   // Obter classes CSS baseadas na cor da categoria
@@ -861,7 +882,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       }}
                       className={`flex hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group ${isPanning ? 'cursor-grabbing' : 'cursor-pointer'}`}
                     >
-                      <div className="w-64 flex-shrink-0 p-4 border-r border-slate-200 dark:border-slate-800 flex flex-col gap-1 bg-white dark:bg-slate-900">
+                      <div className="w-64 flex-shrink-0 sticky left-0 z-10 p-4 border-r border-slate-200 dark:border-slate-600 flex flex-col gap-1 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-[4px_0_16px_-2px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_16px_-2px_rgba(0,0,0,0.5)]">
                         <h4 className="text-sm font-bold truncate">{project.name}</h4>
                         <div className="flex flex-wrap items-center gap-1">
                           {pTypes.slice(0, 2).map((typeName, idx) => (
@@ -878,6 +899,21 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       </div>
                       {/* Colunas - mesma estrutura flex do header */}
                       <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20">
+                        {/* Sinalização de vencido na área do calendário (recorrentes) - no canto superior esquerdo da linha para não sobrepor a barra */}
+                        {isRecurringOverdue && (
+                          <div className="absolute left-2 top-1.5 z-0 flex items-center gap-1.5 flex-wrap">
+                            {isMaintenanceLate && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white dark:bg-rose-600 dark:text-white shadow-sm border border-rose-400/50" title="Data de manutenção vencida">
+                                <span className="material-symbols-outlined text-xs">build</span> Manutenção vencida
+                              </span>
+                            )}
+                            {isReportLate && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white dark:bg-rose-600 dark:text-white shadow-sm border border-rose-400/50" title="Data de relatório vencida">
+                                <span className="material-symbols-outlined text-xs">description</span> Relatório vencido
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {/* Grid de colunas de fundo */}
                         {days.map((day, i) => {
                           const today = isToday(day.date);
@@ -964,57 +1000,49 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             }
                             
                             // Prioridade: Revisão > Atraso > Outros estágios
-                            // Se está em revisão → Laranja (prioridade máxima)
+                            // Efeito glass (fundos semitransparentes + backdrop-blur na barra)
                             if (isReview) {
-                              // Em Revisão - laranja/amber
-                              if (type === 'bg') return 'bg-amber-500/10 dark:bg-amber-500/20';
+                              if (type === 'bg') return 'bg-amber-500/15 dark:bg-amber-500/25';
                               if (type === 'border') return 'border-l-4 border-l-amber-500 ring-2 ring-amber-500/30';
                               if (type === 'text') return 'text-amber-700 dark:text-amber-300 font-semibold';
-                              return 'bg-amber-500/40 dark:bg-amber-500/50';
+                              return 'bg-amber-500/45 dark:bg-amber-500/55';
                             }
-                            // Se está atrasado E não está em revisão → Vermelho (para qualquer etapa, exceto concluído)
                             if (isLate && !isReview) {
-                              // Log quando aplica cor vermelha
                               if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
                                 console.log(`🔴 [Timeline] Aplicando cor VERMELHA para: ${project.name}`, { type });
                               }
-                              if (type === 'bg') return 'bg-rose-500/10 dark:bg-rose-500/20';
+                              if (type === 'bg') return 'bg-rose-500/15 dark:bg-rose-500/25';
                               if (type === 'border') return 'border-l-4 border-l-rose-500';
                               if (type === 'text') return 'text-rose-700 dark:text-rose-300 font-semibold';
-                              return 'bg-rose-500/40 dark:bg-rose-500/50';
+                              return 'bg-rose-500/45 dark:bg-rose-500/55';
                             }
-                            // Outros estágios (só se não estiver atrasado ou em revisão)
                             if (isMaintenanceStage) {
-                              // Manutenção - marrom
-                              if (type === 'bg') return 'bg-amber-800/10 dark:bg-amber-800/20';
+                              if (type === 'bg') return 'bg-amber-800/15 dark:bg-amber-800/25';
                               if (type === 'border') return 'border-l-4 border-l-amber-800';
                               if (type === 'text') return 'text-amber-800 dark:text-amber-300 font-semibold';
-                              return 'bg-amber-800/40 dark:bg-amber-800/50';
+                              return 'bg-amber-800/45 dark:bg-amber-800/55';
                             }
                             if (isAdjustmentsStage || isDevelopmentStage) {
-                              // Em Desenvolvimento ou Ajustes - azul
-                              if (type === 'bg') return 'bg-blue-500/10 dark:bg-blue-500/20';
+                              if (type === 'bg') return 'bg-blue-500/15 dark:bg-blue-500/25';
                               if (type === 'border') return 'border-l-4 border-l-blue-500';
                               if (type === 'text') return 'text-blue-700 dark:text-blue-300 font-semibold';
-                              return 'bg-blue-500/40 dark:bg-blue-500/50';
+                              return 'bg-blue-500/45 dark:bg-blue-500/55';
                             }
                             if (isOnboardingStage) {
-                              // On-boarding - cinza
-                              if (type === 'bg') return 'bg-slate-400/10 dark:bg-slate-400/20';
+                              if (type === 'bg') return 'bg-slate-400/15 dark:bg-slate-400/25';
                               if (type === 'border') return 'border-l-4 border-l-slate-400';
                               if (type === 'text') return 'text-slate-600 dark:text-slate-300 font-semibold';
-                              return 'bg-slate-400/40 dark:bg-slate-400/50';
+                              return 'bg-slate-400/45 dark:bg-slate-400/55';
                             }
-                            // Fallback - azul
-                            if (type === 'bg') return 'bg-blue-500/10 dark:bg-blue-500/20';
+                            if (type === 'bg') return 'bg-blue-500/15 dark:bg-blue-500/25';
                             if (type === 'border') return 'border-l-4 border-l-blue-500';
                             if (type === 'text') return 'text-blue-700 dark:text-blue-300 font-semibold';
-                            return 'bg-blue-500/40 dark:bg-blue-500/50';
+                            return 'bg-blue-500/45 dark:bg-blue-500/55';
                           };
 
                           return (
                             <div
-                              className={`absolute top-1/2 -translate-y-1/2 h-8 ${getStageColorClass('bg')} ${getStageColorClass('border')} rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-10`}
+                              className={`absolute top-1/2 -translate-y-1/2 h-8 ${getStageColorClass('bg')} ${getStageColorClass('border')} rounded-r-lg flex items-center px-3 gap-2 overflow-hidden z-0 backdrop-blur-md`}
                               style={{
                                 left: `${startColumn * 100}px`,
                                 width: `${duration * 100}px`,
@@ -1050,19 +1078,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           const sameDay = maintenanceCol !== -1 && reportCol !== -1 && maintenanceCol === reportCol;
                           // Offset harmonioso quando estão no mesmo dia (12px para um espaçamento mais natural)
                           const offset = sameDay ? 12 : 0;
-                          
-                          // Verificar se as datas já passaram
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          
-                          const maintenanceDate = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
-                          const maintenanceDateOnly = maintenanceDate ? new Date(maintenanceDate.getFullYear(), maintenanceDate.getMonth(), maintenanceDate.getDate()) : null;
-                          const isMaintenanceLate = maintenanceDateOnly && maintenanceDateOnly < today;
-                          
-                          const reportDate = project.reportDate ? parseSafeDate(project.reportDate) : null;
-                          const reportDateOnly = reportDate ? new Date(reportDate.getFullYear(), reportDate.getMonth(), reportDate.getDate()) : null;
-                          const isReportLate = reportDateOnly && reportDateOnly < today;
-                          
+
                           return (
                             <>
                               {maintenanceCol !== -1 && (

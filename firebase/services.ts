@@ -210,9 +210,9 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
 
 // Atualizar avatar de todos os projetos do mesmo cliente
 export const updateClientAvatarInAllProjects = async (
-  clientName: string, 
-  avatarUrl: string, 
-  workspaceId?: string | null, 
+  clientName: string,
+  avatarUrl: string,
+  workspaceId?: string | null,
   userId?: string | null,
   clientId?: string | null
 ): Promise<void> => {
@@ -223,7 +223,7 @@ export const updateClientAvatarInAllProjects = async (
 
     // Buscar projetos por clientId (prioridade) ou por nome do cliente
     const projectIds = new Set<string>();
-    
+
     // Buscar por clientId se fornecido
     if (clientId) {
       const conditionsById: any[] = [where("clientId", "==", clientId)];
@@ -234,7 +234,7 @@ export const updateClientAvatarInAllProjects = async (
       const snapshotById = await getDocs(qById);
       snapshotById.docs.forEach(doc => projectIds.add(doc.id));
     }
-    
+
     // Buscar por nome do cliente (compatibilidade com projetos antigos)
     const conditionsByName: any[] = [where("client", "==", clientName)];
     if (workspaceId) {
@@ -1435,6 +1435,87 @@ export const resetProjectStageTasks = async (
   }
 };
 
+// Migrar tarefas e status do projeto quando muda entre recorrente e normal
+export const migrateProjectMode = async (projectId: string, toRecurring: boolean): Promise<void> => {
+  try {
+    if (!db) throw new Error("Firebase não está inicializado");
+
+    console.log(`Migrating project ${projectId} to ${toRecurring ? 'Recurring' : 'Standard'} mode`);
+
+    // 1. Mapeamentos
+    const mapToRecurring: { [key: string]: string } = {
+      'onboarding': 'onboarding-recurring',
+      'development': 'development-recurring',
+      'review': 'review-recurring',
+      'adjustments': 'adjustments-recurring',
+      'completed': 'maintenance-recurring'
+    };
+
+    const mapToStandard: { [key: string]: string } = {
+      'onboarding-recurring': 'onboarding',
+      'development-recurring': 'development',
+      'review-recurring': 'review',
+      'adjustments-recurring': 'adjustments',
+      'maintenance-recurring': 'completed',
+      'finished-recurring': 'completed'
+    };
+
+    const mapping = toRecurring ? mapToRecurring : mapToStandard;
+
+    // 2. Buscar projeto para atualizar o stageId atual
+    const projectRef = doc(db, PROJECTS_COLLECTION, projectId);
+    const projectSnap = await getDoc(projectRef);
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data();
+      const currentStageId = projectData.stageId || projectData.status?.toLowerCase();
+
+      let targetStageId = currentStageId;
+
+      // Se não tem stageId definido, tentar mapear do status
+      if (!projectData.stageId && projectData.status) {
+        const statusMap: { [key: string]: string } = {
+          'Lead': 'onboarding',
+          'Active': 'development',
+          'Review': 'review',
+          'Completed': 'completed',
+          'Finished': 'finished-recurring'
+        };
+        targetStageId = statusMap[projectData.status];
+      }
+
+      if (targetStageId && mapping[targetStageId]) {
+        const newStageId = mapping[targetStageId];
+        await updateDoc(projectRef, {
+          stageId: newStageId,
+          updatedAt: new Date()
+        });
+        console.log(`Updated project stageId from ${targetStageId} to ${newStageId}`);
+      }
+    }
+
+    // 3. Buscar e atualizar todas as tarefas do projeto
+    const tasks = await getProjectStageTasks(projectId);
+
+    let updatedCount = 0;
+    const updatePromises = tasks.map(task => {
+      const newStageId = mapping[task.stageId];
+      if (newStageId && newStageId !== task.stageId) {
+        updatedCount++;
+        return updateProjectTask(task.id, { stageId: newStageId });
+      }
+      return Promise.resolve();
+    });
+
+    await Promise.all(updatePromises);
+    console.log(`Migrated ${updatedCount} tasks to new mode.`);
+
+  } catch (error) {
+    console.error("Error migrating project mode:", error);
+    throw error;
+  }
+};
+
 // Project Files
 const getFileType = (fileName: string, mimeType: string): 'image' | 'document' | 'video' | 'other' => {
   const extension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -2347,7 +2428,7 @@ export const addClient = async (client: Omit<Client, 'id'>): Promise<string> => 
       if (client.address.city) address.city = client.address.city;
       if (client.address.state) address.state = client.address.state;
       if (client.address.postalCode) address.postalCode = client.address.postalCode;
-      
+
       if (Object.keys(address).length > 0) {
         clientData.address = address;
       }
@@ -2446,7 +2527,7 @@ export const getClientByName = async (name: string, workspaceId: string): Promis
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     if (querySnapshot.empty) {
       return null;
     }
@@ -2477,7 +2558,7 @@ export const getClientByCpfCnpj = async (cpfCnpj: string, workspaceId: string): 
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     if (querySnapshot.empty) {
       return null;
     }
@@ -2506,19 +2587,19 @@ export const getClients = async (workspaceId: string): Promise<Client[]> => {
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     const clients = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     })) as Client[];
-    
+
     // Ordenar no cliente por nome (enquanto índice está sendo construído)
     clients.sort((a, b) => {
       const nameA = (a.name || '').toLowerCase();
       const nameB = (b.name || '').toLowerCase();
       return nameA.localeCompare(nameB);
     });
-    
+
     return clients;
   } catch (error) {
     console.error("Error getting clients:", error);
@@ -2531,7 +2612,7 @@ export const subscribeToClients = (callback: (clients: Client[]) => void, worksp
   if (!db) {
     console.error("Firebase não está inicializado");
     callback([]);
-    return () => {};
+    return () => { };
   }
 
   // Usar apenas where enquanto o índice composto está sendo construído
@@ -2546,14 +2627,14 @@ export const subscribeToClients = (callback: (clients: Client[]) => void, worksp
       id: doc.id,
       ...doc.data()
     })) as Client[];
-    
+
     // Ordenar no cliente por nome (enquanto índice está sendo construído)
     clients.sort((a, b) => {
       const nameA = (a.name || '').toLowerCase();
       const nameB = (b.name || '').toLowerCase();
       return nameA.localeCompare(nameB);
     });
-    
+
     console.log(`📋 [subscribeToClients] Carregados ${clients.length} clientes`);
     callback(clients);
   }, (error) => {
@@ -2593,9 +2674,9 @@ export const searchClients = async (searchTerm: string, workspaceId: string): Pr
 
     // Firebase não suporta busca "like", então buscamos todos e filtramos
     const allClients = await getClients(workspaceId);
-    
+
     const term = searchTerm.toLowerCase();
-    return allClients.filter(client => 
+    return allClients.filter(client =>
       client.name.toLowerCase().includes(term) ||
       client.email.toLowerCase().includes(term) ||
       client.cpfCnpj.includes(term.replace(/\D/g, ''))
@@ -2623,7 +2704,7 @@ export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
       where("workspaceId", "==", workspaceId)
     );
     const projectsSnapshot = await getDocs(projectsQuery);
-    
+
     const projectsWithoutClientId: Array<{ id: string; client: string }> = [];
     projectsSnapshot.forEach((doc) => {
       const data = doc.data();
@@ -2645,7 +2726,7 @@ export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
     // 2. Agrupar por nome de cliente (case-insensitive)
     const clientNamesMap = new Map<string, string[]>(); // nome normalizado -> [nomes originais]
     const clientNamesToProjects = new Map<string, string[]>(); // nome normalizado -> [projectIds]
-    
+
     projectsWithoutClientId.forEach(project => {
       const normalizedName = project.client.toLowerCase().trim();
       if (!clientNamesMap.has(normalizedName)) {
@@ -2682,10 +2763,10 @@ export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
           workspaceId,
           createdAt: new Date()
         });
-        
+
         existingClient = await getClient(newClientId);
         clientsCreated++;
-        
+
         if (existingClient) {
           createdClients.push({
             name: clientName,
@@ -2704,7 +2785,7 @@ export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
 
       // 4. Atualizar todos os projetos desse cliente para incluir o `clientId`
       if (existingClient) {
-        const updatePromises = projectIds.map(projectId => 
+        const updatePromises = projectIds.map(projectId =>
           updateDoc(doc(db, PROJECTS_COLLECTION, projectId), {
             clientId: existingClient!.id,
             updatedAt: new Date()

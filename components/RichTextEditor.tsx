@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -18,6 +18,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     placeholder = 'Adicione uma descrição para o projeto...',
     readOnly = false
 }) => {
+    // Só sincronizar content → editor quando for mudança externa (ex.: troca de projeto), não ao digitar
+    const lastContentFromEditorRef = useRef<string>(content);
+
     const editor = useEditor({
         editable: !readOnly,
         extensions: [
@@ -45,6 +48,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         },
         onUpdate: ({ editor }) => {
             const html = editor.getHTML();
+            lastContentFromEditorRef.current = html;
             onChange(html);
         },
     });
@@ -56,9 +60,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         }
     }, [readOnly, editor]);
 
-    // Atualizar o conteúdo quando o prop content mudar externamente
+    // Só aplicar content no editor quando for mudança externa (troca de projeto/carregamento), não quando vier do próprio editor
     useEffect(() => {
-        if (editor && content !== editor.getHTML()) {
+        if (editor && content !== lastContentFromEditorRef.current) {
+            lastContentFromEditorRef.current = content;
             editor.commands.setContent(content);
         }
     }, [content, editor]);

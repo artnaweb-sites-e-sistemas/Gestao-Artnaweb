@@ -32,7 +32,8 @@ import {
   resetProjectStageTasks,
   updateProjectTask,
   addProjectLink,
-  updateProjectFile
+  updateProjectFile,
+  migrateProjectMode,
 } from '../firebase/services';
 
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -144,7 +145,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   // Estado para debounce de salvamento da descrição
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Cleanup: salvar descrição ao desmontar o componente
   useEffect(() => {
     return () => {
@@ -173,10 +174,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   const handleNextDateConfirm = async (nextDate: Date) => {
     if (!nextDateType) return;
-    
+
     try {
       const formattedDate = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-      
+
       if (nextDateType === 'maintenance') {
         await updateProject(currentProject.id, { maintenanceDate: formattedDate });
         setCurrentProject(prev => ({ ...prev, maintenanceDate: formattedDate }));
@@ -186,7 +187,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         setCurrentProject(prev => ({ ...prev, reportDate: formattedDate }));
         setToast({ message: "Próxima data de relatório definida", type: 'success' });
       }
-      
+
       setTimeout(() => setToast(null), 3000);
       setShowNextDateModal(false);
       setNextDateType(null);
@@ -519,7 +520,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   const handleCancelAsaasPayment = async (invoice: Invoice) => {
     if (!currentWorkspace?.id || !invoice.asaasPaymentId) return;
-    
+
     if (!confirm('Tem certeza que deseja cancelar esta cobrança no Asaas?')) return;
 
     setCancelingAsaas(invoice.id);
@@ -701,7 +702,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           user?.uid || null,
                           currentProject.clientId || null
                         );
-                        
+
                         // Se o projeto tem clientId, atualizar também o avatar do cliente na entidade Client
                         if (currentProject.clientId) {
                           const { updateClient } = await import('../firebase/services');
@@ -763,18 +764,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex items-center gap-1 group/client">
                       <h1 className="text-lg font-bold leading-tight uppercase truncate">{currentProject.client}</h1>
                       {canEdit && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTempClient(currentProject.client);
-                          setEditingClient(true);
-                        }}
-                        className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                        title="Editar cliente"
-                      >
-                        <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempClient(currentProject.client);
+                            setEditingClient(true);
+                          }}
+                          className="flex-shrink-0 opacity-50 group-hover/client:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                          title="Editar cliente"
+                        >
+                          <span className="material-symbols-outlined text-sm text-slate-400 hover:text-primary">edit</span>
+                        </button>
                       )}
                     </div>
                   )}
@@ -813,18 +814,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex items-center gap-1 group/name">
                       <p className="text-slate-500 text-xs font-medium capitalize tracking-wider truncate">{currentProject.name}</p>
                       {canEdit && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTempNameSidebar(currentProject.name);
-                          setEditingNameSidebar(true);
-                        }}
-                        className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                        title="Editar nome"
-                      >
-                        <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempNameSidebar(currentProject.name);
+                            setEditingNameSidebar(true);
+                          }}
+                          className="flex-shrink-0 opacity-50 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                          title="Editar nome"
+                        >
+                          <span className="material-symbols-outlined text-[10px] text-slate-400 hover:text-primary">edit</span>
+                        </button>
                       )}
                     </div>
                   )}
@@ -885,7 +886,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           if (!canEdit) return;
                           try {
                             // Buscar a etapa "Ajustes"
-                            const adjustmentsStage = stages.find(s => 
+                            const adjustmentsStage = stages.find(s =>
                               s.id === 'adjustments' || s.id === 'adjustments-recurring'
                             );
                             await updateProject(currentProject.id, {
@@ -1049,8 +1050,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             if (!canEdit) return;
                             try {
                               // Buscar a etapa "Em Revisão" (não a etapa de Ajustes)
-                              const reviewStage = stages.find(s => 
-                                s.status === 'Review' && 
+                              const reviewStage = stages.find(s =>
+                                s.status === 'Review' &&
                                 (s.id === 'review' || s.id === 'review-recurring')
                               );
                               await updateProject(currentProject.id, {
@@ -1085,7 +1086,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               if (!canEdit) return;
                               try {
                                 // Buscar a etapa "Ajustes"
-                                const adjustmentsStage = stages.find(s => 
+                                const adjustmentsStage = stages.find(s =>
                                   s.id === 'adjustments' || s.id === 'adjustments-recurring'
                                 );
                                 await updateProject(currentProject.id, {
@@ -1174,8 +1175,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 if (!canEdit) return;
                                 try {
                                   // Buscar a etapa "Em Revisão"
-                                  const reviewStage = stages.find(s => 
-                                    s.status === 'Review' && 
+                                  const reviewStage = stages.find(s =>
+                                    s.status === 'Review' &&
                                     (s.id === 'review' || s.id === 'review-recurring')
                                   );
                                   await updateProject(currentProject.id, {
@@ -1445,13 +1446,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest">Equipe</p>
                   {canEdit && (
-                  <button
-                    onClick={() => setShowAddMember(true)}
-                    className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
-                    title="Adicionar membro"
-                  >
-                    <span className="material-symbols-outlined text-base">add</span>
-                  </button>
+                    <button
+                      onClick={() => setShowAddMember(true)}
+                      className="size-5 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
+                      title="Adicionar membro"
+                    >
+                      <span className="material-symbols-outlined text-base">add</span>
+                    </button>
                   )}
                 </div>
                 {teamMembers.length > 0 ? (
@@ -1465,13 +1466,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           title={member.name}
                         >
                           {canEdit && (
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                            title="Remover membro"
-                          >
-                            <span className="material-symbols-outlined text-xs">close</span>
-                          </button>
+                            <button
+                              onClick={() => handleRemoveMember(member.id)}
+                              className="absolute -top-1 -right-1 size-4 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                              title="Remover membro"
+                            >
+                              <span className="material-symbols-outlined text-xs">close</span>
+                            </button>
                           )}
                         </div>
                       ))}
@@ -1487,12 +1488,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   <div className="text-center py-2">
                     <p className="text-xs text-slate-500 mb-2">Nenhum membro</p>
                     {canEdit && (
-                    <button
-                      onClick={() => setShowAddMember(true)}
-                      className="text-xs font-semibold text-primary hover:underline"
-                    >
-                      Adicionar membro
-                    </button>
+                      <button
+                        onClick={() => setShowAddMember(true)}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Adicionar membro
+                      </button>
                     )}
                   </div>
                 )}
@@ -1508,12 +1509,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 onClick={() => setActiveManagementTab('overview')}
               />
               {canViewFinancial && (
-              <NavBtn
-                icon="payments"
-                label="Faturamento e Notas"
-                active={activeManagementTab === 'billing'}
-                onClick={() => setActiveManagementTab('billing')}
-              />
+                <NavBtn
+                  icon="payments"
+                  label="Faturamento e Notas"
+                  active={activeManagementTab === 'billing'}
+                  onClick={() => setActiveManagementTab('billing')}
+                />
               )}
               <NavBtn
                 icon="rocket_launch"
@@ -1532,13 +1533,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               Voltar ao Painel
             </button>
             {canEdit && (
-            <button
-              onClick={() => setShowDeleteProjectConfirm(true)}
-              className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
-            >
-              <span className="material-symbols-outlined text-lg">delete</span>
-              Excluir Projeto
-            </button>
+              <button
+                onClick={() => setShowDeleteProjectConfirm(true)}
+                className="flex w-full items-center justify-center gap-2 px-4 py-2 bg-rose-500/10 text-rose-500 border border-rose-200 dark:border-rose-800 rounded-lg text-sm font-semibold hover:bg-rose-500 hover:text-white transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">delete</span>
+                Excluir Projeto
+              </button>
             )}
           </div>
         </aside >
@@ -1572,13 +1573,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         ></div>
                       ) : (
                         canEdit ? (
-                        <button
-                          onClick={() => projectImageInputRef.current?.click()}
-                          className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
-                          title="Adicionar foto do projeto"
-                        >
-                          <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
-                        </button>
+                          <button
+                            onClick={() => projectImageInputRef.current?.click()}
+                            className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                            title="Adicionar foto do projeto"
+                          >
+                            <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-2xl">add_photo_alternate</span>
+                          </button>
                         ) : (
                           <div
                             className="size-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600"
@@ -1655,18 +1656,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         <div className="flex items-center gap-2 group/header-name">
                           <p className="text-3xl font-black leading-tight tracking-tight">{currentProject.name}</p>
                           {canEdit && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTempNameHeader(currentProject.name);
-                              setEditingNameHeader(true);
-                            }}
-                            className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
-                            title="Editar nome"
-                          >
-                            <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTempNameHeader(currentProject.name);
+                                setEditingNameHeader(true);
+                              }}
+                              className="flex-shrink-0 opacity-50 group-hover/header-name:opacity-100 transition-opacity p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+                              title="Editar nome"
+                            >
+                              <span className="material-symbols-outlined text-lg text-slate-400 hover:text-primary">edit</span>
+                            </button>
                           )}
                         </div>
                       )}
@@ -1697,13 +1698,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           )}
                           {/* Botão de adicionar mais serviços */}
                           {canEdit && (
-                          <button
-                            onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                            className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
-                            title="Adicionar/remover serviços"
-                          >
-                            <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
-                          </button>
+                            <button
+                              onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
+                              title="Adicionar/remover serviços"
+                            >
+                              <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
+                            </button>
                           )}
                           {showTypeDropdown && (
                             <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
@@ -1725,6 +1726,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       onChange={async () => {
                                         try {
                                           const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+
+                                          // Determinar estado "Recorrente" ANTES da mudança
+                                          const wasRecurring = currentTypes.some(typeName =>
+                                            categories.find(c => c.name === typeName && c.isRecurring)
+                                          );
+
                                           let newTypes: string[];
 
                                           if (isSelected) {
@@ -1739,14 +1746,30 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             newTypes = [...currentTypes.filter(t => t !== 'Sem categoria'), cat.name];
                                           }
 
+                                          // Determinar estado "Recorrente" DEPOIS da mudança
+                                          const willBeRecurring = newTypes.some(typeName =>
+                                            categories.find(c => c.name === typeName && c.isRecurring)
+                                          );
+
                                           await updateProject(currentProject.id, {
                                             types: newTypes,
                                             type: newTypes[0] || '' // Manter compatibilidade
                                           });
-                                          setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
+
+                                          // Se houve mudança no status de recorrência, migrar tarefas
+                                          if (wasRecurring !== willBeRecurring) {
+                                            setToast({ message: "Migrando tarefas para o novo modo...", type: 'success' });
+                                            await migrateProjectMode(currentProject.id, willBeRecurring);
+                                            setToast({ message: "Serviços atualizados e tarefas migradas", type: 'success' });
+                                          } else {
+                                            setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
+                                          }
+
                                           setTimeout(() => setToast(null), 3000);
                                         } catch (error) {
                                           console.error("Error updating types:", error);
+                                          setToast({ message: "Erro ao atualizar serviços", type: 'error' });
+                                          setTimeout(() => setToast(null), 3000);
                                         }
                                       }}
                                       className="size-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
@@ -1969,14 +1992,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               if (newContent !== (currentProject.description || '')) {
                                 try {
                                   await updateProject(currentProject.id, { description: newContent });
-                                setToast({ message: "Descrição atualizada", type: 'success' });
-                                setTimeout(() => setToast(null), 3000);
-                              } catch (error) {
-                                console.error("Error updating description:", error);
-                                setToast({ message: "Erro ao atualizar descrição", type: 'error' });
-                                setTimeout(() => setToast(null), 3000);
+                                  setToast({ message: "Descrição atualizada", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                } catch (error) {
+                                  console.error("Error updating description:", error);
+                                  setToast({ message: "Erro ao atualizar descrição", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                }
                               }
-                            }
                             }, 1000); // Salvar após 1 segundo de inatividade
                           }}
                           placeholder="Adicione uma descrição para o projeto... Use a barra de ferramentas para formatar."
@@ -2074,16 +2097,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         {stageProjectTasks.filter(t => t.completed).length}/{stageProjectTasks.length}
                                       </span>
                                     )}
-                                  {(isCurrentStage || isPreviousStage) && (
-                                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
-                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                      : isCurrentStage
-                                        ? 'bg-primary/10 text-primary'
-                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                      }`}>
-                                      {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
-                                    </span>
-                                  )}
+                                    {(isCurrentStage || isPreviousStage) && (
+                                      <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
+                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                        : isCurrentStage
+                                          ? 'bg-primary/10 text-primary'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        }`}>
+                                        {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
+                                      </span>
+                                    )}
                                   </div>
                                 </button>
 
@@ -2092,29 +2115,29 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   <div className="px-4 pb-4">
                                     {/* Botão Redefinir Tarefas - Agora disponível para todas as etapas */}
                                     <div className="flex justify-end mb-2">
-                                    <button
-                                      onClick={() => {
+                                      <button
+                                        onClick={() => {
                                           if (!canEdit) return;
-                                        setStageToReset(stage);
-                                        setShowResetTasksConfirm(true);
-                                      }}
+                                          setStageToReset(stage);
+                                          setShowResetTasksConfirm(true);
+                                        }}
                                         disabled={!canEdit}
                                         className={`text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                      title="Redefinir tarefas para o padrão"
-                                    >
-                                      <span className="material-symbols-outlined text-sm">refresh</span>
-                                      Redefinir
-                                    </button>
-                                </div>
+                                        title="Redefinir tarefas para o padrão"
+                                      >
+                                        <span className="material-symbols-outlined text-sm">refresh</span>
+                                        Redefinir
+                                      </button>
+                                    </div>
 
-                                <div className="space-y-2">
-                                  {stageProjectTasks.map((task) => {
-                                    const isTaskCompleted = task.completed || false;
-                                    const isTaskInProgress = isCurrentStage && !isTaskCompleted;
+                                    <div className="space-y-2">
+                                      {stageProjectTasks.map((task) => {
+                                        const isTaskCompleted = task.completed || false;
+                                        const isTaskInProgress = isCurrentStage && !isTaskCompleted;
 
-                                    return (
-                                      <div
-                                        key={task.id}
+                                        return (
+                                          <div
+                                            key={task.id}
                                             className="cursor-grab active:cursor-grabbing"
                                             draggable={canEdit}
                                             onDragStart={(e) => {
@@ -2218,8 +2241,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform translate-y-[2px]"></div>
                                             )}
 
-                                        <button
-                                          onClick={async () => {
+                                            <button
+                                              onClick={async () => {
                                                 if (!canEdit) return;
                                                 try {
                                                   const newCompletedStatus = !isTaskCompleted;
@@ -2235,9 +2258,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
                                                     if (newCompletedStatus) {
                                                       // CLEAR logic - Check if there are other pending tasks with the same date
-                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t => 
-                                                        t.id !== task.id && 
-                                                        !t.completed && 
+                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t =>
+                                                        t.id !== task.id &&
+                                                        !t.completed &&
                                                         t.dueDate
                                                       ).filter(t => {
                                                         const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
@@ -2248,9 +2271,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       // Only update date if there are no other pending tasks with the same date
                                                       if (otherPendingTasksWithSameDate.length === 0) {
                                                         // Find next closest date among remaining pending tasks
-                                                        const pendingTasksWithDates = projectStageTasks.filter(t => 
-                                                          t.id !== task.id && 
-                                                          !t.completed && 
+                                                        const pendingTasksWithDates = projectStageTasks.filter(t =>
+                                                          t.id !== task.id &&
+                                                          !t.completed &&
                                                           t.dueDate
                                                         ).map(t => {
                                                           const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
@@ -2290,33 +2313,33 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       setCurrentProject(prev => ({ ...prev, ...updates }));
 
                                                       const msg = newCompletedStatus
-                                                        ? (updates.deadline || updates.maintenanceDate 
-                                                            ? "Tarefa concluída e data atualizada para próxima pendente"
-                                                            : "Tarefa concluída e datas limpas")
+                                                        ? (updates.deadline || updates.maintenanceDate
+                                                          ? "Tarefa concluída e data atualizada para próxima pendente"
+                                                          : "Tarefa concluída e datas limpas")
                                                         : "Tarefa reaberta e datas restauradas";
 
                                                       setToast({ message: msg, type: 'success' });
                                                       setTimeout(() => setToast(null), 3000);
                                                     }
                                                   }
-                                            } catch (error) {
-                                              console.error("Error toggling task:", error);
-                                              setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            }
-                                          }}
+                                                } catch (error) {
+                                                  console.error("Error toggling task:", error);
+                                                  setToast({ message: "Erro ao atualizar tarefa. Tente novamente.", type: 'error' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                }
+                                              }}
                                               disabled={!canEdit}
                                               className={`flex-shrink-0 ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
-                                        >
-                                          <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
-                                            ? 'text-green-500'
-                                            : isTaskInProgress
-                                              ? 'text-primary'
-                                              : 'text-slate-400'
-                                            }`}>
-                                            {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
-                                          </span>
-                                        </button>
+                                            >
+                                              <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
+                                                ? 'text-green-500'
+                                                : isTaskInProgress
+                                                  ? 'text-primary'
+                                                  : 'text-slate-400'
+                                                }`}>
+                                                {isTaskCompleted ? 'check_circle' : 'radio_button_unchecked'}
+                                              </span>
+                                            </button>
 
                                             {/* Edição inline da tarefa */}
                                             {editingTaskId === task.id ? (
@@ -2359,8 +2382,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                   className={`text-sm flex-1 ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
                                                   title="Clique duplo para editar"
                                                 >
-                                          {task.title || 'Sem título'}
-                                        </p>
+                                                  {task.title || 'Sem título'}
+                                                </p>
                                                 {canEdit && (
                                                   <button
                                                     onClick={() => {
@@ -2378,20 +2401,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 {(() => {
                                                   const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
                                                     if (!dueDate) return '';
-                                                    
+
                                                     // Se a tarefa está concluída, sempre verde
                                                     if (isCompleted) {
                                                       return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
                                                     }
-                                                    
+
                                                     const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
                                                     taskDate.setHours(0, 0, 0, 0);
-                                                    
+
                                                     const diffTime = taskDate.getTime() - today.getTime();
                                                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                                    
+
                                                     if (diffDays < 0) {
                                                       // Data passou - vermelho
                                                       return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
@@ -2403,7 +2426,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
                                                     }
                                                   };
-                                                  
+
                                                   return (
                                                     <button
                                                       onClick={(e) => {
@@ -2434,10 +2457,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             )}
 
                                             {canEdit && (
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await removeProjectTask(task.id);
+                                              <button
+                                                onClick={async () => {
+                                                  try {
+                                                    await removeProjectTask(task.id);
 
                                                     // Logic to clear project date if task is removed
                                                     if (task.dueDate) {
@@ -2448,9 +2471,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       const updates: any = {};
 
                                                       // Check if there are other pending tasks with the same date
-                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t => 
-                                                        t.id !== task.id && 
-                                                        !t.completed && 
+                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t =>
+                                                        t.id !== task.id &&
+                                                        !t.completed &&
                                                         t.dueDate
                                                       ).filter(t => {
                                                         const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
@@ -2461,9 +2484,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       // Only update date if there are no other pending tasks with the same date
                                                       if (otherPendingTasksWithSameDate.length === 0) {
                                                         // Find next closest date among remaining pending tasks
-                                                        const pendingTasksWithDates = projectStageTasks.filter(t => 
-                                                          t.id !== task.id && 
-                                                          !t.completed && 
+                                                        const pendingTasksWithDates = projectStageTasks.filter(t =>
+                                                          t.id !== task.id &&
+                                                          !t.completed &&
                                                           t.dueDate
                                                         ).map(t => {
                                                           const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
@@ -2498,23 +2521,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                       }
                                                     }
 
-                                              setToast({ message: "Tarefa removida", type: 'success' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            } catch (error) {
-                                              console.error("Error removing task:", error);
-                                              setToast({ message: "Erro ao remover tarefa", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            }
-                                          }}
-                                          className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
-                                          title="Remover tarefa"
-                                        >
-                                          <span className="material-symbols-outlined text-lg">delete</span>
-                                        </button>
+                                                    setToast({ message: "Tarefa removida", type: 'success' });
+                                                    setTimeout(() => setToast(null), 3000);
+                                                  } catch (error) {
+                                                    console.error("Error removing task:", error);
+                                                    setToast({ message: "Erro ao remover tarefa", type: 'error' });
+                                                    setTimeout(() => setToast(null), 3000);
+                                                  }
+                                                }}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
+                                                title="Remover tarefa"
+                                              >
+                                                <span className="material-symbols-outlined text-lg">delete</span>
+                                              </button>
                                             )}
-                                      </div>
-                                    );
-                                  })}
+                                          </div>
+                                        );
+                                      })}
 
                                       {stageProjectTasks.length === 0 && (
                                         <p className="text-xs text-slate-400 text-center py-3 italic">
@@ -2525,33 +2548,33 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas */}
                                       {canEdit && (
                                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
-                                      <input
-                                        type="text"
-                                        placeholder="Adicionar nova tarefa..."
+                                          <input
+                                            type="text"
+                                            placeholder="Adicionar nova tarefa..."
                                             className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
-                                        onKeyPress={async (e) => {
-                                          if (e.key === 'Enter') {
-                                            const input = e.target as HTMLInputElement;
-                                            const title = input.value.trim();
-                                            if (!title) return;
+                                            onKeyPress={async (e) => {
+                                              if (e.key === 'Enter') {
+                                                const input = e.target as HTMLInputElement;
+                                                const title = input.value.trim();
+                                                if (!title) return;
 
-                                            try {
-                                              const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
-                                              await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
-                                              input.value = '';
-                                              setToast({ message: "Tarefa adicionada", type: 'success' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            } catch (error) {
-                                              console.error("Error adding task:", error);
-                                              setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
-                                              setTimeout(() => setToast(null), 3000);
-                                            }
-                                          }
-                                        }}
-                                      />
+                                                try {
+                                                  const maxOrder = stageProjectTasks.reduce((max, t) => Math.max(max, t.order || 0), -1);
+                                                  await addProjectTask(currentProject.id, stage.id, title, maxOrder + 1);
+                                                  input.value = '';
+                                                  setToast({ message: "Tarefa adicionada", type: 'success' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                } catch (error) {
+                                                  console.error("Error adding task:", error);
+                                                  setToast({ message: "Erro ao adicionar tarefa", type: 'error' });
+                                                  setTimeout(() => setToast(null), 3000);
+                                                }
+                                              }
+                                            }}
+                                          />
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
                                   </div>
                                 )}
                               </div>
@@ -2574,13 +2597,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               <span className="material-symbols-outlined text-[16px]">lock</span> Compartilhado com {teamMembers.length} {teamMembers.length === 1 ? 'membro' : 'membros'}
                             </div>
                             {canEdit && (
-                            <button
-                              onClick={() => setShowAddCredential(true)}
-                              className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">add</span>
-                              Adicionar Credencial
-                            </button>
+                              <button
+                                onClick={() => setShowAddCredential(true)}
+                                className="flex items-center gap-2 px-4 h-9 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-base">add</span>
+                                Adicionar Credencial
+                              </button>
                             )}
                           </div>
                         </div>
@@ -2623,27 +2646,27 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           <div className="flex items-center gap-2">
                             {canEdit && (
                               <>
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              multiple
-                              onChange={handleFileUpload}
-                              className="hidden"
-                              id="file-upload"
-                              disabled={uploading}
-                            />
-                            <label
-                              htmlFor="file-upload"
-                              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${uploading
-                                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                : 'text-primary hover:bg-primary/10'
-                                }`}
-                            >
-                              <span className="material-symbols-outlined text-sm">
-                                {uploading ? 'hourglass_empty' : 'upload'}
-                              </span>
-                              {uploading ? 'Enviando...' : 'Enviar Arquivo'}
-                            </label>
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  multiple
+                                  onChange={handleFileUpload}
+                                  className="hidden"
+                                  id="file-upload"
+                                  disabled={uploading}
+                                />
+                                <label
+                                  htmlFor="file-upload"
+                                  className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${uploading
+                                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                    : 'text-primary hover:bg-primary/10'
+                                    }`}
+                                >
+                                  <span className="material-symbols-outlined text-sm">
+                                    {uploading ? 'hourglass_empty' : 'upload'}
+                                  </span>
+                                  {uploading ? 'Enviando...' : 'Enviar Arquivo'}
+                                </label>
                                 <button
                                   onClick={() => setShowAddLinkModal(true)}
                                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-primary hover:bg-primary/10"
@@ -2696,23 +2719,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     </>
                                   ) : (
                                     <>
-                                  <a
-                                    href={file.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
-                                  >
-                                    {file.name}
-                                  </a>
-                                  <div className="flex items-center gap-2 mt-1">
+                                      <a
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-primary transition-colors block truncate"
+                                      >
+                                        {file.name}
+                                      </a>
+                                      <div className="flex items-center gap-2 mt-1">
                                         {!file.isLink && file.size > 0 && (
                                           <>
-                                    <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
-                                    <span className="text-xs text-slate-400">•</span>
+                                            <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                                            <span className="text-xs text-slate-400">•</span>
                                           </>
                                         )}
-                                    <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
-                                  </div>
+                                        <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
+                                      </div>
                                     </>
                                   )}
                                 </div>
@@ -2728,13 +2751,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     >
                                       <span className="material-symbols-outlined text-lg">edit</span>
                                     </button>
-                                <button
-                                  onClick={() => handleDeleteFile(file)}
-                                  className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
+                                    <button
+                                      onClick={() => handleDeleteFile(file)}
+                                      className="flex-shrink-0 text-rose-600 hover:text-rose-700 transition-colors p-1"
                                       title={file.isLink ? "Excluir link" : "Excluir arquivo"}
-                                >
-                                  <span className="material-symbols-outlined text-lg">delete</span>
-                                </button>
+                                    >
+                                      <span className="material-symbols-outlined text-lg">delete</span>
+                                    </button>
                                   </>
                                 )}
                               </div>
@@ -2754,209 +2777,209 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
           {
             activeManagementTab === 'billing' && canViewFinancial && (
-            <div className="p-8">
-              <div className="max-w-5xl mx-auto">
-                <div className="flex items-center gap-2 text-slate-500 mb-4">
-                  <button
-                    onClick={onClose}
-                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                  </button>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-                </div>
-                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                  <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
-                    <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+              <div className="p-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="flex items-center gap-2 text-slate-500 mb-4">
+                    <button
+                      onClick={onClose}
+                      className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">arrow_back</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                    </button>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
                   </div>
+                  <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-3xl font-black leading-tight tracking-tight">Faturamento e Notas</h1>
+                      <p className="text-slate-500 text-sm">Gerencie faturas e notas fiscais do projeto</p>
+                    </div>
                     {canEdit && (
-                  <button
-                    onClick={() => setShowAddInvoice(true)}
-                    className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
-                  >
-                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
-                  </button>
+                      <button
+                        onClick={() => setShowAddInvoice(true)}
+                        className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700"
+                      >
+                        <span className="material-symbols-outlined text-[18px] mr-2">add</span> Nova Fatura
+                      </button>
                     )}
-                </div>
+                  </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                  <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold">Faturas</h3>
-                      <div className="flex gap-2">
-                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
-                        <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold">Faturas</h3>
+                        <div className="flex gap-2">
+                          <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Filtros</button>
+                          <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Exportar</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 dark:bg-slate-800/50">
-                        <tr>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 dark:bg-slate-800/50">
+                          <tr>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
                             {currentWorkspace?.asaasApiKey && (
                               <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Cobrança</th>
                             )}
-                          <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {invoices.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center">
-                              <div className="flex flex-col items-center gap-2">
-                                <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
-                                <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
-                                <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
-                              </div>
-                            </td>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
                           </tr>
-                        ) : (
-                          [...invoices].sort((a, b) => {
-                            const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-                            const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-                            return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
-                          }).map((invoice, index, sortedInvoices) => (
-                            <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                              <td className="px-6 py-4">
-                                <p className="text-sm font-medium">{invoice.description}</p>
-                                <p className="text-[10px] text-slate-400">{invoice.number}</p>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-slate-500">
-                                {(() => {
-                                  if (!invoice.date) return '-';
-                                  let dateObj: Date;
-                                  if (invoice.date instanceof Date) {
-                                    dateObj = invoice.date;
-                                  } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
-                                    // Parse YYYY-MM-DD sem problemas de timezone
-                                    const [year, month, day] = invoice.date.split('-').map(Number);
-                                    dateObj = new Date(year, month - 1, day);
-                                  } else if (invoice.date?.toDate) {
-                                    // Firebase Timestamp
-                                    dateObj = invoice.date.toDate();
-                                  } else {
-                                    dateObj = new Date(invoice.date);
-                                  }
-                                  return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
-                                })()}
-                              </td>
-                              <td className="px-6 py-4 text-sm font-bold">
-                                <div className="flex items-baseline gap-1.5">
-                                  <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
-                                  {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
-                                  {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
-                                    <span className="text-[10px] font-normal text-slate-500">
-                                      {(() => {
-                                        // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
-                                        const sameTypeInvoices = sortedInvoices.filter(inv =>
-                                          invoice.number.startsWith('IMP-')
-                                            ? inv.number.startsWith('IMP-')
-                                            : inv.number.startsWith('INV-')
-                                        );
-                                        const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
-                                        return `${currentIndex + 1}/${sameTypeInvoices.length}`;
-                                      })()}
-                                    </span>
-                                  )}
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {invoices.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-6 py-12 text-center">
+                                <div className="flex flex-col items-center gap-2">
+                                  <span className="material-symbols-outlined text-4xl text-slate-300">receipt_long</span>
+                                  <p className="text-sm text-slate-500">Nenhuma fatura cadastrada</p>
+                                  <p className="text-xs text-slate-400">Clique em "Nova Fatura" para adicionar</p>
                                 </div>
                               </td>
-                              <td className="px-6 py-4">
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={async () => {
+                            </tr>
+                          ) : (
+                            [...invoices].sort((a, b) => {
+                              const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+                              const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+                              return dateA.getTime() - dateB.getTime(); // Mais antiga primeiro
+                            }).map((invoice, index, sortedInvoices) => (
+                              <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                <td className="px-6 py-4">
+                                  <p className="text-sm font-medium">{invoice.description}</p>
+                                  <p className="text-[10px] text-slate-400">{invoice.number}</p>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-slate-500">
+                                  {(() => {
+                                    if (!invoice.date) return '-';
+                                    let dateObj: Date;
+                                    if (invoice.date instanceof Date) {
+                                      dateObj = invoice.date;
+                                    } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
+                                      // Parse YYYY-MM-DD sem problemas de timezone
+                                      const [year, month, day] = invoice.date.split('-').map(Number);
+                                      dateObj = new Date(year, month - 1, day);
+                                    } else if (invoice.date?.toDate) {
+                                      // Firebase Timestamp
+                                      dateObj = invoice.date.toDate();
+                                    } else {
+                                      dateObj = new Date(invoice.date);
+                                    }
+                                    return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+                                  })()}
+                                </td>
+                                <td className="px-6 py-4 text-sm font-bold">
+                                  <div className="flex items-baseline gap-1.5">
+                                    <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
+                                    {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
+                                    {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
+                                      <span className="text-[10px] font-normal text-slate-500">
+                                        {(() => {
+                                          // Contar apenas faturas do mesmo tipo (IMP-* ou INV-*)
+                                          const sameTypeInvoices = sortedInvoices.filter(inv =>
+                                            invoice.number.startsWith('IMP-')
+                                              ? inv.number.startsWith('IMP-')
+                                              : inv.number.startsWith('INV-')
+                                          );
+                                          const currentIndex = sameTypeInvoices.findIndex(inv => inv.id === invoice.id);
+                                          return `${currentIndex + 1}/${sameTypeInvoices.length}`;
+                                        })()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={async () => {
                                         if (invoice.status === 'Paid' || !canEdit) return;
-                                      try {
-                                        await updateInvoice(invoice.id, { status: 'Paid' });
-                                        const updatedInvoices = invoices.map(inv =>
-                                          inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
-                                        );
+                                        try {
+                                          await updateInvoice(invoice.id, { status: 'Paid' });
+                                          const updatedInvoices = invoices.map(inv =>
+                                            inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
+                                          );
 
-                                        // Atualizar status específico baseado no tipo de fatura
-                                        if (isProjectRecurring()) {
-                                          if (invoice.number.startsWith('IMP-')) {
-                                            // Verificar se todas as faturas de implementação estão pagas
-                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                          // Atualizar status específico baseado no tipo de fatura
+                                          if (isProjectRecurring()) {
+                                            if (invoice.number.startsWith('IMP-')) {
+                                              // Verificar se todas as faturas de implementação estão pagas
+                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                              }
+                                            } else {
+                                              // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
+                                              await updateProject(currentProject.id, { isRecurringPaid: true });
+                                              setPaidInvoiceForRecurring(invoice);
+                                              setShowRecurringConfirm(true);
                                             }
                                           } else {
-                                            // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
-                                            await updateProject(currentProject.id, { isRecurringPaid: true });
-                                            setPaidInvoiceForRecurring(invoice);
-                                            setShowRecurringConfirm(true);
-                                          }
-                                        } else {
-                                          // Projeto normal: atualizar status geral
-                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                          if (allPaid !== currentProject.isPaid) {
-                                            await updateProject(currentProject.id, { isPaid: allPaid });
-                                          }
-                                        }
-                                      } catch (error) {
-                                        console.error("Error updating invoice:", error);
-                                      }
-                                    }}
-                                    className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
-                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
-                                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                      disabled={!canEdit}
-                                  >
-                                    <span className="material-symbols-outlined text-xs">check_circle</span>
-                                    Pago
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                        if (invoice.status === 'Pending' || !canEdit) return;
-                                      try {
-                                        await updateInvoice(invoice.id, { status: 'Pending' });
-                                        const updatedInvoices = invoices.map(inv =>
-                                          inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
-                                        );
-
-                                        // Atualizar status específico baseado no tipo de fatura
-                                        if (isProjectRecurring()) {
-                                          if (invoice.number.startsWith('IMP-')) {
-                                            // Verificar se alguma fatura de implementação está pendente
-                                            const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                            const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                            if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                              await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                            // Projeto normal: atualizar status geral
+                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                            if (allPaid !== currentProject.isPaid) {
+                                              await updateProject(currentProject.id, { isPaid: allPaid });
                                             }
-                                          } else if (invoice.number.startsWith('REC-')) {
-                                            // Para mensalidade, marcar como pendente
-                                            await updateProject(currentProject.id, { isRecurringPaid: false });
                                           }
-                                        } else {
-                                          // Projeto normal: atualizar status geral
-                                          const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                          if (allPaid !== currentProject.isPaid) {
-                                            await updateProject(currentProject.id, { isPaid: allPaid });
-                                          }
+                                        } catch (error) {
+                                          console.error("Error updating invoice:", error);
                                         }
-                                      } catch (error) {
-                                        console.error("Error updating invoice:", error);
-                                      }
-                                    }}
-                                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${invoice.status === 'Pending'
-                                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/20'
+                                      }}
+                                      className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${invoice.status === 'Paid'
+                                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-green-100 hover:text-green-700 hover:border-green-300'
                                         } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                                       disabled={!canEdit}
-                                  >
-                                    <span className="material-symbols-outlined text-sm">pending</span>
-                                    Pendente
-                                  </button>
-                                </div>
-                              </td>
+                                    >
+                                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                                      Pago
+                                    </button>
+                                    <button
+                                      onClick={async () => {
+                                        if (invoice.status === 'Pending' || !canEdit) return;
+                                        try {
+                                          await updateInvoice(invoice.id, { status: 'Pending' });
+                                          const updatedInvoices = invoices.map(inv =>
+                                            inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
+                                          );
+
+                                          // Atualizar status específico baseado no tipo de fatura
+                                          if (isProjectRecurring()) {
+                                            if (invoice.number.startsWith('IMP-')) {
+                                              // Verificar se alguma fatura de implementação está pendente
+                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
+                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
+                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
+                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
+                                              }
+                                            } else if (invoice.number.startsWith('REC-')) {
+                                              // Para mensalidade, marcar como pendente
+                                              await updateProject(currentProject.id, { isRecurringPaid: false });
+                                            }
+                                          } else {
+                                            // Projeto normal: atualizar status geral
+                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
+                                            if (allPaid !== currentProject.isPaid) {
+                                              await updateProject(currentProject.id, { isPaid: allPaid });
+                                            }
+                                          }
+                                        } catch (error) {
+                                          console.error("Error updating invoice:", error);
+                                        }
+                                      }}
+                                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${invoice.status === 'Pending'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/20'
+                                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      disabled={!canEdit}
+                                    >
+                                      <span className="material-symbols-outlined text-sm">pending</span>
+                                      Pendente
+                                    </button>
+                                  </div>
+                                </td>
                                 {/* Coluna Asaas */}
                                 {currentWorkspace?.asaasApiKey && (
                                   <td className="px-6 py-4">
@@ -3003,98 +3026,98 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     )}
                                   </td>
                                 )}
-                              <td className="px-6 py-4 text-center">
-                                <button
+                                <td className="px-6 py-4 text-center">
+                                  <button
                                     onClick={() => canEdit && setEditingInvoice(invoice)}
                                     className={`size-8 rounded-lg flex items-center justify-center transition-all border border-slate-200 dark:border-slate-700 ${canEdit ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-primary/10 hover:text-primary' : 'bg-slate-50 dark:bg-slate-900 text-slate-300 cursor-not-allowed'}`}
                                     disabled={!canEdit}
-                                  title="Editar fatura"
-                                >
-                                  <span className="material-symbols-outlined text-lg">edit</span>
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                                    title="Editar fatura"
+                                  >
+                                    <span className="material-symbols-outlined text-lg">edit</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             )
           }
 
           {
             activeManagementTab === 'roadmap' && (
-            <div className="p-8">
-              <div className="max-w-5xl mx-auto">
-                <div className="flex items-center gap-2 text-slate-500 mb-4">
-                  <button
-                    onClick={onClose}
-                    className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                  </button>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-                </div>
-                <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                  <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
-                    <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+              <div className="p-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="flex items-center gap-2 text-slate-500 mb-4">
+                    <button
+                      onClick={onClose}
+                      className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">arrow_back</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                    </button>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
                   </div>
-                  <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
-                    <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
-                  </button>
-                </div>
+                  <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
+                    <div className="flex flex-col gap-1">
+                      <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
+                      <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+                    </div>
+                    <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
+                      <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
+                    </button>
+                  </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
-                  <div className="relative">
-                    {[
-                      { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
-                      { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
-                      { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
-                      { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
-                      { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
-                      { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
-                    ].map((milestone, index) => (
-                      <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
-                        <div className="flex flex-col items-center">
-                          <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
-                            milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
-                              'bg-slate-200 text-slate-400'
-                            }`}>
-                            {milestone.status === 'completed' ? (
-                              <span className="material-symbols-outlined">check</span>
-                            ) : (
-                              <span>{index + 1}</span>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
+                    <div className="relative">
+                      {[
+                        { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
+                        { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
+                        { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
+                        { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
+                        { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
+                        { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
+                      ].map((milestone, index) => (
+                        <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
+                          <div className="flex flex-col items-center">
+                            <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
+                              milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
+                                'bg-slate-200 text-slate-400'
+                              }`}>
+                              {milestone.status === 'completed' ? (
+                                <span className="material-symbols-outlined">check</span>
+                              ) : (
+                                <span>{index + 1}</span>
+                              )}
+                            </div>
+                            {index < 5 && (
+                              <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
+                                }`} style={{ minHeight: '80px' }}></div>
                             )}
                           </div>
-                          {index < 5 && (
-                            <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
-                              }`} style={{ minHeight: '80px' }}></div>
-                          )}
-                        </div>
-                        <div className="flex-1 pb-8">
-                          <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
-                            milestone.status === 'current' ? 'border-primary bg-primary/5' :
-                              'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
-                            }`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="text-lg font-bold">{milestone.title}</h3>
-                              <span className="text-sm text-slate-500">{milestone.date}</span>
+                          <div className="flex-1 pb-8">
+                            <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
+                              milestone.status === 'current' ? 'border-primary bg-primary/5' :
+                                'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
+                              }`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-lg font-bold">{milestone.title}</h3>
+                                <span className="text-sm text-slate-500">{milestone.date}</span>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
                             </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             )
           }
         </main >
@@ -3102,176 +3125,176 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         {/* Modal Adicionar Credencial */}
         {
           showAddCredential && (
-          <AddCredentialModal
-            onClose={() => setShowAddCredential(false)}
-            onSave={async (credentialData) => {
-              const newCredential = {
-                id: Date.now().toString(),
-                ...credentialData
-              };
-              const updatedCredentials = [...credentials, newCredential];
-              setCredentials(updatedCredentials);
-              try {
-                await updateProject(currentProject.id, { credentials: updatedCredentials });
-                setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error saving credential:", error);
-                setToast({ message: "Erro ao salvar credencial", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-                // Reverter mudança local em caso de erro
-                setCredentials(credentials);
-              }
-              setShowAddCredential(false);
-            }}
-          />
+            <AddCredentialModal
+              onClose={() => setShowAddCredential(false)}
+              onSave={async (credentialData) => {
+                const newCredential = {
+                  id: Date.now().toString(),
+                  ...credentialData
+                };
+                const updatedCredentials = [...credentials, newCredential];
+                setCredentials(updatedCredentials);
+                try {
+                  await updateProject(currentProject.id, { credentials: updatedCredentials });
+                  setToast({ message: "Credencial adicionada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error saving credential:", error);
+                  setToast({ message: "Erro ao salvar credencial", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                  // Reverter mudança local em caso de erro
+                  setCredentials(credentials);
+                }
+                setShowAddCredential(false);
+              }}
+            />
           )
         }
 
         {/* Modal Editar Credencial */}
         {
           showEditCredential && (
-          <EditCredentialModal
-            credential={showEditCredential}
-            onClose={() => setShowEditCredential(null)}
-            onSave={async (credentialData) => {
-              const updatedCredentials = credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c);
-              setCredentials(updatedCredentials);
-              try {
-                await updateProject(currentProject.id, { credentials: updatedCredentials });
-                setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error updating credential:", error);
-                setToast({ message: "Erro ao atualizar credencial", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-                // Reverter mudança local em caso de erro
-                setCredentials(credentials);
-              }
-              setShowEditCredential(null);
-            }}
-          />
+            <EditCredentialModal
+              credential={showEditCredential}
+              onClose={() => setShowEditCredential(null)}
+              onSave={async (credentialData) => {
+                const updatedCredentials = credentials.map(c => c.id === showEditCredential.id ? { ...c, ...credentialData } : c);
+                setCredentials(updatedCredentials);
+                try {
+                  await updateProject(currentProject.id, { credentials: updatedCredentials });
+                  setToast({ message: "Credencial atualizada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error updating credential:", error);
+                  setToast({ message: "Erro ao atualizar credencial", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                  // Reverter mudança local em caso de erro
+                  setCredentials(credentials);
+                }
+                setShowEditCredential(null);
+              }}
+            />
           )
         }
 
         {/* Modal Adicionar Atividade */}
         {
           showAddActivity && (
-          <AddActivityModal
-            projectId={currentProject.id}
-            onClose={() => setShowAddActivity(false)}
-            onSave={async (activityData) => {
-              try {
-                console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
-                const activityId = await addActivity({
-                  projectId: currentProject.id,
-                  text: activityData.text,
-                  icon: activityData.icon,
-                  userName: activityData.userName || 'Usuário',
+            <AddActivityModal
+              projectId={currentProject.id}
+              onClose={() => setShowAddActivity(false)}
+              onSave={async (activityData) => {
+                try {
+                  console.log("Adding activity:", { projectId: currentProject.id, ...activityData });
+                  const activityId = await addActivity({
+                    projectId: currentProject.id,
+                    text: activityData.text,
+                    icon: activityData.icon,
+                    userName: activityData.userName || 'Usuário',
                     createdAt: new Date()
-                });
-                console.log("Activity added successfully:", activityId);
-                setShowAddActivity(false);
-              } catch (error: any) {
-                console.error("Error adding activity:", error);
-                const errorMessage = error?.message || "Erro desconhecido";
-                alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
-              }
-            }}
-          />
+                  });
+                  console.log("Activity added successfully:", activityId);
+                  setShowAddActivity(false);
+                } catch (error: any) {
+                  console.error("Error adding activity:", error);
+                  const errorMessage = error?.message || "Erro desconhecido";
+                  alert(`Erro ao adicionar atividade: ${errorMessage}. Verifique o console para mais detalhes.`);
+                }
+              }}
+            />
           )
         }
 
         {/* Modal Adicionar Membro */}
         {
           showAddMember && (
-          <AddMemberModal
-            projectId={currentProject.id}
-            onClose={() => setShowAddMember(false)}
-            onSave={async (memberData) => {
-              try {
-                console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
-                const memberId = await addTeamMember({
-                  projectId: currentProject.id,
-                  name: memberData.name,
-                  role: memberData.role,
-                  avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
-                  email: memberData.email,
+            <AddMemberModal
+              projectId={currentProject.id}
+              onClose={() => setShowAddMember(false)}
+              onSave={async (memberData) => {
+                try {
+                  console.log("Adding team member:", { projectId: currentProject.id, ...memberData });
+                  const memberId = await addTeamMember({
+                    projectId: currentProject.id,
+                    name: memberData.name,
+                    role: memberData.role,
+                    avatar: memberData.avatar || `https://picsum.photos/seed/${memberData.name}/40/40`,
+                    email: memberData.email,
                     addedAt: new Date()
-                });
-                console.log("Team member added successfully:", memberId);
-                setShowAddMember(false);
-              } catch (error: any) {
-                console.error("Error adding team member:", error);
-                const errorMessage = error?.message || "Erro desconhecido";
-                alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
-              }
-            }}
-          />
+                  });
+                  console.log("Team member added successfully:", memberId);
+                  setShowAddMember(false);
+                } catch (error: any) {
+                  console.error("Error adding team member:", error);
+                  const errorMessage = error?.message || "Erro desconhecido";
+                  alert(`Erro ao adicionar membro: ${errorMessage}. Verifique o console para mais detalhes.`);
+                }
+              }}
+            />
           )
         }
 
         {/* Modal Ver Todos os Membros */}
         {
           showAllMembers && (
-          <AllMembersModal
-            members={teamMembers}
-            onClose={() => setShowAllMembers(false)}
-            onRemove={(memberId) => {
-              const member = teamMembers.find(m => m.id === memberId);
-              if (member) {
-                setMemberToRemove(member);
-              }
-            }}
-          />
+            <AllMembersModal
+              members={teamMembers}
+              onClose={() => setShowAllMembers(false)}
+              onRemove={(memberId) => {
+                const member = teamMembers.find(m => m.id === memberId);
+                if (member) {
+                  setMemberToRemove(member);
+                }
+              }}
+            />
           )
         }
 
         {/* Modal Compartilhar Projeto */}
         {
           showShareProject && (
-          <ShareProjectModal
-            project={currentProject}
-            onClose={() => setShowShareProject(false)}
-          />
+            <ShareProjectModal
+              project={currentProject}
+              onClose={() => setShowShareProject(false)}
+            />
           )
         }
 
         {/* Modal Confirmar Exclusão de Arquivo */}
         {
           fileToDelete && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Excluir Arquivo</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Excluir Arquivo</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
+                  </p>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja excluir <span className="font-bold">"{fileToDelete.name}"</span>?
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setFileToDelete(null)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteFile}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Excluir
-                </button>
+                <div className="p-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setFileToDelete(null)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDeleteFile}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           )
         }
 
@@ -3431,317 +3454,317 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         {/* Modal Confirmar Remoção de Membro */}
         {
           memberToRemove && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Remover Membro</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Remover Membro</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
+                  </p>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja remover <span className="font-bold">"{memberToRemove.name}"</span> da equipe?
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setMemberToRemove(null)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmRemoveMember}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Remover
-                </button>
+                <div className="p-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setMemberToRemove(null)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmRemoveMember}
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           )
         }
 
         {
           showDeleteProjectConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold">Excluir Projeto</h3>
+                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Excluir Projeto</h3>
-                    <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
-                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
+                  </p>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
-                </p>
-              </div>
-              <div className="p-6 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setShowDeleteProjectConfirm(false)}
-                  className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await deleteProject(currentProject.id);
-                      setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
-                      setTimeout(() => {
-                        setShowDeleteProjectConfirm(false);
-                        onClose();
-                      }, 1000);
-                    } catch (error) {
-                      console.error("Error deleting project:", error);
-                      setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  }}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-          )
-        }
-
-        {/* Toast Notification */}
-        {
-          toast && (
-          <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${toast.type === 'success'
-              ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50'
-              : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
-              }`}>
-              <span className={`material-symbols-outlined flex-shrink-0 ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                }`}>
-                {toast.type === 'success' ? 'check_circle' : 'error'}
-              </span>
-              <p className={`text-sm font-semibold flex-1 ${toast.type === 'success'
-                ? 'text-emerald-900 dark:text-emerald-100'
-                : 'text-red-900 dark:text-red-100'
-                }`}>
-                {toast.message}
-              </p>
-              <button
-                onClick={() => setToast(null)}
-                className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
-          </div>
-          )
-        }
-
-        {/* Modal Adicionar Nova Fatura */}
-        {
-          showAddInvoice && (
-          <AddInvoiceModal
-            projectId={currentProject.id}
-            workspaceId={currentProject.workspaceId}
-            defaultNumber={(() => {
-              const year = new Date().getFullYear();
-              const count = invoices.length + 1;
-              return `INV-${year}-${count.toString().padStart(3, '0')}`;
-            })()}
-            onClose={() => setShowAddInvoice(false)}
-            isRecurring={isProjectRecurring()}
-            recurringAmount={currentProject.recurringAmount || 0}
-            onSave={async (invoiceData) => {
-              try {
-                await addInvoice({
-                  ...invoiceData,
-                  projectId: currentProject.id,
-                  workspaceId: currentProject.workspaceId
-                });
-                setShowAddInvoice(false);
-                setToast({ message: "Fatura criada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error adding invoice:", error);
-                setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-              }
-            }}
-          />
-          )
-        }
-
-        {/* Modal Editar Fatura */}
-        {
-          editingInvoice && (
-          <EditInvoiceModal
-            invoice={editingInvoice}
-            onClose={() => setEditingInvoice(null)}
-            onSave={async (updates) => {
-              try {
-                await updateInvoice(editingInvoice.id, updates);
-                setEditingInvoice(null);
-                setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
-                setTimeout(() => setToast(null), 3000);
-              } catch (error) {
-                console.error("Error updating invoice:", error);
-                setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
-                setTimeout(() => setToast(null), 3000);
-              }
-            }}
-          />
-          )
-        }
-
-        {/* Modal Confirmar Nova Fatura Recorrente */}
-        {
-          showRecurringConfirm && paidInvoiceForRecurring && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
-                    <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                  Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
-                </p>
-
-                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
-                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                      {(() => {
-                        let previousDate: Date;
-                        if (paidInvoiceForRecurring.date instanceof Date) {
-                          previousDate = paidInvoiceForRecurring.date;
-                        } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
-                          const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
-                          previousDate = new Date(year, month - 1, day);
-                        } else if (paidInvoiceForRecurring.date?.toDate) {
-                          previousDate = paidInvoiceForRecurring.date.toDate();
-                        } else {
-                          previousDate = new Date();
-                        }
-                        const nextDate = new Date(previousDate);
-                        nextDate.setDate(nextDate.getDate() + 30);
-                        return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                      })()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
+                <div className="p-6 flex items-center justify-end gap-3">
                   <button
-                    onClick={() => {
-                      setShowRecurringConfirm(false);
-                      setPaidInvoiceForRecurring(null);
-                    }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    Não, obrigado
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (paidInvoiceForRecurring) {
-                        await createRecurringInvoice(paidInvoiceForRecurring);
-                      }
-                      setShowRecurringConfirm(false);
-                      setPaidInvoiceForRecurring(null);
-                    }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-sm">add_circle</span>
-                    Sim, criar fatura
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          )
-        }
-
-        {/* Modal Confirmar Redefinir Tarefas */}
-        {
-          showResetTasksConfirm && stageToReset && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">refresh</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Redefinir Tarefas?</h3>
-                    <p className="text-sm text-slate-500">Etapa: {stageToReset.title}</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                  Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
-                </p>
-                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
-                    <span className="text-xs text-slate-500">
-                      As tarefas serão substituídas pelas definidas em Configurações.
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowResetTasksConfirm(false);
-                      setStageToReset(null);
-                    }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    onClick={() => setShowDeleteProjectConfirm(false)}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={async () => {
                       try {
-                        const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
-                        const projectCategory = categories.find(c => projectTypes.includes(c.name));
-                        await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
-                        setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
+                        await deleteProject(currentProject.id);
+                        setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
+                        setTimeout(() => {
+                          setShowDeleteProjectConfirm(false);
+                          onClose();
+                        }, 1000);
                       } catch (error) {
-                        console.error("Error resetting tasks:", error);
-                        setToast({ message: "Erro ao redefinir tarefas", type: 'error' });
+                        console.error("Error deleting project:", error);
+                        setToast({ message: "Erro ao excluir projeto. Tente novamente.", type: 'error' });
                         setTimeout(() => setToast(null), 3000);
                       }
-                      setShowResetTasksConfirm(false);
-                      setStageToReset(null);
                     }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    className="px-6 py-2.5 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
                   >
-                    <span className="material-symbols-outlined text-sm">refresh</span>
-                    Sim, redefinir
+                    Excluir
                   </button>
                 </div>
               </div>
             </div>
-          </div>
+          )
+        }
+
+        {/* Toast Notification */}
+        {
+          toast && (
+            <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out]">
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border min-w-[320px] ${toast.type === 'success'
+                ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800/50'
+                : 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-800/50'
+                }`}>
+                <span className={`material-symbols-outlined flex-shrink-0 ${toast.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                  {toast.type === 'success' ? 'check_circle' : 'error'}
+                </span>
+                <p className={`text-sm font-semibold flex-1 ${toast.type === 'success'
+                  ? 'text-emerald-900 dark:text-emerald-100'
+                  : 'text-red-900 dark:text-red-100'
+                  }`}>
+                  {toast.message}
+                </p>
+                <button
+                  onClick={() => setToast(null)}
+                  className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex-shrink-0"
+                >
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Modal Adicionar Nova Fatura */}
+        {
+          showAddInvoice && (
+            <AddInvoiceModal
+              projectId={currentProject.id}
+              workspaceId={currentProject.workspaceId}
+              defaultNumber={(() => {
+                const year = new Date().getFullYear();
+                const count = invoices.length + 1;
+                return `INV-${year}-${count.toString().padStart(3, '0')}`;
+              })()}
+              onClose={() => setShowAddInvoice(false)}
+              isRecurring={isProjectRecurring()}
+              recurringAmount={currentProject.recurringAmount || 0}
+              onSave={async (invoiceData) => {
+                try {
+                  await addInvoice({
+                    ...invoiceData,
+                    projectId: currentProject.id,
+                    workspaceId: currentProject.workspaceId
+                  });
+                  setShowAddInvoice(false);
+                  setToast({ message: "Fatura criada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error adding invoice:", error);
+                  setToast({ message: "Erro ao criar fatura. Tente novamente.", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }}
+            />
+          )
+        }
+
+        {/* Modal Editar Fatura */}
+        {
+          editingInvoice && (
+            <EditInvoiceModal
+              invoice={editingInvoice}
+              onClose={() => setEditingInvoice(null)}
+              onSave={async (updates) => {
+                try {
+                  await updateInvoice(editingInvoice.id, updates);
+                  setEditingInvoice(null);
+                  setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error updating invoice:", error);
+                  setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }}
+            />
+          )
+        }
+
+        {/* Modal Confirmar Nova Fatura Recorrente */}
+        {
+          showRecurringConfirm && paidInvoiceForRecurring && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
+                      <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                    Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+                  </p>
+
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Valor</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(paidInvoiceForRecurring.amount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                        {(() => {
+                          let previousDate: Date;
+                          if (paidInvoiceForRecurring.date instanceof Date) {
+                            previousDate = paidInvoiceForRecurring.date;
+                          } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
+                            const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
+                            previousDate = new Date(year, month - 1, day);
+                          } else if (paidInvoiceForRecurring.date?.toDate) {
+                            previousDate = paidInvoiceForRecurring.date.toDate();
+                          } else {
+                            previousDate = new Date();
+                          }
+                          const nextDate = new Date(previousDate);
+                          nextDate.setDate(nextDate.getDate() + 30);
+                          return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowRecurringConfirm(false);
+                        setPaidInvoiceForRecurring(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      Não, obrigado
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (paidInvoiceForRecurring) {
+                          await createRecurringInvoice(paidInvoiceForRecurring);
+                        }
+                        setShowRecurringConfirm(false);
+                        setPaidInvoiceForRecurring(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">add_circle</span>
+                      Sim, criar fatura
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Modal Confirmar Redefinir Tarefas */}
+        {
+          showResetTasksConfirm && stageToReset && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">refresh</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">Redefinir Tarefas?</h3>
+                      <p className="text-sm text-slate-500">Etapa: {stageToReset.title}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                    Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
+                  </p>
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
+                      <span className="text-xs text-slate-500">
+                        As tarefas serão substituídas pelas definidas em Configurações.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowResetTasksConfirm(false);
+                        setStageToReset(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
+                          const projectCategory = categories.find(c => projectTypes.includes(c.name));
+                          await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
+                          setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        } catch (error) {
+                          console.error("Error resetting tasks:", error);
+                          setToast({ message: "Erro ao redefinir tarefas", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                        setShowResetTasksConfirm(false);
+                        setStageToReset(null);
+                      }}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">refresh</span>
+                      Sim, redefinir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )
         }
 
@@ -3751,16 +3774,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className={`size-12 rounded-full flex items-center justify-center ${
-                    nextDateType === 'maintenance' 
-                      ? 'bg-blue-100 dark:bg-blue-900/20' 
-                      : 'bg-amber-100 dark:bg-amber-900/20'
-                  }`}>
-                    <span className={`material-symbols-outlined ${
-                      nextDateType === 'maintenance' 
-                        ? 'text-blue-600 dark:text-blue-400' 
-                        : 'text-amber-600 dark:text-amber-400'
+                  <div className={`size-12 rounded-full flex items-center justify-center ${nextDateType === 'maintenance'
+                    ? 'bg-blue-100 dark:bg-blue-900/20'
+                    : 'bg-amber-100 dark:bg-amber-900/20'
                     }`}>
+                    <span className={`material-symbols-outlined ${nextDateType === 'maintenance'
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                      }`}>
                       {nextDateType === 'maintenance' ? 'build' : 'description'}
                     </span>
                   </div>
@@ -3773,7 +3794,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </p>
                   </div>
                 </div>
-                
+
                 {!selectedDays && !showCustomDatePicker ? (
                   <>
                     <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
@@ -3835,7 +3856,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   {selectedDays && !showCustomDatePicker && (
                     <button
                       onClick={() => {
-                        const currentDate = nextDateType === 'maintenance' 
+                        const currentDate = nextDateType === 'maintenance'
                           ? parseSafeDate(currentProject.maintenanceDate)
                           : parseSafeDate(currentProject.reportDate);
                         if (currentDate) {
@@ -3844,11 +3865,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           handleNextDateConfirm(nextDate);
                         }
                       }}
-                      className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                        nextDateType === 'maintenance'
-                          ? 'bg-blue-500 hover:bg-blue-600'
-                          : 'bg-amber-500 hover:bg-amber-600'
-                      }`}
+                      className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${nextDateType === 'maintenance'
+                        ? 'bg-blue-500 hover:bg-blue-600'
+                        : 'bg-amber-500 hover:bg-amber-600'
+                        }`}
                     >
                       <span className="material-symbols-outlined text-sm">check_circle</span>
                       Confirmar
@@ -4078,7 +4098,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
         top = customPosition.top;
         left = customPosition.left;
       } else if (buttonRef?.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
+        const rect = buttonRef.current.getBoundingClientRect();
         top = rect.bottom + 8;
         left = rect.left;
       } else {
