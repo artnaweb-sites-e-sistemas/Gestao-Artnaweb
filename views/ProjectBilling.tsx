@@ -140,10 +140,16 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
               <div className="bg-primary/10 rounded-xl p-2">
-                <div
-                  className="size-12 rounded-lg bg-slate-200"
-                  style={{ backgroundImage: `url(${project.avatar})`, backgroundSize: 'cover' }}
-                ></div>
+                {project.avatar && !project.avatar.includes('picsum.photos') ? (
+                  <div
+                    className="size-12 rounded-lg bg-slate-200"
+                    style={{ backgroundImage: `url(${project.avatar})`, backgroundSize: 'cover' }}
+                  ></div>
+                ) : (
+                  <div className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">person</span>
+                  </div>
+                )}
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight">{project.name}</h1>

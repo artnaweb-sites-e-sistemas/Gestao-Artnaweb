@@ -73,12 +73,6 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
     return !!(client.avatar && client.avatar.trim() !== '');
   };
 
-  // Gerar URL de avatar do projeto baseado no nome do projeto
-  const getProjectAvatar = (projectName: string) => {
-    const seed = projectName.toLowerCase().replace(/\s+/g, '');
-    return `https://picsum.photos/seed/${seed}/80/80`;
-  };
-
   useEffect(() => {
     if (!currentWorkspace?.id) {
       setProjects([]);
@@ -180,8 +174,8 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
   const handleEditClient = (client: Client) => {
     setEditingClient(client);
     setClientForm({
-      name: client.name,
-      email: client.email,
+      name: client.name || '',
+      email: client.email || '',
       cpfCnpj: client.cpfCnpj ? formatCpfCnpj(client.cpfCnpj) : '',
       phone: client.phone || '',
       mobilePhone: client.mobilePhone || '',
@@ -198,7 +192,7 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
     setShowClientModal(true);
   };
 
-  // Upload de avatar do cliente
+  // Upload de avatar do cliente (apenas o cliente - não altera avatar dos projetos)
   const handleAvatarUpload = async (file: File) => {
     if (!editingClient?.id || !currentWorkspace?.id) return;
 
@@ -207,26 +201,15 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
       const avatarUrl = await uploadClientAvatar(editingClient.id, file);
       await updateClient(editingClient.id, { avatar: avatarUrl });
       
-      // Sincronizar avatar com todos os projetos vinculados a este cliente
-      const { updateClientAvatarInAllProjects } = await import('../firebase/services');
-      await updateClientAvatarInAllProjects(
-        editingClient.name,
-        avatarUrl,
-        currentWorkspace.id,
-        null,
-        editingClient.id
-      );
-      
-      // Atualizar o cliente local e na lista de clientes
+      // Atualizar o cliente local e na lista de clientes (não alterar avatares dos projetos)
       const updatedClient = { ...editingClient, avatar: avatarUrl };
       setEditingClient(updatedClient);
       
-      // Atualizar na lista de clientes também
       setClients(prevClients => 
         prevClients.map(c => c.id === editingClient.id ? updatedClient : c)
       );
       
-      setToast({ message: 'Foto do perfil atualizada com sucesso em todos os projetos!', type: 'success' });
+      setToast({ message: 'Foto do perfil do cliente atualizada com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
@@ -252,7 +235,7 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
     }
     
     // Validar CPF/CNPJ apenas se foi preenchido
-    if (clientForm.cpfCnpj.trim() && !validateCpfCnpj(clientForm.cpfCnpj)) {
+    if ((clientForm.cpfCnpj || '').trim() && !validateCpfCnpj(clientForm.cpfCnpj || '')) {
       setToast({ message: 'CPF/CNPJ inválido', type: 'error' });
       setTimeout(() => setToast(null), 3000);
       return;
@@ -271,31 +254,32 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
         clientData.avatar = editingClient.avatar;
       }
       
-      // Adicionar campos opcionais apenas se tiverem valor
-      if (clientForm.email.trim()) {
-        clientData.email = clientForm.email.trim();
-      }
-      if (clientForm.cpfCnpj.replace(/\D/g, '')) {
-        clientData.cpfCnpj = clientForm.cpfCnpj.replace(/\D/g, '');
-      }
-      if (clientForm.phone.replace(/\D/g, '')) {
-        clientData.phone = clientForm.phone.replace(/\D/g, '');
-      }
-      if (clientForm.mobilePhone.replace(/\D/g, '')) {
-        clientData.mobilePhone = clientForm.mobilePhone.replace(/\D/g, '');
-      }
+      // Adicionar campos opcionais apenas se tiverem valor (usar || '' para evitar undefined)
+      const email = (clientForm.email || '').trim();
+      if (email) clientData.email = email;
+      const cpfCnpj = (clientForm.cpfCnpj || '').replace(/\D/g, '');
+      if (cpfCnpj) clientData.cpfCnpj = cpfCnpj;
+      const phone = (clientForm.phone || '').replace(/\D/g, '');
+      if (phone) clientData.phone = phone;
+      const mobilePhone = (clientForm.mobilePhone || '').replace(/\D/g, '');
+      if (mobilePhone) clientData.mobilePhone = mobilePhone;
       
       // Adicionar endereço apenas se tiver pelo menos um campo preenchido
       const address: any = {};
-      if (clientForm.address.street.trim()) address.street = clientForm.address.street.trim();
-      if (clientForm.address.number.trim()) address.number = clientForm.address.number.trim();
-      if (clientForm.address.complement.trim()) address.complement = clientForm.address.complement.trim();
-      if (clientForm.address.neighborhood.trim()) address.neighborhood = clientForm.address.neighborhood.trim();
-      if (clientForm.address.city.trim()) address.city = clientForm.address.city.trim();
-      if (clientForm.address.state.trim()) address.state = clientForm.address.state.trim();
-      if (clientForm.address.postalCode.replace(/\D/g, '')) {
-        address.postalCode = clientForm.address.postalCode.replace(/\D/g, '');
-      }
+      const street = (clientForm.address?.street || '').trim();
+      if (street) address.street = street;
+      const number = (clientForm.address?.number || '').trim();
+      if (number) address.number = number;
+      const complement = (clientForm.address?.complement || '').trim();
+      if (complement) address.complement = complement;
+      const neighborhood = (clientForm.address?.neighborhood || '').trim();
+      if (neighborhood) address.neighborhood = neighborhood;
+      const city = (clientForm.address?.city || '').trim();
+      if (city) address.city = city;
+      const state = (clientForm.address?.state || '').trim();
+      if (state) address.state = state;
+      const postalCode = (clientForm.address?.postalCode || '').replace(/\D/g, '');
+      if (postalCode) address.postalCode = postalCode;
       
       if (Object.keys(address).length > 0) {
         clientData.address = address;
@@ -314,8 +298,9 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
       resetClientForm();
     } catch (error: any) {
       console.error('Error saving client:', error);
-      setToast({ message: error.message || 'Erro ao salvar cliente', type: 'error' });
-      setTimeout(() => setToast(null), 3000);
+      const errMsg = error?.message || error?.code || 'Erro ao salvar cliente';
+      setToast({ message: typeof errMsg === 'string' ? errMsg : 'Erro ao salvar cliente', type: 'error' });
+      setTimeout(() => setToast(null), 5000);
     } finally {
       setSavingClient(false);
     }
@@ -471,7 +456,7 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
     <div className="p-8 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-right ${
+        <div className={`fixed top-4 right-4 z-[9999] px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-right ${
           toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
         }`}>
           <span className="material-symbols-outlined text-lg">
@@ -676,16 +661,26 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
                         className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all group"
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div
-                            className="size-8 rounded-lg bg-slate-200 flex-shrink-0"
-                            style={{
-                              backgroundImage: project.projectImage
-                                ? `url('${project.projectImage}')`
-                                : `url('${getProjectAvatar(project.name)}')`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center'
-                            }}
-                          />
+                          {(() => {
+                            // Usar projectImage (foto do projeto) - cada projeto tem sua própria foto, diferente do cliente
+                            const thumbUrl = (project.projectImage && project.projectImage.trim() !== '' && !project.projectImage.includes('picsum.photos'))
+                              ? project.projectImage
+                              : '';
+                            return thumbUrl ? (
+                              <div
+                                className="size-8 rounded-lg bg-slate-200 flex-shrink-0"
+                                style={{
+                                  backgroundImage: `url('${thumbUrl}')`,
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center'
+                                }}
+                              />
+                            ) : (
+                              <div className="size-8 rounded-lg bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center flex-shrink-0">
+                                <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-base">folder</span>
+                              </div>
+                            );
+                          })()}
                           <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                             <p className="text-sm font-bold group-hover:text-primary transition-colors truncate">{project.name}</p>
                             <div className="flex items-center gap-2 text-[11px] text-slate-500">
@@ -839,14 +834,9 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ currentWorkspace, 
                   </div>
                   <div className="flex-1">
                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Foto do Perfil</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       Clique no ícone da câmera para trocar a foto
                     </p>
-                    {!editingClient.avatar && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        Foto atual: gerada automaticamente
-                      </p>
-                    )}
                   </div>
                 </div>
               )}

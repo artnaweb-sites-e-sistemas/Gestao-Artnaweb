@@ -2447,33 +2447,45 @@ export const addClient = async (client: Omit<Client, 'id'>): Promise<string> => 
 export const updateClient = async (clientId: string, updates: Partial<Client>): Promise<void> => {
   try {
     if (!db) throw new Error("Firebase não está inicializado");
+    if (!clientId || typeof clientId !== 'string') {
+      throw new Error("ID do cliente inválido");
+    }
 
     // Remover campos undefined (Firestore não aceita undefined)
     const updateData: any = {
       updatedAt: new Date()
     };
 
+    // Sanitizar objetos aninhados para remover undefined (Firestore não aceita)
+    const sanitizeForFirestore = (obj: any): any => {
+      if (obj === null || obj === undefined) return undefined;
+      if (typeof obj === 'object' && !Array.isArray(obj) && !(obj instanceof Date)) {
+        const sanitized: any = {};
+        Object.keys(obj).forEach(k => {
+          const v = sanitizeForFirestore(obj[k]);
+          if (v !== undefined) sanitized[k] = v;
+        });
+        return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+      }
+      if (typeof obj === 'string' && obj === '') return undefined;
+      if (Number.isNaN(obj) || obj === Infinity || obj === -Infinity) return undefined;
+      return obj;
+    };
+
     // Adicionar apenas campos que não são undefined
     Object.keys(updates).forEach(key => {
+      if (key === 'id') return; // Nunca atualizar o id
       const value = (updates as any)[key];
-      if (value !== undefined && value !== null) {
-        // Se for objeto (como address), verificar se tem propriedades
-        if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-          const objKeys = Object.keys(value);
-          if (objKeys.length > 0) {
-            updateData[key] = value;
-          }
-        } else if (value !== '') {
-          // Não adicionar strings vazias
-          updateData[key] = value;
-        }
+      const sanitized = sanitizeForFirestore(value);
+      if (sanitized !== undefined) {
+        updateData[key] = sanitized;
       }
     });
 
     const clientRef = doc(db, CLIENTS_COLLECTION, clientId);
     await updateDoc(clientRef, updateData);
     console.log(`✅ [updateClient] Cliente atualizado! ID: ${clientId}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating client:", error);
     throw error;
   }

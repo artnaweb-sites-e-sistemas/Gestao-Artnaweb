@@ -3728,34 +3728,32 @@ const AddProjectModal: React.FC<{
     if (formData.client.trim()) {
       // Priorizar avatar da entidade Client
       if (selectedClient) {
-        // Se cliente completo tem avatar, usar diretamente
-        if (selectedClient.avatar && selectedClient.avatar.trim() !== '') {
+        // Se cliente completo tem avatar válido (excluir Picsum/fotos aleatórias), usar diretamente
+        if (selectedClient.avatar && selectedClient.avatar.trim() !== '' && !selectedClient.avatar.includes('picsum.photos')) {
           setClientAvatar(selectedClient.avatar);
         } else {
           // Se não tem avatar no cliente, buscar em projetos existentes como fallback
           const clientProject = existingProjects.find(p =>
             (p.client === formData.client || p.clientId === selectedClient.id) && 
-            p.avatar && p.avatar.trim() !== ''
+            p.avatar && p.avatar.trim() !== '' && !p.avatar.includes('picsum.photos')
           );
           if (clientProject) {
             setClientAvatar(clientProject.avatar);
           } else {
-            // Gerar avatar baseado no nome se não encontrar
-            const seed = selectedClient.name.toLowerCase().replace(/\s+/g, '');
-            setClientAvatar(`https://picsum.photos/seed/${seed}/80/80`);
+            // Sem foto: deixar vazio para mostrar ícone padrão (bordas listradas + personagem)
+            setClientAvatar('');
           }
         }
       } else {
         // Buscar o primeiro projeto desse cliente que tenha avatar
         const clientProject = existingProjects.find(p =>
-          p.client === formData.client && p.avatar && p.avatar.trim() !== ''
+          p.client === formData.client && p.avatar && p.avatar.trim() !== '' && !p.avatar.includes('picsum.photos')
         );
         if (clientProject) {
           setClientAvatar(clientProject.avatar);
         } else {
-          // Gerar avatar baseado no nome se não encontrar
-          const seed = formData.client.toLowerCase().replace(/\s+/g, '');
-          setClientAvatar(`https://picsum.photos/seed/${seed}/80/80`);
+          // Sem foto: deixar vazio para mostrar ícone padrão (bordas listradas + personagem)
+          setClientAvatar('');
         }
       }
     } else {
@@ -4187,8 +4185,8 @@ const AddProjectModal: React.FC<{
           clientId: clientId, // Vincular projeto ao cliente
         };
         
-        // Adicionar avatar apenas se existir (não gerar automaticamente)
-        if (clientAvatar && clientAvatar.trim() !== '') {
+        // Adicionar avatar apenas se existir e for válido (nunca Picsum/fotos aleatórias)
+        if (clientAvatar && clientAvatar.trim() !== '' && !clientAvatar.includes('picsum.photos')) {
           projectData.avatar = clientAvatar;
         }
         console.log('📝 [AddProjectModal] Enviando dados do projeto:', {

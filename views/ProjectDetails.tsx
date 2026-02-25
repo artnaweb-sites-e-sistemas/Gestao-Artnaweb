@@ -34,6 +34,7 @@ import {
   addProjectLink,
   updateProjectFile,
   migrateProjectMode,
+  getClient,
 } from '../firebase/services';
 
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -103,6 +104,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const reportDatePickerButtonRef = useRef<HTMLButtonElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingProjectImage, setUploadingProjectImage] = useState(false);
+  const [linkedClientAvatar, setLinkedClientAvatar] = useState<string | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [fileToDelete, setFileToDelete] = useState<ProjectFile | null>(null);
   const [showDeleteProjectConfirm, setShowDeleteProjectConfirm] = useState(false);
@@ -288,6 +290,22 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   /* REMOVIDO: Credenciais padrão "WP Engine Hosting" e "Shopify Storefront" conforme solicitado.
      Iniciando vazio para o usuário preencher manualmente quando necessário. */
   const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([]);
+
+  // Buscar avatar do cliente vinculado (prioridade sobre project.avatar para manter sincronia com aba Clientes)
+  useEffect(() => {
+    if (project.clientId) {
+      getClient(project.clientId).then((client) => {
+        const avatar = client?.avatar?.trim();
+        if (avatar && !avatar.includes('picsum.photos')) {
+          setLinkedClientAvatar(avatar);
+        } else {
+          setLinkedClientAvatar('');
+        }
+      }).catch(() => setLinkedClientAvatar(null));
+    } else {
+      setLinkedClientAvatar(null);
+    }
+  }, [project.clientId]);
 
   // Sincroniza o estado local quando o projeto prop mudar
   useEffect(() => {
@@ -663,23 +681,28 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-4">
                 <div className="bg-primary/10 rounded-xl p-2 relative group">
-                  {currentProject.avatar ? (
-                    <div
-                      className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ backgroundImage: `url(${currentProject.avatar})`, backgroundSize: 'cover' }}
-                      onClick={() => canEdit && avatarInputRef.current?.click()}
-                      title={canEdit ? "Alterar foto de perfil" : "Foto de perfil"}
-                    ></div>
-                  ) : (
-                    <button
-                      onClick={() => avatarInputRef.current?.click()}
-                      className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
-                      title="Adicionar foto do cliente"
-                      disabled={!canEdit}
-                    >
-                      <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">add_photo_alternate</span>
-                    </button>
-                  )}
+                  {(() => {
+                    const effectiveAvatar = linkedClientAvatar !== null
+                      ? (linkedClientAvatar || '')
+                      : (currentProject.avatar && !currentProject.avatar.includes('picsum.photos') ? currentProject.avatar : '');
+                    return effectiveAvatar ? (
+                      <div
+                        className="size-12 rounded-lg bg-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
+                        style={{ backgroundImage: `url(${effectiveAvatar})`, backgroundSize: 'cover' }}
+                        onClick={() => canEdit && avatarInputRef.current?.click()}
+                        title={canEdit ? "Alterar foto de perfil" : "Foto de perfil"}
+                      ></div>
+                    ) : (
+                      <button
+                        onClick={() => canEdit && avatarInputRef.current?.click()}
+                        className="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border-2 border-dashed border-slate-300 dark:border-slate-600"
+                        title={canEdit ? "Adicionar foto do cliente" : "Foto de perfil"}
+                        disabled={!canEdit}
+                      >
+                        <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">person</span>
+                      </button>
+                    );
+                  })()}
                   <input
                     ref={avatarInputRef}
                     type="file"
@@ -709,6 +732,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           await updateClient(currentProject.clientId, { avatar: avatarUrl });
                         }
 
+                        setLinkedClientAvatar(avatarUrl);
                         setToast({ message: "Foto do cliente atualizada em todos os projetos!", type: 'success' });
                         setTimeout(() => setToast(null), 3000);
                       } catch (error) {
@@ -1601,7 +1625,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           try {
                             const imageUrl = await uploadProjectImage(currentProject.id, file);
                             await updateProject(currentProject.id, { projectImage: imageUrl });
-                            setToast({ message: "Foto do projeto atualizada com sucesso!", type: 'success' });
+                            setCurrentProject(prev => ({ ...prev, projectImage: imageUrl }));
+                            setToast({ message: "Foto do projeto atualizada! A alteração será refletida na página de Clientes.", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
                             console.error("Error uploading project image:", error);
