@@ -953,7 +953,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     return (
                       <>
                         <div className="py-2 mt-2">
-                          <p className="text-slate-500 text-xs mb-1">Data da Manutenção</p>
+                          <p className="text-slate-500 text-xs mb-1 flex items-center gap-1">
+                            Data da Manutenção
+                            {!currentProject.maintenanceDate && (
+                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data de manutenção">warning</span>
+                            )}
+                          </p>
                           <div className="flex items-center gap-2">
                             <div className="relative date-picker-container flex-1">
                               <button
@@ -1009,7 +1014,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         </div>
 
                         <div className="py-2">
-                          <p className="text-slate-500 text-xs mb-1">Data do Relatório</p>
+                          <p className="text-slate-500 text-xs mb-1 flex items-center gap-1">
+                            Data do Relatório
+                            {!currentProject.reportDate && (
+                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data do relatório">warning</span>
+                            )}
+                          </p>
                           <div className="flex items-center gap-2">
                             <div className="relative date-picker-container flex-1">
                               <button
@@ -2127,6 +2137,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const isPreviousStage = stageOrder < currentStageOrder;
 
                             const allTasksCompleted = stageProjectTasks.length > 0 && stageProjectTasks.every(t => t.completed);
+                            const hasPendingTasks = stageProjectTasks.some(t => !t.completed);
                             const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
 
                             // Estado para controlar expansão da etapa - sempre começa expandido se para etapa atual, caso contrário colapsado
@@ -2175,7 +2186,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                                         : isCurrentStage
                                           ? 'bg-primary/10 text-primary'
-                                          : !allTasksCompleted && isPreviousStage
+                                          : hasPendingTasks && isPreviousStage
                                             ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                         }`}>
@@ -2183,9 +2194,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                           ? 'CONCLUÍDA'
                                           : isCurrentStage
                                             ? 'ETAPA ATUAL'
-                                            : !allTasksCompleted && isPreviousStage
+                                            : hasPendingTasks && isPreviousStage
                                               ? 'PENDENTE'
-                                              : 'ANTERIOR'}
+                                              : 'FINALIZADA'}
                                       </span>
                                     )}
                                   </div>

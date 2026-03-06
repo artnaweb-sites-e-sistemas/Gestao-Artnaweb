@@ -1765,12 +1765,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // Atualizar projetos que usam esse serviço (considerando múltiplos tipos)
               const projectsToUpdate = projects.filter(p => {
                 const pTypes = p.types || (p.type ? [p.type] : []);
-                return pTypes.some(typeName => {
-                  const projectTypeLower = typeName.toLowerCase();
-                  const categoryLower = categoryToDelete.toLowerCase();
-                  return projectTypeLower.includes(categoryLower) ||
-                    projectTypeLower.includes(categoryToDelete.split(' ')[0].toLowerCase());
-                });
+                return pTypes.some(typeName =>
+                  typeName.toLowerCase() === categoryToDelete.toLowerCase()
+                );
               });
 
               // Atualizar cada projeto no Firebase (remover o serviço do array de tipos)
@@ -1797,7 +1794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               setCategoryToDelete(null);
             } catch (error) {
               console.error("Error deleting category:", error);
-              alert("Erro ao excluir serviço. Tente novamente.");
+              alert("Erro ao adicionar serviço. Tente novamente.");
             }
           }}
         />
@@ -2545,61 +2542,48 @@ const ListView: React.FC<{
     return isFinished || (isCompleted && !isInMaintenance) || isInMaintenance;
   };
 
+  // Helper para verificar se o projeto está na etapa de Manutenção
+  const isMaintenanceStage = (project: Project) => {
+    return project.stageId?.includes('maintenance') || project.status === 'Completed';
+  };
+
+  // Helper para verificar se o projeto está na etapa de Relatório (assumindo que é parte da manutenção ou um status específico)
+  const isReportStage = (project: Project) => {
+    // Pode ser um stageId específico ou um status que indica a necessidade de relatório
+    return project.stageId?.includes('report') || project.status === 'Review'; // Exemplo: se 'Review' significa que um relatório está sendo gerado
+  };
+
   // Obter label do status - usar título da etapa se disponível (definido antes do useMemo)
   const getStatusLabel = (project: Project) => {
-    // Verificar etapa baseado no stageId
-    const isOnboardingStage = project.stageId?.includes('onboarding') || false;
-    const isDevelopmentStage = project.stageId?.includes('development') || false;
-    const isReviewStage = project.stageId?.includes('review') || false;
-    const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
-    const isMaintenanceStage = project.stageId?.includes('maintenance') || false;
-
-    // Verificar se é projeto recorrente
-    const pTypes = project.types || (project.type ? [project.type] : []);
+    const stageId = project.stageId || '';
+    const pTypes = getProjectTypes(project);
     const isRecurring = pTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
 
-    // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
-    if (isRecurring && project.status === 'Completed' && isMaintenanceStage) {
+    // 1. Caso especial: Gestão (Recorrência + Concluído + Estágio de manutenção)
+    if (isRecurring && project.status === 'Completed' && (stageId.includes('maintenance') || stageId === 'management')) {
       return 'Gestão';
     }
 
-    // Se estiver na etapa Ajustes, mostrar "Ajustes"
-    if (isAdjustmentsStage) {
+    // 2. Caso especial: Ajustes
+    if (stageId.includes('adjustments')) {
       return 'Ajustes';
     }
 
-    // Buscar a etapa correspondente ao status do projeto
-    const currentStage = stages.find(stage => stage.status === project.status);
+    // 3. Prioridade: Se houver um stageId, tenta usar o título daquela etapa específica
+    const stage = stages.find(s => s.id === project.stageId);
+    if (stage) return stage.title;
 
-    if (currentStage) {
-      // Retornar o título da etapa
-      return currentStage.title;
+    // 4. Fallback baseado no status
+    switch (project.status) {
+      case 'Lead': return 'On boarding';
+      case 'Active': return 'Em desenvolvimento';
+      case 'Review': return 'Em Revisão';
+      case 'Completed': return 'Concluído';
+      case 'Finished': return 'Finalizado';
+      default: return project.status;
     }
-
-    // Fallback baseado no stageId e status
-    if (project.status === 'Lead' && isOnboardingStage) {
-      return 'On-boarding';
-    } else if (project.status === 'Active' && isDevelopmentStage) {
-      return 'Desenvolvimento';
-    } else if (project.status === 'Review' && isReviewStage) {
-      return 'Revisão';
-    } else if (project.status === 'Review') {
-      return 'Revisão';
-    } else if (project.status === 'Completed') {
-      return 'Concluído';
-    } else if (project.status === 'Finished') {
-      return 'Finalizado';
-    }
-
-    // Fallback para labels padrão
-    const progress = project.progress || 0;
-    if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
-    if (project.status === 'Lead') return 'On-boarding';
-    if (project.status === 'Completed') return 'Concluído';
-    if (project.status === 'Finished') return 'Finalizado';
-    return `Em Revisão (${progress}%)`;
   };
 
   // Função de ordenação
@@ -2642,33 +2626,32 @@ const ListView: React.FC<{
           bValue = b.progress || 0;
           break;
         case 'prazo': {
-          const getWeight = (p: Project) => {
-            const stageId = (p as any).stageId || '';
-            const pTypes = p.types || (p.type ? [p.type] : []);
-            const isRecurring = pTypes.some(typeName =>
+          const getWeight = (project: Project) => {
+            const stageId = (project as any).stageId || '';
+            const pTypes = project.types || (project.type ? [project.type] : []);
+            const isRec = pTypes.some(typeName =>
               categories.find(cat => cat.name === typeName && cat.isRecurring)
             );
 
             // 1. On-boarding (Weight 0)
-            if (stageId.includes('onboarding') || p.status === 'Lead') return 0;
+            if (stageId.includes('onboarding') || project.status === 'Lead') return 0;
 
             // 2. Desenvolvimento (Weight 1)
-            if (stageId.includes('development') || (p.status === 'Active' && !stageId.includes('adjustments'))) return 1;
+            if (stageId.includes('development') || (project.status === 'Active' && !stageId.includes('adjustments'))) return 1;
 
             // 3. Ajustes (Weight 2)
             if (stageId.includes('adjustments')) return 2;
 
             // 4. Em Revisão (Weight 3)
-            // No banco, projetos em revisão as vezes são salvos com status Review ou em stages que contém 'review'
-            if ((p.status === 'Review' || stageId.includes('review')) && !stageId.includes('adjustments')) return 3;
+            if ((project.status === 'Review' || stageId.includes('review')) && !stageId.includes('adjustments')) return 3;
 
-            // 5. Gestão (Weight 4) - Somente recorrência em etapa de manutenção
-            if (isRecurring && projectHasRecurringType(p, categories) && p.status === 'Completed' && stageId.includes('maintenance')) return 4;
+            // 5. Gestão (Weight 4)
+            if (isRec && project.status === 'Completed' && stageId.includes('maintenance')) return 4;
 
-            // 6. Concluído (Weight 5) - Finalizados ou concluídos regulares
-            if (p.status === 'Completed' || p.status === 'Finished' || stageId.includes('completed') || stageId.includes('finished')) return 5;
+            // 6. Concluído (Weight 5)
+            if (project.status === 'Completed' || project.status === 'Finished' || stageId.includes('completed') || stageId.includes('finished')) return 5;
 
-            return 6; // Outros
+            return 6;
           };
 
           const weightA = getWeight(a);
@@ -2825,11 +2808,11 @@ const ListView: React.FC<{
                     <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${getStatusLabel(project) === 'Gestão'
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' :
                       getStatusLabel(project) === 'Ajustes' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                        project.status === 'Lead' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
-                          project.status === 'Active' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
-                            project.status === 'Review' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                              project.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                project.status === 'Finished' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                        getStatusLabel(project) === 'On boarding' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
+                          getStatusLabel(project) === 'Em desenvolvimento' ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary' :
+                            getStatusLabel(project) === 'Em Revisão' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                              getStatusLabel(project) === 'Concluído' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                getStatusLabel(project) === 'Finalizado' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
                                   'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
                       }`}>
                       {getStatusLabel(project)}
@@ -2924,9 +2907,9 @@ const ListView: React.FC<{
                       {/* Aviso se não houver datas e não estiver finalizado */}
                       {!project.deadline && !project.maintenanceDate && !project.reportDate && (
                         !isInFinalStage(project) ? (
-                          <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                          <div className="flex items-center gap-1 text-rose-500 animate-pulse">
                             <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
-                            <span className="text-xs font-bold whitespace-nowrap">Definir data</span>
+                            <span className="text-[10px] font-bold uppercase whitespace-nowrap">Definir datas</span>
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
