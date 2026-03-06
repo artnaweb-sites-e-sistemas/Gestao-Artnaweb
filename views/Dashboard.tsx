@@ -2515,8 +2515,8 @@ const ListView: React.FC<{
   stages: Stage[];
   categories: Category[];
 }> = ({ projects, onProjectClick, stages, categories }) => {
-  const [sortColumn, setSortColumn] = useState<string | null>('progresso'); // Ordenação padrão por progresso
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc'); // Menor para maior (0% a 100%)
+  const [sortColumn, setSortColumn] = useState<string | null>('prazo'); // Ordenação padrão por prazo
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc'); // Mais próximos primeiro
 
   // Helper para obter tipos do projeto, filtrando "Sem categoria" se houver outros tipos
   const getProjectTypes = (project: Project): string[] => {
@@ -2641,13 +2641,50 @@ const ListView: React.FC<{
           aValue = a.progress || 0;
           bValue = b.progress || 0;
           break;
-        case 'prazo':
-          if (!a.deadline && !b.deadline) return 0;
-          if (!a.deadline) return 1; // Sem data vai para o final
-          if (!b.deadline) return -1;
-          aValue = new Date(a.deadline).getTime();
-          bValue = new Date(b.deadline).getTime();
-          break;
+        case 'prazo': {
+          const getWeight = (p: Project) => {
+            const stageId = (p as any).stageId || '';
+            const pTypes = p.types || (p.type ? [p.type] : []);
+            const isRecurring = pTypes.some(typeName =>
+              categories.find(cat => cat.name === typeName && cat.isRecurring)
+            );
+
+            // 1. On-boarding (Weight 0)
+            if (stageId.includes('onboarding') || p.status === 'Lead') return 0;
+
+            // 2. Desenvolvimento (Weight 1)
+            if (stageId.includes('development') || (p.status === 'Active' && !stageId.includes('adjustments'))) return 1;
+
+            // 3. Ajustes (Weight 2)
+            if (stageId.includes('adjustments')) return 2;
+
+            // 4. Em Revisão (Weight 3)
+            // No banco, projetos em revisão as vezes são salvos com status Review ou em stages que contém 'review'
+            if ((p.status === 'Review' || stageId.includes('review')) && !stageId.includes('adjustments')) return 3;
+
+            // 5. Gestão (Weight 4) - Somente recorrência em etapa de manutenção
+            if (isRecurring && projectHasRecurringType(p, categories) && p.status === 'Completed' && stageId.includes('maintenance')) return 4;
+
+            // 6. Concluído (Weight 5) - Finalizados ou concluídos regulares
+            if (p.status === 'Completed' || p.status === 'Finished' || stageId.includes('completed') || stageId.includes('finished')) return 5;
+
+            return 6; // Outros
+          };
+
+          const weightA = getWeight(a);
+          const weightB = getWeight(b);
+
+          if (weightA !== weightB) {
+            return sortDirection === 'asc' ? weightA - weightB : weightB - weightA;
+          }
+
+          // Se estiver no mesmo peso (mesma etapa), usa a data como critério de desempate
+          const timeA = a.deadline ? parseSafeDate(a.deadline)?.getTime() || Infinity : Infinity;
+          const timeB = b.deadline ? parseSafeDate(b.deadline)?.getTime() || Infinity : Infinity;
+
+          if (timeA === timeB) return a.name.localeCompare(b.name);
+          return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+        }
         default:
           return 0;
       }
@@ -2773,11 +2810,7 @@ const ListView: React.FC<{
                   <td className="px-6 py-4 overflow-hidden">
                     <div className="flex flex-wrap gap-1 whitespace-nowrap">
                       {getProjectTypes(project).slice(0, 2).map((typeName, idx) => (
-                        <span key={idx} className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded inline-block ${project.tagColor === 'amber' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' :
-                          project.tagColor === 'blue' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                            project.tagColor === 'emerald' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' :
-                              'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
-                          }`}>
+                        <span key={idx} className="text-[10px] font-semibold uppercase tracking-[0.05em] inline-block text-slate-400 dark:text-slate-500">
                           {typeName}
                         </span>
                       ))}
