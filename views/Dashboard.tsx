@@ -2166,6 +2166,16 @@ const StageColumn: React.FC<{
 
 const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (project: Project) => void; isHighlighted?: boolean; categories?: Category[]; canEdit?: boolean }> = ({ project, onClick, onDelete, isHighlighted, categories = [], canEdit = true }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const isRecurringProject = projectHasRecurringType(project, categories);
+  const isMaintenanceProject = isRecurringProject && (project.stageId?.includes('maintenance') || project.status === 'Completed');
+  const missingDateWarnings: string[] = [];
+
+  if (isMaintenanceProject) {
+    if (!project.maintenanceDate) missingDateWarnings.push('manuten��o');
+    if (!project.reportDate) missingDateWarnings.push('relat�rio');
+  } else if (!project.deadline) {
+    missingDateWarnings.push('entrega');
+  }
 
   // Helper para verificar se o projeto está em uma etapa final (não precisa de deadline)
   const isInFinalStage = () => {
@@ -2462,11 +2472,15 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
           </div>
         );
       })() : (
-        // Só mostrar aviso se não estiver em etapa final e não estiver em revisão/concluído
-        !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(project.stageId || '') && !isInFinalStage() ? (
+        ((!isMaintenanceProject && !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(project.stageId || '') && !isInFinalStage()) ||
+          (isMaintenanceProject && missingDateWarnings.length > 0)) ? (
           <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50">
             <span className="material-symbols-outlined text-sm text-rose-600 dark:text-rose-400 animate-pulse">warning</span>
-            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">Definir data de entrega</span>
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">
+              {isMaintenanceProject
+                ? `Definir data${missingDateWarnings.length > 1 ? 's' : ''} de ${missingDateWarnings.join(' e ')}`
+                : 'Definir data de entrega'}
+            </span>
           </div>
         ) : null
       )}
@@ -2551,6 +2565,24 @@ const ListView: React.FC<{
   const isReportStage = (project: Project) => {
     // Pode ser um stageId específico ou um status que indica a necessidade de relatório
     return project.stageId?.includes('report') || project.status === 'Review'; // Exemplo: se 'Review' significa que um relatório está sendo gerado
+  };
+
+  const getMissingDateWarnings = (project: Project): string[] => {
+    const isRecurringProject = projectHasRecurringType(project, categories);
+    const isMaintenanceProject = isRecurringProject && (project.stageId?.includes('maintenance') || project.status === 'Completed');
+    const warnings: string[] = [];
+
+    if (isMaintenanceProject) {
+      if (!project.maintenanceDate) warnings.push('manuten��o');
+      if (!project.reportDate) warnings.push('relat�rio');
+      return warnings;
+    }
+
+    if (!project.deadline) {
+      warnings.push('entrega');
+    }
+
+    return warnings;
   };
 
   // Obter label do status - usar título da etapa se disponível (definido antes do useMemo)
@@ -2904,17 +2936,27 @@ const ListView: React.FC<{
                         </>
                       )}
 
-                      {/* Aviso se não houver datas e não estiver finalizado */}
-                      {!project.deadline && !project.maintenanceDate && !project.reportDate && (
-                        !isInFinalStage(project) ? (
+                      {/* Aviso de datas pendentes */}
+                      {(() => {
+                        const missingDateWarnings = getMissingDateWarnings(project);
+                        const isMaintenanceProject = projectHasRecurringType(project, categories) && (project.stageId?.includes('maintenance') || project.status === 'Completed');
+                        const shouldShowWarning = isMaintenanceProject
+                          ? missingDateWarnings.length > 0
+                          : missingDateWarnings.length > 0 && !isInFinalStage(project);
+
+                        return shouldShowWarning ? (
                           <div className="flex items-center gap-1 text-rose-500 animate-pulse">
                             <span className="material-symbols-outlined text-sm flex-shrink-0">warning</span>
-                            <span className="text-[10px] font-bold uppercase whitespace-nowrap">Definir datas</span>
+                            <span className="text-[10px] font-bold uppercase whitespace-nowrap">
+                              {isMaintenanceProject
+                                ? `Definir data${missingDateWarnings.length > 1 ? 's' : ''}`
+                                : 'Definir data'}
+                            </span>
                           </div>
-                        ) : (
+                        ) : (!project.deadline && !project.maintenanceDate && !project.reportDate ? (
                           <span className="text-xs text-slate-400">-</span>
-                        )
-                      )}
+                        ) : null);
+                      })()}
                     </div>
                   </td>
                 </tr>
@@ -4881,5 +4923,4 @@ const DeleteStageModal: React.FC<{
     </div>
   );
 };
-
 

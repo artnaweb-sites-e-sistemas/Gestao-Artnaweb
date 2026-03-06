@@ -862,7 +862,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 <div className="py-2">
                   {!['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(currentProject.stageId || '') && (
                     <>
-                      <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
+                      <p className="text-slate-500 text-xs mb-1 flex items-center gap-1">
+                        Data de Entrega
+                        {!currentProject.deadline && (
+                          <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data de entrega">warning</span>
+                        )}
+                      </p>
                       <div className="flex items-center gap-2">
                         <div className="relative date-picker-container flex-1">
                           <button
