@@ -175,8 +175,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 style={{ backgroundImage: `url("${currentWorkspace.avatar}")` }}
               />
             ) : (
-              <div className="size-10 rounded-xl bg-primary flex items-center justify-center text-white text-xs font-black shadow-lg shadow-primary/20 rotate-3 group-hover:rotate-0 transition-transform flex-shrink-0">
-                {currentWorkspace ? getInitials(currentWorkspace.name) : <span className="material-symbols-outlined text-[20px]">auto_awesome</span>}
+              <div className="size-10 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-400 flex-shrink-0 shadow-lg shadow-primary/5 transition-all group-hover:border-primary group-hover:bg-primary/5">
+                <span className="material-symbols-outlined text-[20px]">person</span>
               </div>
             )}
             <div className="flex-1 text-left min-w-0 pr-1">
@@ -234,11 +234,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               style={{ backgroundImage: `url("${workspace.avatar}")` }}
                             />
                           ) : (
-                            <div className={`size-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all ${isActive
-                              ? 'bg-primary text-white shadow-md shadow-primary/20'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover/item:bg-primary/20 group-hover/item:text-primary'
+                            <div className={`size-8 rounded-lg flex items-center justify-center border border-dashed text-slate-400 group-hover/item:border-primary group-hover/item:bg-primary/5 transition-all ${isActive
+                              ? 'border-primary bg-primary/10'
+                              : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
                               }`}>
-                              {getInitials(workspace.name)}
+                              <span className="material-symbols-outlined text-sm">person</span>
                             </div>
                           )}
                           <div className="text-left min-w-0">

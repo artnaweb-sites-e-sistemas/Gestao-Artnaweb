@@ -246,7 +246,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
 
       setToast({ message: 'Configurações do Asaas salvas com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
-      
+
       // Resetar status para testar novamente
       setAsaasStatus(null);
     } catch (error) {
@@ -302,9 +302,9 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
       setTimeout(() => setToast(null), 3000);
     } catch (error: any) {
       console.error('Error testing Asaas connection:', error);
-      
+
       let errorMessage = 'Erro ao conectar com Asaas';
-      
+
       if (error.code === 'functions/unavailable') {
         errorMessage = 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.';
       } else if (error.message?.includes('CORS') || error.message?.includes('Failed to fetch') || error.message?.includes('servidor')) {
@@ -312,7 +312,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       setAsaasStatus({
         connected: false,
         error: errorMessage,
@@ -327,7 +327,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
   // Remover integração Asaas
   const handleRemoveAsaasIntegration = async () => {
     if (!currentWorkspace?.id) return;
-    
+
     if (!confirm('Tem certeza que deseja remover a integração com Asaas? As faturas existentes não serão afetadas.')) {
       return;
     }
@@ -368,8 +368,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
     if (currentWorkspace?.avatar) {
       return currentWorkspace.avatar;
     }
-    const seed = (currentWorkspace?.name || 'workspace').toLowerCase().replace(/\s+/g, '');
-    return `https://picsum.photos/seed/${seed}/200/200`;
+    return null;
   };
 
   const menuItems = [
@@ -451,15 +450,24 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Foto do Workspace</h4>
                 <div className="flex items-center gap-6">
                   <div className="relative group">
-                    <div
-                      className={`size-24 rounded-2xl bg-slate-200 ring-4 ring-slate-100 dark:ring-slate-800 shadow-lg transition-opacity ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-                      style={{
-                        backgroundImage: `url('${getWorkspaceAvatar()}')`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
-                      }}
-                      onClick={() => canEdit && avatarInputRef.current?.click()}
-                    />
+                    {getWorkspaceAvatar() ? (
+                      <div
+                        className={`size-24 rounded-2xl bg-slate-200 ring-4 ring-slate-100 dark:ring-slate-800 shadow-lg transition-opacity ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                        style={{
+                          backgroundImage: `url('${getWorkspaceAvatar()}')`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center'
+                        }}
+                        onClick={() => canEdit && avatarInputRef.current?.click()}
+                      />
+                    ) : (
+                      <div
+                        className={`size-24 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center transition-all ${canEdit ? 'cursor-pointer hover:border-primary hover:bg-primary/5' : 'cursor-default'}`}
+                        onClick={() => canEdit && avatarInputRef.current?.click()}
+                      >
+                        <span className="material-symbols-outlined text-4xl text-slate-400">person</span>
+                      </div>
+                    )}
                     {canEdit && (
                       <div
                         className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -983,11 +991,10 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       <button
                         onClick={() => canEdit && setAsaasEnvironment('sandbox')}
                         disabled={!canEdit}
-                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                          asaasEnvironment === 'sandbox'
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${asaasEnvironment === 'sandbox'
                             ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ring-2 ring-amber-500/50'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-lg align-middle mr-2">science</span>
                         Sandbox (Testes)
@@ -995,19 +1002,18 @@ export const Settings: React.FC<SettingsProps> = ({ currentWorkspace, onWorkspac
                       <button
                         onClick={() => canEdit && setAsaasEnvironment('production')}
                         disabled={!canEdit}
-                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                          asaasEnvironment === 'production'
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${asaasEnvironment === 'production'
                             ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 ring-2 ring-green-500/50'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="material-symbols-outlined text-lg align-middle mr-2">verified</span>
                         Produção
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-2">
-                      {asaasEnvironment === 'sandbox' 
-                        ? 'Ambiente de testes. Cobranças não são reais.' 
+                      {asaasEnvironment === 'sandbox'
+                        ? 'Ambiente de testes. Cobranças não são reais.'
                         : 'Ambiente de produção. Cobranças serão processadas.'}
                     </p>
                   </div>

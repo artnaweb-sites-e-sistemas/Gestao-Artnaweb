@@ -443,8 +443,11 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     );
 
     // Critérios para aparecer no cronograma:
-    // 1. Tem deadline e não está concluído
-    const hasDeadlineAndActive = p.deadline && p.status !== 'Completed' && p.status !== 'Finished';
+    // 1. Tem deadline e não está em etapas de revisão/conclusão (exceto Ajustes)
+    const hasDeadlineAndActive = p.deadline &&
+      !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(p.stageId || '') &&
+      p.status !== 'Completed' &&
+      p.status !== 'Finished';
 
     // 2. É recorrente e tem data de manutenção ou relatório (mesmo se status for 'Completed')
     const isRecurringWithDates = isRecurringService && (p.maintenanceDate || p.reportDate);
@@ -466,20 +469,20 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       if (project.deadline) {
         return parseSafeDate(project.deadline)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
-      
+
       // Se tem tanto maintenanceDate quanto reportDate, usar a mais próxima de hoje
       const maintenanceDate = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
       const reportDate = project.reportDate ? parseSafeDate(project.reportDate) : null;
-      
+
       if (maintenanceDate && reportDate) {
         // Calcular a diferença em dias de cada data em relação a hoje
         const maintenanceDiff = Math.abs(maintenanceDate.getTime() - todayTime);
         const reportDiff = Math.abs(reportDate.getTime() - todayTime);
-        
+
         // Usar a data mais próxima (menor diferença)
         return maintenanceDiff < reportDiff ? maintenanceDate.getTime() : reportDate.getTime();
       }
-      
+
       // Se tem apenas uma das duas, usar ela
       if (maintenanceDate) {
         return maintenanceDate.getTime();
@@ -487,7 +490,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       if (reportDate) {
         return reportDate.getTime();
       }
-      
+
       // Se não tiver nenhuma data, colocar no final
       return Number.MAX_SAFE_INTEGER;
     };
@@ -805,7 +808,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                     const deadline = new Date(deadlineDate);
                     deadline.setHours(0, 0, 0, 0);
                     isLate = deadline < today;
-                    
+
                     // Log para debug
                     if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
                       console.log(`🔍 [Timeline] Projeto: ${project.name}`, {
@@ -998,7 +1001,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                 stageId: project.stageId
                               });
                             }
-                            
+
                             // Prioridade: Revisão > Atraso > Outros estágios
                             // Efeito glass (fundos semitransparentes + backdrop-blur na barra)
                             if (isReview) {
@@ -1058,11 +1061,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                 {isLate && !isReview ? 'Atrasado' : getStatusLabel(project)}
                               </span>
                               {isAdjustmentsStage && (
-                                <span className={`material-symbols-outlined text-sm relative z-10 flex-shrink-0 drop-shadow-sm ${
-                                  isLate && !isReview 
-                                    ? 'text-rose-500 dark:text-rose-400' 
-                                    : 'text-blue-600 dark:text-blue-400'
-                                }`}>
+                                <span className={`material-symbols-outlined text-sm relative z-10 flex-shrink-0 drop-shadow-sm ${isLate && !isReview
+                                  ? 'text-rose-500 dark:text-rose-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                                  }`}>
                                   build
                                 </span>
                               )}
@@ -1089,11 +1091,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                     transform: 'translate(-50%, -50%)'
                                   }}
                                 >
-                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${
-                                    isMaintenanceLate
-                                      ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
-                                      : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400'
-                                  }`}>
+                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${isMaintenanceLate
+                                    ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400'
+                                    }`}>
                                     <span className="material-symbols-outlined text-xl">build</span>
                                   </div>
                                   <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
@@ -1110,11 +1111,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                     transform: 'translate(-50%, -50%)'
                                   }}
                                 >
-                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${
-                                    isReportLate
-                                      ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
-                                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-600 dark:text-amber-400'
-                                  }`}>
+                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${isReportLate
+                                    ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
+                                    : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-600 dark:text-amber-400'
+                                    }`}>
                                     <span className="material-symbols-outlined text-xl">description</span>
                                   </div>
                                   <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">

@@ -857,51 +857,54 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               </div>
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+            <div className={`border-t border-slate-200 dark:border-slate-800 ${['review', 'review-recurring'].includes(currentProject.stageId || '') ? 'pt-5' : 'pt-8'}`}>
               <div className="flex flex-col gap-1">
                 <div className="py-2">
-                  <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
-                  <div className="flex items-center gap-2">
-                    <div className="relative date-picker-container flex-1">
-                      <button
-                        ref={datePickerButtonRef}
-                        onClick={() => canEdit && setShowDatePicker(!showDatePicker)}
-                        disabled={!canEdit}
-                        className={`w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                          {currentProject.deadline
-                            ? parseSafeDate(currentProject.deadline)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                            : 'Selecione uma data'
-                          }
-                        </span>
-                        <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
-                      </button>
-                      {showDatePicker && (
-                        <DatePicker
-                          selectedDate={parseSafeDate(currentProject.deadline)}
-                          onSelectDate={async (date) => {
-                            const newDeadline = date
-                              ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-                              : null;
-                            try {
-                              await updateProject(currentProject.id, { deadline: newDeadline });
-                              setToast({ message: "Data de entrega atualizada", type: 'success' });
-                              setTimeout(() => setToast(null), 3000);
-                              setShowDatePicker(false);
-                            } catch (error) {
-                              console.error("Error updating deadline:", error);
-                              setToast({ message: "Erro ao atualizar data de entrega", type: 'error' });
-                              setTimeout(() => setToast(null), 3000);
-                            }
-                          }}
-                          onClose={() => setShowDatePicker(false)}
-                          buttonRef={datePickerButtonRef}
-                        />
-                      )}
-                    </div>
-                  </div>
-
+                  {!['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(currentProject.stageId || '') && (
+                    <>
+                      <p className="text-slate-500 text-xs mb-1">Data de Entrega</p>
+                      <div className="flex items-center gap-2">
+                        <div className="relative date-picker-container flex-1">
+                          <button
+                            ref={datePickerButtonRef}
+                            onClick={() => canEdit && setShowDatePicker(!showDatePicker)}
+                            disabled={!canEdit}
+                            className={`w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs text-left flex items-center justify-between hover:border-primary/50 transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <span className={currentProject.deadline ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                              {currentProject.deadline
+                                ? parseSafeDate(currentProject.deadline)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                : 'Selecione uma data'
+                              }
+                            </span>
+                            <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                          </button>
+                          {showDatePicker && (
+                            <DatePicker
+                              selectedDate={parseSafeDate(currentProject.deadline)}
+                              onSelectDate={async (date) => {
+                                const newDeadline = date
+                                  ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                                  : null;
+                                try {
+                                  await updateProject(currentProject.id, { deadline: newDeadline });
+                                  setToast({ message: "Data de entrega atualizada", type: 'success' });
+                                  setTimeout(() => setToast(null), 3000);
+                                  setShowDatePicker(false);
+                                } catch (error) {
+                                  console.error("Error updating deadline:", error);
+                                  setToast({ message: "Erro ao atualizar data de entrega", type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                }
+                              }}
+                              onClose={() => setShowDatePicker(false)}
+                              buttonRef={datePickerButtonRef}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                   {/* Botão "Novos ajustes" - aparece quando projeto está concluído */}
                   {currentProject.status === 'Completed' && (
                     <div className="mt-2 w-full">
@@ -1066,7 +1069,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
                   {/* Botões específicos por etapa */}
                   {currentProject.status !== 'Completed' && (
-                    <div className="flex items-center gap-2 mt-2 w-full">
+                    <div className={`flex items-center gap-2 w-full ${['review', 'review-recurring'].includes(currentProject.stageId || '') ? 'mt-0' : 'mt-2'}`}>
                       {/* Se estiver na etapa Ajustes com data definida, mostrar botão "Ajustes finalizado" */}
                       {currentProject.stageId?.includes('adjustments') && currentProject.deadline ? (
                         <button
@@ -1082,6 +1085,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 status: 'Review' as Project['status'],
                                 stageId: reviewStage?.id, // Atualizar stageId
                                 progress: reviewStage ? reviewStage.progress : 75,
+                                deadline: null,
+                                maintenanceDate: null,
                                 updatedAt: new Date()
                               });
                               setToast({ message: "Ajustes finalizados! Projeto enviado para revisão", type: 'success' });
@@ -1143,7 +1148,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 await updateProject(currentProject.id, {
                                   status: 'Completed' as Project['status'],
                                   stageId: completedStage?.id, // Atualizar stageId
-                                  progress: completedStage ? completedStage.progress : 100
+                                  progress: completedStage ? completedStage.progress : 100,
+                                  deadline: null,
+                                  maintenanceDate: null
                                 });
                                 setToast({ message: "Projeto marcado como concluído", type: 'success' });
                                 setTimeout(() => setToast(null), 3000);
@@ -1207,6 +1214,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     status: 'Review' as Project['status'],
                                     stageId: reviewStage?.id, // Atualizar stageId
                                     progress: reviewStage ? reviewStage.progress : 75,
+                                    deadline: null,
+                                    maintenanceDate: null,
                                     updatedAt: new Date()
                                   });
                                   setToast({ message: "Projeto enviado para revisão", type: 'success' });
@@ -1253,6 +1262,37 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       }).format(currentProject.budget)
                       : 'R$ 0,00'}
                   </p>
+                  {/* Detalhes de parcelamento */}
+                  {(() => {
+                    const relevantInvoices = isProjectRecurring()
+                      ? invoices.filter(inv => inv.number.startsWith('IMP-'))
+                      : invoices.filter(inv => !inv.number.startsWith('REC-'));
+
+                    if (relevantInvoices.length <= 1) return null;
+
+                    return (
+                      <div className="mt-2 space-y-1">
+                        {relevantInvoices
+                          .sort((a, b) => {
+                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                            return dateA.getTime() - dateB.getTime();
+                          })
+                          .map((inv) => (
+                            <div key={inv.id} className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                              <span className="flex-shrink-0">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inv.amount)}</span>
+                              <div className="flex-1 border-b border-slate-200 dark:border-slate-700/50 mb-0.5"></div>
+                              <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${inv.status === 'Paid'
+                                ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                                : 'bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
+                                }`}>
+                                {inv.status === 'Paid' ? 'Pago' : 'Pendente'}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    );
+                  })()}
                   {/* Status de pagamento da implementação apenas para projetos recorrentes */}
                   {isProjectRecurring() && (
                     <div className="flex gap-2 mt-2">
@@ -1933,7 +1973,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
                               }`}>
                               {isPast ? (
-                                <span className="material-symbols-outlined text-xs">check</span>
+                                <div className="flex items-center -space-x-0.5">
+                                  <span className="material-symbols-outlined text-sm">check</span>
+                                  {projectStageTasks.some(t => t.stageId === stage.id && !t.completed) && (
+                                    <span className="material-symbols-outlined text-[10px] text-amber-500" title="Há tarefas pendentes nesta etapa">priority_high</span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-[10px] font-bold">{index + 1}</span>
                               )}
@@ -2097,17 +2142,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 {/* Cabeçalho da Etapa - Clicável para expandir/colapsar */}
                                 <button
                                   onClick={() => {
+                                    if (['review', 'review-recurring'].includes(stage.id)) return;
                                     setExpandedStages(prev => ({
                                       ...prev,
                                       [stage.id]: !isExpanded
                                     }));
                                   }}
-                                  className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors rounded-t-xl"
+                                  className={`w-full flex items-center gap-3 p-4 text-left transition-colors rounded-t-xl ${['review', 'review-recurring'].includes(stage.id) ? 'cursor-default' : 'hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                                 >
-                                  <span className={`material-symbols-outlined text-lg transition-transform ${isExpanded ? 'rotate-90' : ''} ${isCurrentStage ? 'text-primary' : isCompleted ? 'text-emerald-500' : 'text-slate-400'
-                                    }`}>
-                                    chevron_right
-                                  </span>
+                                  {!['review', 'review-recurring'].includes(stage.id) && (
+                                    <span className={`material-symbols-outlined text-lg transition-transform ${isExpanded ? 'rotate-90' : ''} ${isCurrentStage ? 'text-primary' : isCompleted ? 'text-emerald-500' : 'text-slate-400'
+                                      }`}>
+                                      chevron_right
+                                    </span>
+                                  )}
                                   <h4 className={`text-sm font-bold uppercase tracking-wider flex-1 ${isCompleted
                                     ? 'text-emerald-600 dark:text-emerald-400'
                                     : isCurrentStage
@@ -2127,16 +2175,24 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                                         : isCurrentStage
                                           ? 'bg-primary/10 text-primary'
-                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                          : !allTasksCompleted && isPreviousStage
+                                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                         }`}>
-                                        {isCompleted ? 'CONCLUÍDA' : isCurrentStage ? 'ETAPA ATUAL' : 'ANTERIOR'}
+                                        {isCompleted
+                                          ? 'CONCLUÍDA'
+                                          : isCurrentStage
+                                            ? 'ETAPA ATUAL'
+                                            : !allTasksCompleted && isPreviousStage
+                                              ? 'PENDENTE'
+                                              : 'ANTERIOR'}
                                       </span>
                                     )}
                                   </div>
                                 </button>
 
-                                {/* Conteúdo Expandível */}
-                                {isExpanded && (
+                                {/* Conteúdo Expandível - Oculto na etapa de Revisão */}
+                                {isExpanded && !['review', 'review-recurring'].includes(stage.id) && (
                                   <div className="px-4 pb-4">
                                     {/* Botão Redefinir Tarefas - Agora disponível para todas as etapas */}
                                     <div className="flex justify-end mb-2">
@@ -2163,7 +2219,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         return (
                                           <div
                                             key={task.id}
-                                            className="cursor-grab active:cursor-grabbing"
+                                            className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
                                             draggable={canEdit}
                                             onDragStart={(e) => {
                                               e.stopPropagation();
@@ -2256,7 +2312,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 setToast({ message: "Erro ao reordenar tarefas", type: 'error' });
                                               }
                                             }}
-                                            className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
                                           >
                                             {/* Indicadores Visuais de Drop */}
                                             {dropTargetId === task.id && dropPosition === 'above' && (
@@ -2570,8 +2625,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         </p>
                                       )}
 
-                                      {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas */}
-                                      {canEdit && (
+                                      {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas exceto Revisão */}
+                                      {canEdit && !['review', 'review-recurring'].includes(currentProject.stageId || '') && (
                                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
                                           <input
                                             type="text"
@@ -2601,7 +2656,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       )}
                                     </div>
                                   </div>
-                                )}
+                                )
+                                }
                               </div>
                             );
                           })}
@@ -3794,180 +3850,188 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         }
 
         {/* Modal Marcar Próxima Data */}
-        {showNextDateModal && nextDateType && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`size-12 rounded-full flex items-center justify-center ${nextDateType === 'maintenance'
-                    ? 'bg-blue-100 dark:bg-blue-900/20'
-                    : 'bg-amber-100 dark:bg-amber-900/20'
-                    }`}>
-                    <span className={`material-symbols-outlined ${nextDateType === 'maintenance'
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-amber-600 dark:text-amber-400'
+        {
+          showNextDateModal && nextDateType && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className={`size-12 rounded-full flex items-center justify-center ${nextDateType === 'maintenance'
+                      ? 'bg-blue-100 dark:bg-blue-900/20'
+                      : 'bg-amber-100 dark:bg-amber-900/20'
                       }`}>
-                      {nextDateType === 'maintenance' ? 'build' : 'description'}
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Marcar {nextDateType === 'maintenance' ? 'Manutenção' : 'Relatório'} como Concluído?
-                    </h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Deseja definir a próxima data?
-                    </p>
-                  </div>
-                </div>
-
-                {!selectedDays && !showCustomDatePicker ? (
-                  <>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                      Selecione quando será a próxima {nextDateType === 'maintenance' ? 'manutenção' : 'relatório'}:
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 mb-6">
-                      {[3, 7, 15, 30].map((days) => (
-                        <button
-                          key={days}
-                          onClick={() => setSelectedDays(days)}
-                          className="px-4 py-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          {days} dias
-                        </button>
-                      ))}
+                      <span className={`material-symbols-outlined ${nextDateType === 'maintenance'
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                        }`}>
+                        {nextDateType === 'maintenance' ? 'build' : 'description'}
+                      </span>
                     </div>
-                    <button
-                      onClick={() => setShowCustomDatePicker(true)}
-                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300 mb-6 flex items-center justify-center gap-2"
-                    >
-                      <span className="material-symbols-outlined text-sm">calendar_today</span>
-                      Data Personalizada
-                    </button>
-                  </>
-                ) : showCustomDatePicker ? (
-                  <div className="mb-6">
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                      Selecione a data:
-                    </p>
-                    <div className="flex justify-center">
-                      <InlineDatePicker
-                        selectedDate={null}
-                        onSelectDate={(date) => {
-                          if (date) {
-                            handleNextDateConfirm(date);
-                          }
-                        }}
-                        onClose={() => {
-                          setShowCustomDatePicker(false);
-                          setSelectedDays(null);
-                        }}
-                      />
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                        Marcar {nextDateType === 'maintenance' ? 'Manutenção' : 'Relatório'} como Concluído?
+                      </h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Deseja definir a próxima data?
+                      </p>
                     </div>
                   </div>
-                ) : null}
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowNextDateModal(false);
-                      setNextDateType(null);
-                      setSelectedDays(null);
-                      setShowCustomDatePicker(false);
-                    }}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  {selectedDays && !showCustomDatePicker && (
+                  {!selectedDays && !showCustomDatePicker ? (
+                    <>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                        Selecione quando será a próxima {nextDateType === 'maintenance' ? 'manutenção' : 'relatório'}:
+                      </p>
+                      <div className="grid grid-cols-2 gap-3 mb-6">
+                        {[3, 7, 15, 30].map((days) => (
+                          <button
+                            key={days}
+                            onClick={() => setSelectedDays(days)}
+                            className="px-4 py-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300"
+                          >
+                            {days} dias
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setShowCustomDatePicker(true)}
+                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-sm font-semibold text-slate-700 dark:text-slate-300 mb-6 flex items-center justify-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-sm">calendar_today</span>
+                        Data Personalizada
+                      </button>
+                    </>
+                  ) : showCustomDatePicker ? (
+                    <div className="mb-6">
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                        Selecione a data:
+                      </p>
+                      <div className="flex justify-center">
+                        <InlineDatePicker
+                          selectedDate={null}
+                          onSelectDate={(date) => {
+                            if (date) {
+                              handleNextDateConfirm(date);
+                            }
+                          }}
+                          onClose={() => {
+                            setShowCustomDatePicker(false);
+                            setSelectedDays(null);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex gap-3">
                     <button
                       onClick={() => {
-                        const currentDate = nextDateType === 'maintenance'
-                          ? parseSafeDate(currentProject.maintenanceDate)
-                          : parseSafeDate(currentProject.reportDate);
-                        if (currentDate) {
-                          const nextDate = new Date(currentDate);
-                          nextDate.setDate(nextDate.getDate() + selectedDays);
-                          handleNextDateConfirm(nextDate);
-                        }
+                        setShowNextDateModal(false);
+                        setNextDateType(null);
+                        setSelectedDays(null);
+                        setShowCustomDatePicker(false);
                       }}
-                      className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${nextDateType === 'maintenance'
-                        ? 'bg-blue-500 hover:bg-blue-600'
-                        : 'bg-amber-500 hover:bg-amber-600'
-                        }`}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                     >
-                      <span className="material-symbols-outlined text-sm">check_circle</span>
-                      Confirmar
+                      Cancelar
                     </button>
-                  )}
-                  {!selectedDays && !showCustomDatePicker && (
-                    <button
-                      onClick={async () => {
-                        // Apenas limpar a data atual sem definir próxima
-                        try {
-                          if (nextDateType === 'maintenance') {
-                            await updateProject(currentProject.id, { maintenanceDate: null });
-                            setCurrentProject(prev => ({ ...prev, maintenanceDate: null }));
-                            setToast({ message: "Manutenção marcada como concluída", type: 'success' });
-                          } else {
-                            await updateProject(currentProject.id, { reportDate: null });
-                            setCurrentProject(prev => ({ ...prev, reportDate: null }));
-                            setToast({ message: "Relatório marcado como concluído", type: 'success' });
+                    {selectedDays && !showCustomDatePicker && (
+                      <button
+                        onClick={() => {
+                          const currentDate = nextDateType === 'maintenance'
+                            ? parseSafeDate(currentProject.maintenanceDate)
+                            : parseSafeDate(currentProject.reportDate);
+                          if (currentDate) {
+                            const nextDate = new Date(currentDate);
+                            nextDate.setDate(nextDate.getDate() + selectedDays);
+                            handleNextDateConfirm(nextDate);
                           }
-                          setTimeout(() => setToast(null), 3000);
-                          setShowNextDateModal(false);
-                          setNextDateType(null);
-                        } catch (error) {
-                          console.error("Error completing:", error);
-                          setToast({ message: "Erro ao marcar como concluído", type: 'error' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }}
-                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                    >
-                      Não, apenas concluir
-                    </button>
-                  )}
+                        }}
+                        className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${nextDateType === 'maintenance'
+                          ? 'bg-blue-500 hover:bg-blue-600'
+                          : 'bg-amber-500 hover:bg-amber-600'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                        Confirmar
+                      </button>
+                    )}
+                    {!selectedDays && !showCustomDatePicker && (
+                      <button
+                        onClick={async () => {
+                          // Apenas limpar a data atual sem definir próxima
+                          try {
+                            if (nextDateType === 'maintenance') {
+                              await updateProject(currentProject.id, { maintenanceDate: null });
+                              setCurrentProject(prev => ({ ...prev, maintenanceDate: null }));
+                              setToast({ message: "Manutenção marcada como concluída", type: 'success' });
+                            } else {
+                              await updateProject(currentProject.id, { reportDate: null });
+                              setCurrentProject(prev => ({ ...prev, reportDate: null }));
+                              setToast({ message: "Relatório marcado como concluído", type: 'success' });
+                            }
+                            setTimeout(() => setToast(null), 3000);
+                            setShowNextDateModal(false);
+                            setNextDateType(null);
+                          } catch (error) {
+                            console.error("Error completing:", error);
+                            setToast({ message: "Erro ao marcar como concluído", type: 'error' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        }}
+                        className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                      >
+                        Não, apenas concluir
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
       </div >
 
       {/* DatePicker para Tarefas */}
-      {editingTaskDateId && (
-        <DatePicker
-          selectedDate={(() => {
-            const task = projectStageTasks.find(t => t.id === editingTaskDateId);
-            return parseSafeDate(task?.dueDate);
-          })()}
-          onSelectDate={handleTaskDateChange}
-          onClose={() => setEditingTaskDateId(null)}
-          position={taskDatePickerPosition}
-        />
-      )}
+      {
+        editingTaskDateId && (
+          <DatePicker
+            selectedDate={(() => {
+              const task = projectStageTasks.find(t => t.id === editingTaskDateId);
+              return parseSafeDate(task?.dueDate);
+            })()}
+            onSelectDate={handleTaskDateChange}
+            onClose={() => setEditingTaskDateId(null)}
+            position={taskDatePickerPosition}
+          />
+        )
+      }
 
       {/* Modal de Cobrança Asaas */}
-      {showAsaasModal && selectedInvoiceForAsaas && currentWorkspace && (
-        <AsaasChargeModal
-          invoice={selectedInvoiceForAsaas}
-          project={currentProject}
-          workspace={currentWorkspace}
-          onClose={() => {
-            setShowAsaasModal(false);
-            setSelectedInvoiceForAsaas(null);
-          }}
-          onSuccess={handleAsaasSuccess}
-        />
-      )}
+      {
+        showAsaasModal && selectedInvoiceForAsaas && currentWorkspace && (
+          <AsaasChargeModal
+            invoice={selectedInvoiceForAsaas}
+            project={currentProject}
+            workspace={currentWorkspace}
+            onClose={() => {
+              setShowAsaasModal(false);
+              setSelectedInvoiceForAsaas(null);
+            }}
+            onSuccess={handleAsaasSuccess}
+          />
+        )
+      }
 
       {/* Modal de Resultado da Cobrança */}
-      {asaasResult && (
-        <AsaasChargeResultModal
-          result={asaasResult}
-          onClose={() => setAsaasResult(null)}
-        />
-      )}
+      {
+        asaasResult && (
+          <AsaasChargeResultModal
+            result={asaasResult}
+            onClose={() => setAsaasResult(null)}
+          />
+        )
+      }
 
     </>
   );

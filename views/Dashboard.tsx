@@ -56,7 +56,8 @@ const pipelineProjects: Project[] = [
     progress: 0,
     tagColor: 'amber',
     avatar: 'https://picsum.photos/seed/tech/40/40',
-    deadline: 'Follow up 2d'
+    deadline: 'Follow up 2d',
+    stageId: 'onboarding'
   },
   {
     id: '2',
@@ -68,7 +69,8 @@ const pipelineProjects: Project[] = [
     progress: 0,
     tagColor: 'blue',
     avatar: 'https://picsum.photos/seed/solar/40/40',
-    urgency: true
+    urgency: true,
+    stageId: 'onboarding'
   },
   {
     id: '3',
@@ -79,7 +81,8 @@ const pipelineProjects: Project[] = [
     status: 'Active',
     progress: 65,
     tagColor: 'emerald',
-    avatar: 'https://picsum.photos/seed/global/40/40'
+    avatar: 'https://picsum.photos/seed/global/40/40',
+    stageId: 'development'
   },
   {
     id: '4',
@@ -90,7 +93,8 @@ const pipelineProjects: Project[] = [
     status: 'Review',
     progress: 90,
     tagColor: 'indigo',
-    avatar: 'https://picsum.photos/seed/finedge/40/40'
+    avatar: 'https://picsum.photos/seed/finedge/40/40',
+    stageId: 'review'
   }
 ];
 
@@ -1334,7 +1338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                         if (isProjectRecurring) {
                           // Projeto recorrente:
                           // 1. Se tem stageId de etapa fixa → mostrar na etapa correspondente
-                          if (hasFixedStageId(p.stageId)) {
+                          if (hasFixedStageId((p as any).stageId)) {
                             return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                           }
                           // 2. Se NÃO tem stageId (projeto recém-criado em Recorrência):
@@ -1380,8 +1384,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       }}
                       onStageDragStart={(stage) => setDraggedStage(stage as any)}
                       onStageDragEnd={() => setDraggedStage(null)}
-                      onDeleteStage={(stage) => setStageToDelete(stage)}
-                      onEditTasks={(stage) => setStageToEditTasks(stage)}
+                      onDeleteStage={(stage) => setStageToDelete(stage as any)}
+                      onEditTasks={(stage) => setStageToEditTasks(stage as any)}
                       onMenuToggle={(stageId) => setStageMenuOpen(stageMenuOpen === stageId ? null : stageId)}
                       menuOpen={stageMenuOpen === stage.id}
                       categories={categories}
@@ -2429,7 +2433,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
         </div>
       )}
 
-      {project.deadline ? (() => {
+      {project.deadline && !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(project.stageId || '') ? (() => {
         const date = parseSafeDate(project.deadline);
         if (!date) return null;
         const today = new Date();
@@ -2461,8 +2465,8 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
           </div>
         );
       })() : (
-        // Só mostrar aviso se não estiver em etapa final
-        !isInFinalStage() ? (
+        // Só mostrar aviso se não estiver em etapa final e não estiver em revisão/concluído
+        !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(project.stageId || '') && !isInFinalStage() ? (
           <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50">
             <span className="material-symbols-outlined text-sm text-rose-600 dark:text-rose-400 animate-pulse">warning</span>
             <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">Definir data de entrega</span>
@@ -2813,7 +2817,7 @@ const ListView: React.FC<{
                   <td className="px-6 py-4 overflow-hidden">
                     <div className="flex flex-col gap-1 min-w-0">
                       {/* Prazo Principal (Deadline) */}
-                      {project.deadline ? (() => {
+                      {project.deadline && !['review', 'review-recurring', 'maintenance-recurring', 'finished-recurring', 'completed'].includes(project.stageId || '') ? (() => {
                         const date = parseSafeDate(project.deadline);
                         if (!date) return null;
 
@@ -3667,7 +3671,7 @@ const AddProjectModal: React.FC<{
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientAvatar, setClientAvatar] = useState<string>(''); // Avatar do cliente selecionado
   const clientManuallySelectedRef = useRef(false); // Flag para rastrear seleção manual
-  
+
   // Estados para campos expandidos de cliente
   const [showClientFields, setShowClientFields] = useState(false);
   const [clientData, setClientData] = useState({
@@ -3698,14 +3702,14 @@ const AddProjectModal: React.FC<{
   // Carregar nomes de projetos existentes do workspace, filtrados por cliente selecionado
   useEffect(() => {
     let projectNames: string[] = [];
-    
+
     if (selectedClient) {
       // Se há cliente selecionado, filtrar apenas projetos desse cliente
       projectNames = existingProjects
         .filter(p => {
           // Verificar se o projeto pertence ao cliente pelo nome ou pelo ID
           return (p.client && p.client.toLowerCase() === selectedClient.name.toLowerCase()) ||
-                 (p.clientId && p.clientId === selectedClient.id);
+            (p.clientId && p.clientId === selectedClient.id);
         })
         .map(p => p.name)
         .filter(Boolean);
@@ -3719,7 +3723,7 @@ const AddProjectModal: React.FC<{
       // Se não há cliente, não mostrar nenhum projeto
       projectNames = [];
     }
-    
+
     setAvailableProjectNames([...new Set(projectNames)]);
   }, [existingProjects, selectedClient, formData.client]);
 
@@ -3734,7 +3738,7 @@ const AddProjectModal: React.FC<{
         } else {
           // Se não tem avatar no cliente, buscar em projetos existentes como fallback
           const clientProject = existingProjects.find(p =>
-            (p.client === formData.client || p.clientId === selectedClient.id) && 
+            (p.client === formData.client || p.clientId === selectedClient.id) &&
             p.avatar && p.avatar.trim() !== '' && !p.avatar.includes('picsum.photos')
           );
           if (clientProject) {
@@ -3855,10 +3859,10 @@ const AddProjectModal: React.FC<{
     const clientName = formData.client.trim();
     if (clientName) {
       // Buscar cliente por nome
-      const foundClient = clients.find(c => 
+      const foundClient = clients.find(c =>
         c.name.toLowerCase() === clientName.toLowerCase()
       );
-      
+
       if (foundClient) {
         // Se o cliente mudou, limpar o campo de projeto para forçar nova seleção
         if (previousClientIdRef.current !== foundClient.id) {
@@ -3869,7 +3873,7 @@ const AddProjectModal: React.FC<{
         // Verificar se tem dados completos (email e CPF/CNPJ)
         const hasCompleteData = foundClient.email && foundClient.cpfCnpj;
         setShowClientFields(!hasCompleteData);
-        
+
         // Se não tem dados completos, preencher campos com dados existentes
         if (!hasCompleteData) {
           setClientData({
@@ -3911,7 +3915,7 @@ const AddProjectModal: React.FC<{
         client.name.toLowerCase().includes(formData.client.toLowerCase())
       );
       setFilteredClients(filtered);
-      
+
       // Se foi selecionado manualmente, não mostrar dropdown
       if (clientManuallySelectedRef.current) {
         clientManuallySelectedRef.current = false; // Resetar flag
@@ -3920,7 +3924,7 @@ const AddProjectModal: React.FC<{
         // Se não foi selecionado manualmente e há resultados, mostrar sugestões
         if (filtered.length > 0) {
           // Só mostrar se o input estiver focado ou se houver múltiplos resultados
-          const exactMatch = clients.find(c => 
+          const exactMatch = clients.find(c =>
             c.name.toLowerCase() === formData.client.toLowerCase()
           );
           // Se não for correspondência exata ou houver múltiplos resultados, mostrar
@@ -3947,7 +3951,7 @@ const AddProjectModal: React.FC<{
         name.toLowerCase().includes(formData.name.toLowerCase())
       );
       setFilteredProjects(filtered);
-      
+
       // Se foi selecionado manualmente, não mostrar dropdown
       if (projectManuallySelectedRef.current) {
         projectManuallySelectedRef.current = false; // Resetar flag
@@ -3956,7 +3960,7 @@ const AddProjectModal: React.FC<{
         // Se não foi selecionado manualmente e há resultados, mostrar sugestões
         if (filtered.length > 0) {
           // Só mostrar se o input estiver focado ou se houver múltiplos resultados
-          const exactMatch = availableProjectNames.find(n => 
+          const exactMatch = availableProjectNames.find(n =>
             n.toLowerCase() === formData.name.toLowerCase()
           );
           // Se não for correspondência exata ou houver múltiplos resultados, mostrar
@@ -3980,27 +3984,27 @@ const AddProjectModal: React.FC<{
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      
+
       // Verificar se o clique foi dentro do container do dropdown
       const clientContainer = clientInputRef.current;
       const projectContainer = projectInputRef.current;
-      
+
       // Verificar se clicou dentro do container de cliente (incluindo dropdown)
       if (clientContainer && !clientContainer.contains(target)) {
         setShowClientSuggestions(false);
       }
-      
+
       // Verificar se clicou dentro do container de projeto (incluindo dropdown)
       if (projectContainer && !projectContainer.contains(target)) {
         setShowProjectSuggestions(false);
       }
     };
-    
+
     // Usar um pequeno delay para garantir que o onMouseDown execute primeiro
     const timeoutId = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 0);
-    
+
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
@@ -4097,12 +4101,12 @@ const AddProjectModal: React.FC<{
             if (clientData.phone && clientData.phone.trim()) {
               clientUpdates.phone = clientData.phone.replace(/\D/g, '');
             }
-            
+
             if (Object.keys(clientUpdates).length > 0) {
               await updateClient(selectedClient.id, clientUpdates);
             }
             clientId = selectedClient.id;
-            
+
             // Se Asaas estiver configurado e cliente não estiver vinculado, tentar criar no Asaas automaticamente
             // Só cria se tiver email e CPF/CNPJ (obrigatórios para Asaas)
             if (workspace?.asaasApiKey && !selectedClient.asaasCustomerId && clientData.email && clientData.cpfCnpj) {
@@ -4129,7 +4133,7 @@ const AddProjectModal: React.FC<{
               name: formData.client,
               workspaceId: workspaceId,
             };
-            
+
             // Adicionar campos opcionais apenas se tiverem valor
             if (clientData.email && clientData.email.trim()) {
               clientToAdd.email = clientData.email.trim();
@@ -4140,10 +4144,10 @@ const AddProjectModal: React.FC<{
             if (clientData.phone && clientData.phone.trim()) {
               clientToAdd.phone = clientData.phone.replace(/\D/g, '');
             }
-            
+
             const newClientId = await addClient(clientToAdd);
             clientId = newClientId;
-            
+
             // Se Asaas estiver configurado, tentar criar no Asaas automaticamente
             // Só cria se tiver email e CPF/CNPJ (obrigatórios para Asaas)
             if (workspace?.asaasApiKey && clientData.email && clientData.cpfCnpj) {
@@ -4184,7 +4188,7 @@ const AddProjectModal: React.FC<{
           stageId: formData.stageId, // Garantir que stageId seja passado
           clientId: clientId, // Vincular projeto ao cliente
         };
-        
+
         // Adicionar avatar apenas se existir e for válido (nunca Picsum/fotos aleatórias)
         if (clientAvatar && clientAvatar.trim() !== '' && !clientAvatar.includes('picsum.photos')) {
           projectData.avatar = clientAvatar;
@@ -4266,7 +4270,7 @@ const AddProjectModal: React.FC<{
                 </div>
               )}
             </div>
-            
+
             {/* Campos expandidos para cadastro de cliente */}
             {showClientFields && (
               <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-4">
@@ -4276,7 +4280,7 @@ const AddProjectModal: React.FC<{
                     Dados opcionais. Preencha E-mail e CPF/CNPJ para sincronizar automaticamente com Asaas e gerar faturas.
                   </p>
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                     E-mail <span className="text-xs text-slate-400">(opcional - necessário para Asaas)</span>
@@ -4289,7 +4293,7 @@ const AddProjectModal: React.FC<{
                     placeholder="email@exemplo.com (opcional)"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                     CPF / CNPJ <span className="text-xs text-slate-400">(opcional - necessário para Asaas)</span>
@@ -4306,7 +4310,7 @@ const AddProjectModal: React.FC<{
                     maxLength={18}
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Telefone (opcional)
