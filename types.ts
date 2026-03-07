@@ -164,6 +164,7 @@ export interface ProjectStageTask {
 export interface ProjectFile {
   id: string;
   projectId: string;
+  taskId?: string;
   name: string;
   title?: string; // Título opcional para o arquivo ou link
   url: string;

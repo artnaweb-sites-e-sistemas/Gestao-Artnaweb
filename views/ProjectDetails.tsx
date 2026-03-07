@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate, Workspace, getInvoiceReferenceDate } from '../types';
 import {
@@ -57,18 +57,18 @@ interface ProjectDetailsProps {
 const fixedStages: Stage[] = [
   { id: 'onboarding', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 30, isFixed: true },
-  { id: 'review', title: 'Em Revisão', status: 'Review', order: 2, progress: 50, isFixed: true },
+  { id: 'review', title: 'Em RevisÃ£o', status: 'Review', order: 2, progress: 50, isFixed: true },
   { id: 'adjustments', title: 'Ajustes', status: 'Review', order: 3, progress: 75, isFixed: true },
-  { id: 'completed', title: 'Concluído', status: 'Completed', order: 4, progress: 100, isFixed: true }
+  { id: 'completed', title: 'ConcluÃ­do', status: 'Completed', order: 4, progress: 100, isFixed: true }
 ];
 
 // Etapas fixas para projetos recorrentes
 const fixedStagesRecurring: Stage[] = [
   { id: 'onboarding-recurring', title: 'On boarding', status: 'Lead', order: 0, progress: 10, isFixed: true },
   { id: 'development-recurring', title: 'Em desenvolvimento', status: 'Active', order: 1, progress: 25, isFixed: true },
-  { id: 'review-recurring', title: 'Em Revisão', status: 'Review', order: 2, progress: 40, isFixed: true },
+  { id: 'review-recurring', title: 'Em RevisÃ£o', status: 'Review', order: 2, progress: 40, isFixed: true },
   { id: 'adjustments-recurring', title: 'Ajustes', status: 'Review', order: 3, progress: 55, isFixed: true },
-  { id: 'maintenance-recurring', title: 'Manutenção', status: 'Completed', order: 4, progress: 100, isFixed: true },
+  { id: 'maintenance-recurring', title: 'ManutenÃ§Ã£o', status: 'Completed', order: 4, progress: 100, isFixed: true },
   { id: 'finished-recurring', title: 'Finalizado', status: 'Finished', order: 5, progress: 100, isFixed: true }
 ];
 
@@ -85,7 +85,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [showAllMembers, setShowAllMembers] = useState(false);
   const [showShareProject, setShowShareProject] = useState(false);
 
-  // Estados para edição inline
+  // Estados para ediÃ§Ã£o inline
   const [editingClient, setEditingClient] = useState(false);
   const [editingNameSidebar, setEditingNameSidebar] = useState(false);
   const [editingNameHeader, setEditingNameHeader] = useState(false);
@@ -103,7 +103,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [projectStageTasks, setProjectStageTasks] = useState<ProjectStageTask[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
+  const [selectedTaskAttachmentId, setSelectedTaskAttachmentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const taskAttachmentInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const projectImageInputRef = useRef<HTMLInputElement>(null);
   const datePickerButtonRef = useRef<HTMLButtonElement>(null);
@@ -131,7 +134,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
-  // Estados para integração Asaas
+  // Estados para integraÃ§Ã£o Asaas
   const [showAsaasModal, setShowAsaasModal] = useState(false);
   const [selectedInvoiceForAsaas, setSelectedInvoiceForAsaas] = useState<Invoice | null>(null);
   const [asaasResult, setAsaasResult] = useState<AsaasPaymentResult | null>(null);
@@ -144,7 +147,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [customRecurringDate, setCustomRecurringDate] = useState<string>('');
   const [showRecurringCustomDatePicker, setShowRecurringCustomDatePicker] = useState(false);
 
-  // Estado para modal de confirmação de redefinir tarefas
+  // Estado para modal de confirmaÃ§Ã£o de redefinir tarefas
   const [showResetTasksConfirm, setShowResetTasksConfirm] = useState(false);
   const [stageToReset, setStageToReset] = useState<Stage | null>(null);
 
@@ -156,23 +159,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Estado para controlar etapas expandidas/colapsadas na aba de tarefas
   const [expandedStages, setExpandedStages] = useState<{ [stageId: string]: boolean }>({});
 
-  // Estado para debounce de salvamento da descrição
+  // Estado para debounce de salvamento da descriÃ§Ã£o
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup: salvar descrição ao desmontar o componente
+  // Cleanup: salvar descriÃ§Ã£o ao desmontar o componente
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      // Salvar descrição imediatamente ao desmontar se houver mudanças
+      // Salvar descriÃ§Ã£o imediatamente ao desmontar se houver mudanÃ§as
       if (tempDescription !== (currentProject.description || '')) {
         updateProject(currentProject.id, { description: tempDescription }).catch(console.error);
       }
     };
   }, [tempDescription, currentProject.id, currentProject.description]);
 
-  // Estado para edição de tarefas
+  // Estado para ediÃ§Ã£o de tarefas
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
 
@@ -194,11 +197,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       if (nextDateType === 'maintenance') {
         await updateProject(currentProject.id, { maintenanceDate: formattedDate });
         setCurrentProject(prev => ({ ...prev, maintenanceDate: formattedDate }));
-        setToast({ message: "Próxima data de manutenção definida", type: 'success' });
+        setToast({ message: "PrÃ³xima data de manutenÃ§Ã£o definida", type: 'success' });
       } else {
         await updateProject(currentProject.id, { reportDate: formattedDate });
         setCurrentProject(prev => ({ ...prev, reportDate: formattedDate }));
-        setToast({ message: "Próxima data de relatório definida", type: 'success' });
+        setToast({ message: "PrÃ³xima data de relatÃ³rio definida", type: 'success' });
       }
 
       setTimeout(() => setToast(null), 3000);
@@ -208,7 +211,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       setShowCustomDatePicker(false);
     } catch (error) {
       console.error("Error setting next date:", error);
-      setToast({ message: "Erro ao definir próxima data", type: 'error' });
+      setToast({ message: "Erro ao definir prÃ³xima data", type: 'error' });
       setTimeout(() => setToast(null), 3000);
     }
   };
@@ -231,19 +234,19 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           if (date) {
             // --- CASO 1: DEFININDO UMA NOVA DATA ---
             // Formatar data manualmente usando os componentes diretos do objeto Date
-            // O DatePicker retorna a data com horário 00:00 local. Usar métodos get* locais garante a data correta.
+            // O DatePicker retorna a data com horÃ¡rio 00:00 local. Usar mÃ©todos get* locais garante a data correta.
             const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
             if (stage.id.includes('maintenance')) {
-              // Se for etapa de manutenção, atualiza maintenanceDate
-              // Verifica se o projeto é recorrente (tem etapa de manutenção)
+              // Se for etapa de manutenÃ§Ã£o, atualiza maintenanceDate
+              // Verifica se o projeto Ã© recorrente (tem etapa de manutenÃ§Ã£o)
               if (currentProject.types?.some(t => {
                 const cat = categories.find(c => c.name === t);
                 return cat?.isRecurring;
               }) || fixedStagesRecurring.some(s => s.id === stage.id)) {
                 await updateProject(currentProject.id, { maintenanceDate: formattedDate });
                 setCurrentProject(prev => ({ ...prev, maintenanceDate: formattedDate }));
-                setToast({ message: "Data da tarefa e Manutenção atualizadas", type: 'success' });
+                setToast({ message: "Data da tarefa e ManutenÃ§Ã£o atualizadas", type: 'success' });
               }
             } else {
               // Outras etapas (Onboarding, Dev, Review, Ajustes) -> atualiza deadline (Data de Entrega)
@@ -253,7 +256,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             }
           } else {
             // --- CASO 2: LIMPANDO A DATA ---
-            // Se a data do projeto for igual à data antiga da tarefa, limpa também
+            // Se a data do projeto for igual Ã  data antiga da tarefa, limpa tambÃ©m
             if (task.dueDate) {
               const oldDate = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
               const oldDateStr = `${oldDate.getFullYear()}-${String(oldDate.getMonth() + 1).padStart(2, '0')}-${String(oldDate.getDate()).padStart(2, '0')}`;
@@ -293,13 +296,21 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }
   };
 
-  // Estado para modal de editar título do arquivo/link
+  // Estado para modal de editar tÃ­tulo do arquivo/link
   const [editingFileTitle, setEditingFileTitle] = useState<ProjectFile | null>(null);
   const [editingFileTitleValue, setEditingFileTitleValue] = useState('');
+  const taskFilesByTaskId = useMemo(() => {
+    return projectFiles.reduce<Record<string, ProjectFile[]>>((acc, file) => {
+      if (!file.taskId) return acc;
+      if (!acc[file.taskId]) acc[file.taskId] = [];
+      acc[file.taskId].push(file);
+      return acc;
+    }, {});
+  }, [projectFiles]);
 
 
-  /* REMOVIDO: Credenciais padrão "WP Engine Hosting" e "Shopify Storefront" conforme solicitado.
-     Iniciando vazio para o usuário preencher manualmente quando necessário. */
+  /* REMOVIDO: Credenciais padrÃ£o "WP Engine Hosting" e "Shopify Storefront" conforme solicitado.
+     Iniciando vazio para o usuÃ¡rio preencher manualmente quando necessÃ¡rio. */
   const [credentials, setCredentials] = useState<Array<{ id: string; title: string; sub: string; icon: string; url: string; user: string; password: string }>>([]);
 
   // Buscar avatar do cliente vinculado (prioridade sobre project.avatar para manter sincronia com aba Clientes)
@@ -324,7 +335,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     setTempDescription(project.description || '');
     // Carregar credenciais do projeto
     setCredentials(project.credentials || []);
-    // Sincronizar estados temporários apenas se não estiver editando
+    // Sincronizar estados temporÃ¡rios apenas se nÃ£o estiver editando
     if (!editingNameSidebar) {
       setTempNameSidebar(project.name);
     }
@@ -336,7 +347,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }
   }, [project, editingNameSidebar, editingNameHeader, editingClient]);
 
-  // Fechar calendários e dropdowns ao clicar fora
+  // Fechar calendÃ¡rios e dropdowns ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
@@ -367,14 +378,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
     console.log("Subscribing to project, activities and members for project:", currentProject.id);
 
-    // Subscrever atualizações do projeto em tempo real
+    // Subscrever atualizaÃ§Ãµes do projeto em tempo real
     const unsubscribeProject = subscribeToProject(currentProject.id, (updatedProject) => {
       if (updatedProject) {
         console.log("Project updated:", updatedProject);
         setCurrentProject(updatedProject);
         // Carregar credenciais do projeto atualizado
         setCredentials(updatedProject.credentials || []);
-        // Sincronizar estados temporários apenas se não estiver editando
+        // Sincronizar estados temporÃ¡rios apenas se nÃ£o estiver editando
         if (!editingNameSidebar) {
           setTempNameSidebar(updatedProject.name);
         }
@@ -404,14 +415,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         ? firebaseStages.filter(stage => (stage as any).workspaceId === currentProject.workspaceId)
         : firebaseStages;
 
-      // Verificar se o projeto é recorrente usando o ref para evitar loop (considerando múltiplos tipos)
+      // Verificar se o projeto Ã© recorrente usando o ref para evitar loop (considerando mÃºltiplos tipos)
       const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
       const isRecurring = currentTypes.some(typeName =>
         categoriesRef.current.find(cat => cat.name === typeName && cat.isRecurring)
       );
 
-      // Se for recorrente, não usar etapas do Firebase, usar as fixas (definidas no useEffect separado)
-      // Para projetos normais, também usar fixedStages local para garantir consistência
+      // Se for recorrente, nÃ£o usar etapas do Firebase, usar as fixas (definidas no useEffect separado)
+      // Para projetos normais, tambÃ©m usar fixedStages local para garantir consistÃªncia
       if (!isRecurring) {
         // Usar etapas fixas locais que incluem 'Ajustes'
         setStages(fixedStages);
@@ -463,10 +474,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   // Recalcular etapas quando categorias ou tipo do projeto mudarem
   useEffect(() => {
-    // Só processar se tivermos categorias carregadas
+    // SÃ³ processar se tivermos categorias carregadas
     if (categories.length === 0) return;
 
-    // Verificar se o projeto é recorrente (considerando múltiplos tipos)
+    // Verificar se o projeto Ã© recorrente (considerando mÃºltiplos tipos)
     const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
     const isRecurring = projTypes.some(typeName =>
       categories.find(cat => cat.name === typeName && cat.isRecurring)
@@ -481,10 +492,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         setStageTasks(prev => ({ ...prev, [stage.id]: tasks }));
       });
     }
-    // Para projetos normais, as etapas já são carregadas pelo subscribeToStages
+    // Para projetos normais, as etapas jÃ¡ sÃ£o carregadas pelo subscribeToStages
   }, [categories, currentProject.type, currentProject.types]);
 
-  // Verificar se o projeto é recorrente (considerando múltiplos tipos)
+  // Verificar se o projeto Ã© recorrente (considerando mÃºltiplos tipos)
   const isProjectRecurring = () => {
     const projTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
     return projTypes.some(typeName =>
@@ -514,7 +525,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     return recurringInvoices.every(inv => {
       if (inv.status === 'Paid') return true;
 
-      // Se a fatura ainda não venceu, consideramos como paga para fins de status visual
+      // Se a fatura ainda nÃ£o venceu, consideramos como paga para fins de status visual
       const date = getInvoiceReferenceDate(inv);
       const invoiceDate = new Date(date);
       invoiceDate.setHours(0, 0, 0, 0);
@@ -553,11 +564,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const recurringMonthlyInvoices = getRecurringMonthlyInvoices(invoices);
   const recurringMonthlyPaid = getRecurringMonthlyPaidState(invoices);
 
-  // Alerta de pagamento faltante para o mês atual (Projetos Recorrentes)
+  // Alerta de pagamento faltante para o mÃªs atual (Projetos Recorrentes)
   const showPaymentAlert = useMemo(() => {
     if (!isProjectRecurring()) return false;
 
-    // Encontrar a etapa atual para verificar se está em desenvolvimento, ajustes ou manutenção
+    // Encontrar a etapa atual para verificar se estÃ¡ em desenvolvimento, ajustes ou manutenÃ§Ã£o
     let currentStage = stages.find(s => s.id === currentProject.stageId);
     if (!currentStage) {
       currentStage = stages.find(s => s.status === currentProject.status);
@@ -566,14 +577,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     const stageTitle = currentStage?.title;
     if (!stageTitle) return false;
 
-    const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+    const targetTitles = ['Ajustes', 'ManutenÃ§Ã£o', 'GestÃ£o'];
     if (!targetTitles.includes(stageTitle)) return false;
 
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Verificar se existe pelo menos uma fatura REC-* para o mês atual
+    // Verificar se existe pelo menos uma fatura REC-* para o mÃªs atual
     const hasInvoiceThisMonth = invoices.some(inv => {
       if (!inv.number.startsWith('REC-')) return false;
       const invDate = getInvoiceReferenceDate(inv);
@@ -595,7 +606,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     const baseDate = getInvoiceReferenceDate(invoice);
     const nextDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, baseDate.getDate());
 
-    // Garantir que não pulamos o mês se o dia for 31 e o próximo mês tiver 30
+    // Garantir que nÃ£o pulamos o mÃªs se o dia for 31 e o prÃ³ximo mÃªs tiver 30
     if (nextDate.getDate() !== baseDate.getDate()) {
       nextDate.setDate(0);
     }
@@ -648,7 +659,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }
   };
 
-  // Funções para integração Asaas
+  // FunÃ§Ãµes para integraÃ§Ã£o Asaas
   const handleOpenAsaasModal = (invoice: Invoice) => {
     setSelectedInvoiceForAsaas(invoice);
     setShowAsaasModal(true);
@@ -658,23 +669,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     setShowAsaasModal(false);
     setSelectedInvoiceForAsaas(null);
     setAsaasResult(result);
-    setToast({ message: 'Cobrança gerada com sucesso!', type: 'success' });
+    setToast({ message: 'CobranÃ§a gerada com sucesso!', type: 'success' });
     setTimeout(() => setToast(null), 3000);
   };
 
   const handleCancelAsaasPayment = async (invoice: Invoice) => {
     if (!currentWorkspace?.id || !invoice.asaasPaymentId) return;
 
-    if (!confirm('Tem certeza que deseja cancelar esta cobrança no Asaas?')) return;
+    if (!confirm('Tem certeza que deseja cancelar esta cobranÃ§a no Asaas?')) return;
 
     setCancelingAsaas(invoice.id);
     try {
       await cancelAsaasPayment(currentWorkspace.id, invoice.asaasPaymentId, invoice.id);
-      setToast({ message: 'Cobrança cancelada com sucesso!', type: 'success' });
+      setToast({ message: 'CobranÃ§a cancelada com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error: any) {
       console.error('Error canceling Asaas payment:', error);
-      setToast({ message: error.message || 'Erro ao cancelar cobrança', type: 'error' });
+      setToast({ message: error.message || 'Erro ao cancelar cobranÃ§a', type: 'error' });
       setTimeout(() => setToast(null), 3000);
     } finally {
       setCancelingAsaas(null);
@@ -682,7 +693,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   };
 
   const formatDate = (date: Date | any): string => {
-    if (!date) return 'Data não disponível';
+    if (!date) return 'Data nÃ£o disponÃ­vel';
     const now = new Date();
     const activityDate = date.toDate ? date.toDate() : new Date(date);
     const diffInMs = now.getTime() - activityDate.getTime();
@@ -690,9 +701,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
     if (diffInDays === 0) return 'hoje';
     if (diffInDays === 1) return 'ontem';
-    if (diffInDays < 7) return `há ${diffInDays} dias`;
-    if (diffInDays < 30) return `há ${Math.floor(diffInDays / 7)} semanas`;
-    return `há ${Math.floor(diffInDays / 30)} meses`;
+    if (diffInDays < 7) return `hÃ¡ ${diffInDays} dias`;
+    if (diffInDays < 30) return `hÃ¡ ${Math.floor(diffInDays / 7)} semanas`;
+    return `hÃ¡ ${Math.floor(diffInDays / 30)} meses`;
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -701,6 +712,58 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const handleTaskAttachmentButtonClick = (taskId: string) => {
+    if (!canEdit) return;
+    setSelectedTaskAttachmentId(taskId);
+    taskAttachmentInputRef.current?.click();
+  };
+
+  const handleTaskAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedTaskAttachmentId) return;
+
+    setUploadingTaskId(selectedTaskAttachmentId);
+    try {
+      const user = getCurrentUser();
+      for (let i = 0; i < files.length; i++) {
+        await uploadProjectFile(
+          currentProject.id,
+          files[i],
+          user?.displayName || user?.email || 'Usuario',
+          user?.uid || null,
+          selectedTaskAttachmentId
+        );
+      }
+      setToast({ message: 'Documento anexado a tarefa com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error('Error uploading task attachment:', error);
+      setToast({ message: 'Erro ao anexar documento na tarefa.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setUploadingTaskId(null);
+      setSelectedTaskAttachmentId(null);
+      if (taskAttachmentInputRef.current) {
+        taskAttachmentInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handlePreviewProjectFile = (file: ProjectFile) => {
+    window.open(file.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadProjectFile = (file: ProjectFile) => {
+    const link = document.createElement('a');
+    link.href = file.url;
+    link.download = file.name || 'arquivo';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -735,7 +798,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
     try {
       await deleteProjectFile(fileToDelete.id, fileToDelete.url);
-      setToast({ message: "Arquivo excluído com sucesso!", type: 'success' });
+      setToast({ message: "Arquivo excluÃ­do com sucesso!", type: 'success' });
       setTimeout(() => setToast(null), 3000);
       setFileToDelete(null);
     } catch (error) {
@@ -767,10 +830,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     }
   };
 
-  // Obter cor baseada na categoria do projeto (mesma lógica da legenda do Timeline)
+  // Obter cor baseada na categoria do projeto (mesma lÃ³gica da legenda do Timeline)
   const getCategoryColor = (projectType: string) => {
     const categoryIndex = categories.findIndex(cat => cat.name === projectType);
-    if (categoryIndex === -1) return 'blue'; // Cor padrão se não encontrar
+    if (categoryIndex === -1) return 'blue'; // Cor padrÃ£o se nÃ£o encontrar
 
     const colorMap: { [key: number]: string } = {
       0: 'amber',
@@ -778,7 +841,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       2: 'indigo',
       3: 'purple',
       4: 'rose',
-      5: 'emerald', // Verde só aparece depois de outras cores
+      5: 'emerald', // Verde sÃ³ aparece depois de outras cores
     };
 
     return colorMap[categoryIndex % 6] || 'blue';
@@ -801,7 +864,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   return (
     <>
       <div className="flex h-full">
-        {/* Coluna do Meio - Informações do Projeto */}
+        <input
+          ref={taskAttachmentInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+          className="hidden"
+          onChange={handleTaskAttachmentUpload}
+          disabled={!!uploadingTaskId}
+        />
+        {/* Coluna do Meio - InformaÃ§Ãµes do Projeto */}
         <aside className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 overflow-y-auto">
           <div className="flex flex-col gap-8">
             <div className="flex flex-col gap-4">
@@ -852,7 +923,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           currentProject.clientId || null
                         );
 
-                        // Se o projeto tem clientId, atualizar também o avatar do cliente na entidade Client
+                        // Se o projeto tem clientId, atualizar tambÃ©m o avatar do cliente na entidade Client
                         if (currentProject.clientId) {
                           const { updateClient } = await import('../firebase/services');
                           await updateClient(currentProject.clientId, { avatar: avatarUrl });
@@ -880,7 +951,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  {/* Cliente - Edição Inline */}
+                  {/* Cliente - EdiÃ§Ã£o Inline */}
                   {editingClient ? (
                     <input
                       type="text"
@@ -930,7 +1001,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                   )}
 
-                  {/* Nome do Projeto - Edição Inline */}
+                  {/* Nome do Projeto - EdiÃ§Ã£o Inline */}
                   {editingNameSidebar ? (
                     <input
                       type="text"
@@ -987,9 +1058,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               <div className="mt-6 bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800/50 rounded-xl p-4 flex gap-3 animate-pulse">
                 <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
                 <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-bold text-rose-900 dark:text-rose-100 uppercase tracking-wider">Atenção!</p>
+                  <p className="text-xs font-bold text-rose-900 dark:text-rose-100 uppercase tracking-wider">AtenÃ§Ã£o!</p>
                   <p className="text-[11px] font-medium text-rose-700 dark:text-rose-300 leading-relaxed">
-                    Este projeto não possui fatura de mensalidade gerada para o mês atual.
+                    Este projeto nÃ£o possui fatura de mensalidade gerada para o mÃªs atual.
                   </p>
                 </div>
               </div>
@@ -1048,7 +1119,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       </div>
                     </>
                   )}
-                  {/* Botão "Novos ajustes" - aparece quando projeto está concluído */}
+                  {/* BotÃ£o "Novos ajustes" - aparece quando projeto estÃ¡ concluÃ­do */}
                   {currentProject.status === 'Completed' && (
                     <div className="mt-2 w-full">
                       <button
@@ -1083,7 +1154,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                   )}
 
-                  {/* Campos de data para projetos recorrentes em Manutenção */}
+                  {/* Campos de data para projetos recorrentes em ManutenÃ§Ã£o */}
                   {(() => {
                     const pTypesForMaint = currentProject.types || (currentProject.type ? [currentProject.type] : []);
                     const isRecurringService = pTypesForMaint.some(typeName =>
@@ -1097,9 +1168,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       <>
                         <div className="py-2 mt-2">
                           <p className="text-slate-500 text-xs mb-1 flex items-center gap-1">
-                            Data da Manutenção
+                            Data da ManutenÃ§Ã£o
                             {!currentProject.maintenanceDate && (
-                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data de manutenção">warning</span>
+                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data de manutenÃ§Ã£o">warning</span>
                             )}
                           </p>
                           <div className="flex items-center gap-2">
@@ -1127,12 +1198,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       : null;
                                     try {
                                       await updateProject(currentProject.id, { maintenanceDate: newDate });
-                                      setToast({ message: "Data da Manutenção atualizada", type: 'success' });
+                                      setToast({ message: "Data da ManutenÃ§Ã£o atualizada", type: 'success' });
                                       setTimeout(() => setToast(null), 3000);
                                       setShowMaintenanceDatePicker(false);
                                     } catch (error) {
                                       console.error("Error updating maintenance date:", error);
-                                      setToast({ message: "Erro ao atualizar data da manutenção", type: 'error' });
+                                      setToast({ message: "Erro ao atualizar data da manutenÃ§Ã£o", type: 'error' });
                                       setTimeout(() => setToast(null), 3000);
                                     }
                                   }}
@@ -1151,16 +1222,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               className="mt-2 w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                             >
                               <span className="material-symbols-outlined text-sm">check_circle</span>
-                              Concluído
+                              ConcluÃ­do
                             </button>
                           )}
                         </div>
 
                         <div className="py-2">
                           <p className="text-slate-500 text-xs mb-1 flex items-center gap-1">
-                            Data do Relatório
+                            Data do RelatÃ³rio
                             {!currentProject.reportDate && (
-                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data do relatório">warning</span>
+                              <span className="material-symbols-outlined text-[14px] text-red-500 animate-pulse" title="Defina a data do relatÃ³rio">warning</span>
                             )}
                           </p>
                           <div className="flex items-center gap-2">
@@ -1188,12 +1259,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       : null;
                                     try {
                                       await updateProject(currentProject.id, { reportDate: newDate });
-                                      setToast({ message: "Data do Relatório atualizada", type: 'success' });
+                                      setToast({ message: "Data do RelatÃ³rio atualizada", type: 'success' });
                                       setTimeout(() => setToast(null), 3000);
                                       setShowReportDatePicker(false);
                                     } catch (error) {
                                       console.error("Error updating report date:", error);
-                                      setToast({ message: "Erro ao atualizar data do relatório", type: 'error' });
+                                      setToast({ message: "Erro ao atualizar data do relatÃ³rio", type: 'error' });
                                       setTimeout(() => setToast(null), 3000);
                                     }
                                   }}
@@ -1212,7 +1283,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               className="mt-2 w-full px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                             >
                               <span className="material-symbols-outlined text-sm">check_circle</span>
-                              Concluído
+                              ConcluÃ­do
                             </button>
                           )}
                         </div>
@@ -1220,16 +1291,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     );
                   })()}
 
-                  {/* Botões específicos por etapa */}
+                  {/* BotÃµes especÃ­ficos por etapa */}
                   {currentProject.status !== 'Completed' && (
                     <div className={`flex items-center gap-2 w-full ${['review', 'review-recurring'].includes(currentProject.stageId || '') ? 'mt-0' : 'mt-2'}`}>
-                      {/* Se estiver na etapa Ajustes com data definida, mostrar botão "Ajustes finalizado" */}
+                      {/* Se estiver na etapa Ajustes com data definida, mostrar botÃ£o "Ajustes finalizado" */}
                       {currentProject.stageId?.includes('adjustments') && currentProject.deadline ? (
                         <button
                           onClick={async () => {
                             if (!canEdit) return;
                             try {
-                              // Buscar a etapa "Em Revisão" (não a etapa de Ajustes)
+                              // Buscar a etapa "Em RevisÃ£o" (nÃ£o a etapa de Ajustes)
                               const reviewStage = stages.find(s =>
                                 s.status === 'Review' &&
                                 (s.id === 'review' || s.id === 'review-recurring')
@@ -1242,7 +1313,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 maintenanceDate: null,
                                 updatedAt: new Date()
                               });
-                              setToast({ message: "Ajustes finalizados! Projeto enviado para revisão", type: 'success' });
+                              setToast({ message: "Ajustes finalizados! Projeto enviado para revisÃ£o", type: 'success' });
                               setTimeout(() => setToast(null), 3000);
                             } catch (error) {
                               console.error("Error finishing adjustments:", error);
@@ -1255,13 +1326,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           style={{
                             animation: 'pulse-subtle 2s ease-in-out infinite'
                           }}
-                          title="Finalizar ajustes e enviar para revisão"
+                          title="Finalizar ajustes e enviar para revisÃ£o"
                         >
                           <span className="material-symbols-outlined text-sm">check_circle</span>
                           <span className="hidden sm:inline">Ajustes finalizado</span>
                         </button>
                       ) : currentProject.stageId === 'review' || currentProject.stageId === 'review-recurring' ? (
-                        /* Se estiver na etapa "Em Revisão", mostrar dois botões */
+                        /* Se estiver na etapa "Em RevisÃ£o", mostrar dois botÃµes */
                         <>
                           <button
                             onClick={async () => {
@@ -1296,7 +1367,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             onClick={async () => {
                               if (!canEdit) return;
                               try {
-                                // Buscar a etapa "Concluído"
+                                // Buscar a etapa "ConcluÃ­do"
                                 const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
                                 await updateProject(currentProject.id, {
                                   status: 'Completed' as Project['status'],
@@ -1305,41 +1376,41 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   deadline: null,
                                   maintenanceDate: null
                                 });
-                                setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                                setToast({ message: "Projeto marcado como concluÃ­do", type: 'success' });
                                 setTimeout(() => setToast(null), 3000);
                               } catch (error) {
                                 console.error("Error marking project as completed:", error);
-                                setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                                setToast({ message: "Erro ao marcar projeto como concluÃ­do", type: 'error' });
                                 setTimeout(() => setToast(null), 3000);
                               }
                             }}
                             disabled={!canEdit}
                             className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50"
-                            title="Marcar como concluído"
+                            title="Marcar como concluÃ­do"
                           >
                             <span className="material-symbols-outlined text-sm">check_circle</span>
                             <span className="hidden sm:inline">Concluir</span>
                           </button>
                         </>
                       ) : (
-                        /* Para outras etapas, mostrar botões padrão */
+                        /* Para outras etapas, mostrar botÃµes padrÃ£o */
                         <>
                           <button
                             onClick={async () => {
                               if (!canEdit) return;
                               try {
-                                // Buscar a etapa "Concluído"
+                                // Buscar a etapa "ConcluÃ­do"
                                 const completedStage = stages.find(s => s.status === 'Completed') || stages[stages.length - 1];
                                 await updateProject(currentProject.id, {
                                   status: 'Completed' as Project['status'],
                                   stageId: completedStage?.id, // Atualizar stageId
                                   progress: completedStage ? completedStage.progress : 100
                                 });
-                                setToast({ message: "Projeto marcado como concluído", type: 'success' });
+                                setToast({ message: "Projeto marcado como concluÃ­do", type: 'success' });
                                 setTimeout(() => setToast(null), 3000);
                               } catch (error) {
                                 console.error("Error marking project as completed:", error);
-                                setToast({ message: "Erro ao marcar projeto como concluído", type: 'error' });
+                                setToast({ message: "Erro ao marcar projeto como concluÃ­do", type: 'error' });
                                 setTimeout(() => setToast(null), 3000);
                               }
                             }}
@@ -1348,7 +1419,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               ? 'bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-emerald-950 dark:hover:text-emerald-50 hover:border-emerald-500'
                               } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Marcar como concluído"
+                            title="Marcar como concluÃ­do"
                           >
                             <span className="material-symbols-outlined text-sm">check_circle</span>
                             <span className="hidden sm:inline">Concluir</span>
@@ -1358,7 +1429,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               onClick={async () => {
                                 if (!canEdit) return;
                                 try {
-                                  // Buscar a etapa "Em Revisão"
+                                  // Buscar a etapa "Em RevisÃ£o"
                                   const reviewStage = stages.find(s =>
                                     s.status === 'Review' &&
                                     (s.id === 'review' || s.id === 'review-recurring')
@@ -1371,11 +1442,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                     maintenanceDate: null,
                                     updatedAt: new Date()
                                   });
-                                  setToast({ message: "Projeto enviado para revisão", type: 'success' });
+                                  setToast({ message: "Projeto enviado para revisÃ£o", type: 'success' });
                                   setTimeout(() => setToast(null), 3000);
                                 } catch (error) {
                                   console.error("Error marking project as review:", error);
-                                  setToast({ message: "Erro ao enviar projeto para revisão", type: 'error' });
+                                  setToast({ message: "Erro ao enviar projeto para revisÃ£o", type: 'error' });
                                   setTimeout(() => setToast(null), 3000);
                                 }
                               }}
@@ -1384,7 +1455,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 ? 'bg-amber-500 hover:bg-amber-600 text-white'
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
                                 } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              title="Enviar para revisão"
+                              title="Enviar para revisÃ£o"
                             >
                               <span className="material-symbols-outlined text-sm">rate_review</span>
                               <span className="hidden sm:inline">Revisar</span>
@@ -1401,11 +1472,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
               <div className="flex flex-col gap-1">
                 <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">
-                  {isProjectRecurring() ? 'Financeiro' : 'Implementação'}
+                  {isProjectRecurring() ? 'Financeiro' : 'ImplementaÃ§Ã£o'}
                 </p>
                 <div className="py-2">
                   <p className="text-slate-500 text-xs mb-1">
-                    {isProjectRecurring() ? 'Valor da Implementação' : 'Valor do Projeto'}
+                    {isProjectRecurring() ? 'Valor da ImplementaÃ§Ã£o' : 'Valor do Projeto'}
                   </p>
                   <p className="text-lg font-bold text-slate-900 dark:text-white">
                     {currentProject.budget ?
@@ -1446,14 +1517,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       </div>
                     );
                   })()}
-                  {/* Status de pagamento da implementação apenas para projetos recorrentes */}
+                  {/* Status de pagamento da implementaÃ§Ã£o apenas para projetos recorrentes */}
                   {isProjectRecurring() && (
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={async () => {
                           if (currentProject.isImplementationPaid || !canEdit) return;
                           try {
-                            // Atualizar apenas faturas de implementação (IMP-*)
+                            // Atualizar apenas faturas de implementaÃ§Ã£o (IMP-*)
                             const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
                             for (const invoice of implementationInvoices) {
                               if (invoice.status !== 'Paid') {
@@ -1461,7 +1532,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               }
                             }
                             await updateProject(currentProject.id, { isImplementationPaid: true });
-                            setToast({ message: "Implementação marcada como paga", type: 'success' });
+                            setToast({ message: "ImplementaÃ§Ã£o marcada como paga", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
                             console.error("Error updating implementation status:", error);
@@ -1482,7 +1553,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         onClick={async () => {
                           if (!currentProject.isImplementationPaid || !canEdit) return;
                           try {
-                            // Atualizar apenas faturas de implementação (IMP-*)
+                            // Atualizar apenas faturas de implementaÃ§Ã£o (IMP-*)
                             const implementationInvoices = invoices.filter(inv => inv.number.startsWith('IMP-'));
                             for (const invoice of implementationInvoices) {
                               if (invoice.status === 'Paid') {
@@ -1490,7 +1561,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               }
                             }
                             await updateProject(currentProject.id, { isImplementationPaid: false });
-                            setToast({ message: "Implementação marcada como pendente", type: 'success' });
+                            setToast({ message: "ImplementaÃ§Ã£o marcada como pendente", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
                             console.error("Error updating implementation status:", error);
@@ -1576,7 +1647,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const recurringInvoices = getRecurringMonthlyInvoices(invoices)
                               .sort((a, b) => getInvoiceReferenceDate(a).getTime() - getInvoiceReferenceDate(b).getTime());
 
-                            // Pegar a última que foi paga
+                            // Pegar a Ãºltima que foi paga
                             const lastPaid = [...recurringInvoices].reverse().find(inv => inv.status === 'Paid');
 
                             if (lastPaid) {
@@ -1738,10 +1809,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             </div>
 
             <nav className="border-t border-slate-200 dark:border-slate-800 pt-8 pb-8 flex flex-col gap-1">
-              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">Gestão</p>
+              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-2">GestÃ£o</p>
               <NavBtn
                 icon="description"
-                label="Visão Geral"
+                label="VisÃ£o Geral"
                 active={activeManagementTab === 'overview'}
                 onClick={() => setActiveManagementTab('overview')}
               />
@@ -1781,7 +1852,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           </div>
         </aside >
 
-        {/* Coluna Direita - Conteúdo Principal */}
+        {/* Coluna Direita - ConteÃºdo Principal */}
         < main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900/10" >
           {activeManagementTab === 'overview' && (
             <div className="p-8">
@@ -1839,7 +1910,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const imageUrl = await uploadProjectImage(currentProject.id, file);
                             await updateProject(currentProject.id, { projectImage: imageUrl });
                             setCurrentProject(prev => ({ ...prev, projectImage: imageUrl }));
-                            setToast({ message: "Foto do projeto atualizada! A alteração será refletida na página de Clientes.", type: 'success' });
+                            setToast({ message: "Foto do projeto atualizada! A alteraÃ§Ã£o serÃ¡ refletida na pÃ¡gina de Clientes.", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
                             console.error("Error uploading project image:", error);
@@ -1860,7 +1931,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       )}
                     </div>
                     <div className="flex flex-col gap-1">
-                      {/* Nome do Projeto - Edição Inline */}
+                      {/* Nome do Projeto - EdiÃ§Ã£o Inline */}
                       {editingNameHeader ? (
                         <input
                           type="text"
@@ -1910,36 +1981,36 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         </div>
                       )}
                       <div className="flex gap-2 flex-wrap items-center">
-                        {/* Tipo/Serviço - Dropdown para múltiplos serviços */}
+                        {/* Tipo/ServiÃ§o - Dropdown para mÃºltiplos serviÃ§os */}
                         <div className="relative" ref={typeDropdownRef}>
-                          {/* Exibir badges dos serviços selecionados */}
+                          {/* Exibir badges dos serviÃ§os selecionados */}
                           {(currentProject.types && currentProject.types.length > 0 ? currentProject.types : (currentProject.type ? [currentProject.type] : [])).map((typeName, idx) => (
                             <button
                               key={idx}
                               onClick={() => setShowTypeDropdown(!showTypeDropdown)}
                               className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mr-1 mb-1 ${getCategoryBadgeClasses(typeName)}`}
-                              title="Alterar serviços"
+                              title="Alterar serviÃ§os"
                             >
                               {typeName || 'Sem categoria'}
                             </button>
                           ))}
-                          {/* Botão para adicionar serviço se não tiver nenhum */}
+                          {/* BotÃ£o para adicionar serviÃ§o se nÃ£o tiver nenhum */}
                           {(!currentProject.types || currentProject.types.length === 0) && !currentProject.type && (
                             <button
                               onClick={() => setShowTypeDropdown(!showTypeDropdown)}
                               className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 text-slate-500 dark:bg-slate-800"
-                              title="Adicionar serviços"
+                              title="Adicionar serviÃ§os"
                             >
                               Sem categoria
                               <span className="material-symbols-outlined text-[10px] ml-1 align-middle">expand_more</span>
                             </button>
                           )}
-                          {/* Botão de adicionar mais serviços */}
+                          {/* BotÃ£o de adicionar mais serviÃ§os */}
                           {canEdit && (
                             <button
                               onClick={() => setShowTypeDropdown(!showTypeDropdown)}
                               className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1 rounded cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-slate-100 dark:bg-slate-800 text-slate-500 mb-1"
-                              title="Adicionar/remover serviços"
+                              title="Adicionar/remover serviÃ§os"
                             >
                               <span className="material-symbols-outlined text-[10px] align-middle">{showTypeDropdown ? 'close' : 'add'}</span>
                             </button>
@@ -1947,7 +2018,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           {showTypeDropdown && (
                             <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 min-w-[220px] max-h-60 overflow-y-auto">
                               <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">Selecione os serviços</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Selecione os serviÃ§os</span>
                               </div>
                               {categories.map((cat) => {
                                 const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
@@ -1965,7 +2036,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         try {
                                           const currentTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
 
-                                          // Determinar estado "Recorrente" ANTES da mudança
+                                          // Determinar estado "Recorrente" ANTES da mudanÃ§a
                                           const wasRecurring = currentTypes.some(typeName =>
                                             categories.find(c => c.name === typeName && c.isRecurring)
                                           );
@@ -1973,18 +2044,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                           let newTypes: string[];
 
                                           if (isSelected) {
-                                            // Removendo o serviço
+                                            // Removendo o serviÃ§o
                                             newTypes = currentTypes.filter(t => t !== cat.name && t !== 'Sem categoria');
-                                            // Se não sobrar nenhum serviço, adicionar "Sem categoria"
+                                            // Se nÃ£o sobrar nenhum serviÃ§o, adicionar "Sem categoria"
                                             if (newTypes.length === 0) {
                                               newTypes = ['Sem categoria'];
                                             }
                                           } else {
-                                            // Adicionando o serviço - remover "Sem categoria" se existir
+                                            // Adicionando o serviÃ§o - remover "Sem categoria" se existir
                                             newTypes = [...currentTypes.filter(t => t !== 'Sem categoria'), cat.name];
                                           }
 
-                                          // Determinar estado "Recorrente" DEPOIS da mudança
+                                          // Determinar estado "Recorrente" DEPOIS da mudanÃ§a
                                           const willBeRecurring = newTypes.some(typeName =>
                                             categories.find(c => c.name === typeName && c.isRecurring)
                                           );
@@ -1994,11 +2065,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             type: newTypes[0] || '' // Manter compatibilidade
                                           });
 
-                                          // Se houve mudança no status de recorrência, migrar tarefas
+                                          // Se houve mudanÃ§a no status de recorrÃªncia, migrar tarefas
                                           if (wasRecurring !== willBeRecurring) {
                                             setToast({ message: "Migrando tarefas para o novo modo...", type: 'success' });
                                             await migrateProjectMode(currentProject.id, willBeRecurring);
-                                            setToast({ message: "Serviços atualizados e tarefas migradas", type: 'success' });
+                                            setToast({ message: "ServiÃ§os atualizados e tarefas migradas", type: 'success' });
                                           } else {
                                             setToast({ message: isSelected ? `${cat.name} removido` : `${cat.name} adicionado`, type: 'success' });
                                           }
@@ -2006,7 +2077,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                           setTimeout(() => setToast(null), 3000);
                                         } catch (error) {
                                           console.error("Error updating types:", error);
-                                          setToast({ message: "Erro ao atualizar serviços", type: 'error' });
+                                          setToast({ message: "Erro ao atualizar serviÃ§os", type: 'error' });
                                           setTimeout(() => setToast(null), 3000);
                                         }
                                       }}
@@ -2029,12 +2100,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           );
                           const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
 
-                          // Se for serviço recorrente na etapa Manutenção, usar azul para "Gestão"
+                          // Se for serviÃ§o recorrente na etapa ManutenÃ§Ã£o, usar azul para "GestÃ£o"
                           if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
                             return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
                           }
 
-                          // Caso contrário, usar as cores padrão
+                          // Caso contrÃ¡rio, usar as cores padrÃ£o
                           return currentProject.status === 'Active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                             currentProject.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                               currentProject.status === 'Lead' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
@@ -2043,30 +2114,30 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         })()
                           }`}>
                           {(() => {
-                            // Verificar se algum dos serviços é recorrente
+                            // Verificar se algum dos serviÃ§os Ã© recorrente
                             const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
                             const isRecurringService = projectTypes.some(typeName =>
                               categories.find(cat => cat.name === typeName && cat.isRecurring)
                             );
 
-                            // Verificar se está na etapa Manutenção
+                            // Verificar se estÃ¡ na etapa ManutenÃ§Ã£o
                             const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
 
-                            // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
+                            // Se for serviÃ§o recorrente e estiver na etapa ManutenÃ§Ã£o, mostrar "GestÃ£o"
                             if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
-                              return 'Gestão';
+                              return 'GestÃ£o';
                             }
 
-                            // Se for serviço recorrente e status Lead, mostrar "On-boarding"
+                            // Se for serviÃ§o recorrente e status Lead, mostrar "On-boarding"
                             if (isRecurringService && currentProject.status === 'Lead') {
                               return 'On-boarding';
                             }
 
-                            // Caso contrário, usar a lógica padrão
+                            // Caso contrÃ¡rio, usar a lÃ³gica padrÃ£o
                             return currentProject.status === 'Lead' ? 'On-boarding' :
                               currentProject.status === 'Active' ? 'Em Desenvolvimento' :
-                                currentProject.status === 'Completed' ? 'Concluído' :
-                                  currentProject.status === 'Finished' ? 'Finalizado' : 'Em Revisão';
+                                currentProject.status === 'Completed' ? 'ConcluÃ­do' :
+                                  currentProject.status === 'Finished' ? 'Finalizado' : 'Em RevisÃ£o';
                           })()}
                         </span>
                       </div>
@@ -2101,9 +2172,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   {/* Etapas Timeline */}
                   <div className="flex items-center gap-1 overflow-x-auto pb-2">
                     {stages.map((stage, index) => {
-                      // Usar stageId para determinar a etapa atual quando disponível
+                      // Usar stageId para determinar a etapa atual quando disponÃ­vel
                       let currentStageIndex = stages.findIndex(s => s.id === currentProject.stageId);
-                      // Fallback para status se stageId não corresponder
+                      // Fallback para status se stageId nÃ£o corresponder
                       if (currentStageIndex === -1) {
                         currentStageIndex = stages.findIndex(s => s.status === currentProject.status);
                       }
@@ -2149,7 +2220,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 <div className="flex items-center -space-x-0.5">
                                   <span className="material-symbols-outlined text-sm">check</span>
                                   {projectStageTasks.some(t => t.stageId === stage.id && !t.completed) && (
-                                    <span className="material-symbols-outlined text-[10px] text-amber-500" title="Há tarefas pendentes nesta etapa">priority_high</span>
+                                    <span className="material-symbols-outlined text-[10px] text-amber-500" title="HÃ¡ tarefas pendentes nesta etapa">priority_high</span>
                                   )}
                                 </div>
                               ) : (
@@ -2196,7 +2267,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       onClick={() => setActiveTab('tasks')}
                     />
                     <TabLink
-                      label="Descrição"
+                      label="DescriÃ§Ã£o"
                       icon="description"
                       active={activeTab === 'description'}
                       onClick={() => setActiveTab('description')}
@@ -2217,7 +2288,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   <div className="p-6">
                     {activeTab === 'description' && (
                       <div className="flex flex-col gap-4">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Descrição do Projeto</h3>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">DescriÃ§Ã£o do Projeto</h3>
 
                         <RichTextEditor
                           content={tempDescription}
@@ -2235,21 +2306,21 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               if (newContent !== (currentProject.description || '')) {
                                 try {
                                   await updateProject(currentProject.id, { description: newContent });
-                                  setToast({ message: "Descrição atualizada", type: 'success' });
+                                  setToast({ message: "DescriÃ§Ã£o atualizada", type: 'success' });
                                   setTimeout(() => setToast(null), 3000);
                                 } catch (error) {
                                   console.error("Error updating description:", error);
-                                  setToast({ message: "Erro ao atualizar descrição", type: 'error' });
+                                  setToast({ message: "Erro ao atualizar descriÃ§Ã£o", type: 'error' });
                                   setTimeout(() => setToast(null), 3000);
                                 }
                               }
-                            }, 1000); // Salvar após 1 segundo de inatividade
+                            }, 1000); // Salvar apÃ³s 1 segundo de inatividade
                           }}
-                          placeholder="Adicione uma descrição para o projeto... Use a barra de ferramentas para formatar."
+                          placeholder="Adicione uma descriÃ§Ã£o para o projeto... Use a barra de ferramentas para formatar."
                         />
 
                         <p className="text-xs text-slate-400 px-1">
-                          Salvo automaticamente após editar
+                          Salvo automaticamente apÃ³s editar
                         </p>
                       </div>
                     )}
@@ -2285,12 +2356,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               .filter(pt => pt.stageId === stage.id)
                               .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-                            // Lógica corrigida para determinar a etapa atual
+                            // LÃ³gica corrigida para determinar a etapa atual
                             const isCurrentStage = currentProject.stageId
                               ? stage.id === currentProject.stageId
                               : stage.status === currentProject.status;
 
-                            // Determinar a etapa atual do projeto para comparação de ordem
+                            // Determinar a etapa atual do projeto para comparaÃ§Ã£o de ordem
                             const currentStage = currentProject.stageId
                               ? stages.find(s => s.id === currentProject.stageId)
                               : stages.find(s => s.status === currentProject.status);
@@ -2303,7 +2374,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const hasPendingTasks = stageProjectTasks.some(t => !t.completed);
                             const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
 
-                            // Estado para controlar expansão da etapa - sempre começa expandido se para etapa atual, caso contrário colapsado
+                            // Estado para controlar expansÃ£o da etapa - sempre comeÃ§a expandido se para etapa atual, caso contrÃ¡rio colapsado
                             const isExpanded = expandedStages[stage.id] !== undefined ? expandedStages[stage.id] : isCurrentStage;
 
                             return (
@@ -2313,7 +2384,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10'
                                   : 'border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30'
                                 }`}>
-                                {/* Cabeçalho da Etapa - Clicável para expandir/colapsar */}
+                                {/* CabeÃ§alho da Etapa - ClicÃ¡vel para expandir/colapsar */}
                                 <button
                                   onClick={() => {
                                     if (['review', 'review-recurring'].includes(stage.id)) return;
@@ -2354,7 +2425,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                         }`}>
                                         {isCompleted
-                                          ? 'CONCLUÍDA'
+                                          ? 'CONCLUÃDA'
                                           : isCurrentStage
                                             ? 'ETAPA ATUAL'
                                             : hasPendingTasks && isPreviousStage
@@ -2365,10 +2436,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   </div>
                                 </button>
 
-                                {/* Conteúdo Expandível - Oculto na etapa de Revisão */}
+                                {/* ConteÃºdo ExpandÃ­vel - Oculto na etapa de RevisÃ£o */}
                                 {isExpanded && !['review', 'review-recurring'].includes(stage.id) && (
                                   <div className="px-4 pb-4">
-                                    {/* Botão Redefinir Tarefas - Agora disponível para todas as etapas */}
+                                    {/* BotÃ£o Redefinir Tarefas - Agora disponÃ­vel para todas as etapas */}
                                     <div className="flex justify-end mb-2">
                                       <button
                                         onClick={() => {
@@ -2378,7 +2449,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         }}
                                         disabled={!canEdit}
                                         className={`text-xs text-slate-400 hover:text-primary transition-colors flex items-center gap-1 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        title="Redefinir tarefas para o padrão"
+                                        title="Redefinir tarefas para o padrÃ£o"
                                       >
                                         <span className="material-symbols-outlined text-sm">refresh</span>
                                         Redefinir
@@ -2389,6 +2460,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       {stageProjectTasks.map((task) => {
                                         const isTaskCompleted = task.completed || false;
                                         const isTaskInProgress = isCurrentStage && !isTaskCompleted;
+                                        const taskFiles = taskFilesByTaskId[task.id] || [];
+                                        const taskAttachmentCount = taskFiles.length;
+                                        const isTaskUploadingAttachment = uploadingTaskId === task.id;
 
                                         return (
                                           <div
@@ -2443,7 +2517,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               const midpoint = rect.top + rect.height / 2;
                                               const position = e.clientY < midpoint ? 'above' : 'below';
 
-                                              // Logica de reordenação local e no banco
+                                              // Logica de reordenaÃ§Ã£o local e no banco
                                               const tasksInStage = projectStageTasks
                                                 .filter(t => t.stageId === stage.id)
                                                 .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -2460,10 +2534,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               const newTasksInStage = [...tasksInStage];
                                               const [removed] = newTasksInStage.splice(draggedIndex, 1);
 
-                                              // Ajustar indice de inserção se removemos de uma posição anterior
+                                              // Ajustar indice de inserÃ§Ã£o se removemos de uma posiÃ§Ã£o anterior
                                               if (draggedIndex < insertionIndex) insertionIndex--;
 
-                                              // Inserir na nova posição
+                                              // Inserir na nova posiÃ§Ã£o
                                               newTasksInStage.splice(insertionIndex, 0, removed);
 
                                               // Atualizar ordens
@@ -2568,8 +2642,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
                                                       const msg = newCompletedStatus
                                                         ? (updates.deadline || updates.maintenanceDate
-                                                          ? "Tarefa concluída e data atualizada para próxima pendente"
-                                                          : "Tarefa concluída e datas limpas")
+                                                          ? "Tarefa concluÃ­da e data atualizada para prÃ³xima pendente"
+                                                          : "Tarefa concluÃ­da e datas limpas")
                                                         : "Tarefa reaberta e datas restauradas";
 
                                                       setToast({ message: msg, type: 'success' });
@@ -2595,7 +2669,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               </span>
                                             </button>
 
-                                            {/* Edição inline da tarefa */}
+                                            {/* EdiÃ§Ã£o inline da tarefa */}
                                             {editingTaskId === task.id ? (
                                               <input
                                                 type="text"
@@ -2626,87 +2700,145 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 autoFocus
                                               />
                                             ) : (
-                                              <div className="flex-1 flex items-center gap-2 group/task">
-                                                <p
-                                                  onDoubleClick={() => {
-                                                    if (!canEdit) return;
-                                                    setEditingTaskId(task.id);
-                                                    setEditingTaskTitle(task.title || '');
-                                                  }}
-                                                  className={`text-sm flex-1 ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
-                                                  title="Clique duplo para editar"
-                                                >
-                                                  {task.title || 'Sem título'}
-                                                </p>
-                                                {canEdit && (
-                                                  <button
-                                                    onClick={() => {
+                                              <div className="flex-1 min-w-0 flex flex-col gap-2 group/task">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                  <p
+                                                    onDoubleClick={() => {
+                                                      if (!canEdit) return;
                                                       setEditingTaskId(task.id);
                                                       setEditingTaskTitle(task.title || '');
                                                     }}
-                                                    className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
-                                                    title="Editar tarefa"
+                                                    className={`text-sm flex-1 min-w-0 truncate ${isTaskCompleted ? 'line-through text-slate-400' : isTaskInProgress ? 'font-bold' : ''}`}
+                                                    title="Clique duplo para editar"
                                                   >
-                                                    <span className="material-symbols-outlined text-sm">edit</span>
-                                                  </button>
-                                                )}
-
-                                                {/* Botão de Data da Tarefa */}
-                                                {(() => {
-                                                  const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
-                                                    if (!dueDate) return '';
-
-                                                    // Se a tarefa está concluída, sempre verde
-                                                    if (isCompleted) {
-                                                      return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
-                                                    }
-
-                                                    const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
-                                                    const today = new Date();
-                                                    today.setHours(0, 0, 0, 0);
-                                                    taskDate.setHours(0, 0, 0, 0);
-
-                                                    const diffTime = taskDate.getTime() - today.getTime();
-                                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                                                    if (diffDays < 0) {
-                                                      // Data passou - vermelho
-                                                      return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
-                                                    } else if (diffDays < 7) {
-                                                      // Data próxima (menos de 7 dias) - amarelo
-                                                      return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50';
-                                                    } else {
-                                                      // Data distante (7 dias ou mais) - cinza
-                                                      return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
-                                                    }
-                                                  };
-
-                                                  return (
+                                                    {task.title || 'Sem titulo'}
+                                                  </p>
+                                                  {canEdit && (
                                                     <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const rect = e.currentTarget.getBoundingClientRect();
-                                                        setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
-                                                        setEditingTaskDateId(task.id);
+                                                      onClick={() => {
+                                                        setEditingTaskId(task.id);
+                                                        setEditingTaskTitle(task.title || '');
                                                       }}
-                                                      className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
-                                                          ${task.dueDate
-                                                          ? getTaskDateColor(task.dueDate, isTaskCompleted)
-                                                          : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                                        }`}
-                                                      title={task.dueDate
-                                                        ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
-                                                        : "Definir data"}
+                                                      className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
+                                                      title="Editar tarefa"
                                                     >
-                                                      <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-                                                      {task.dueDate && (
-                                                        <span className="text-[10px] font-medium">
-                                                          {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
-                                                        </span>
-                                                      )}
+                                                      <span className="material-symbols-outlined text-sm">edit</span>
                                                     </button>
-                                                  );
-                                                })()}
+                                                  )}
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleTaskAttachmentButtonClick(task.id);
+                                                    }}
+                                                    disabled={!canEdit || !!uploadingTaskId}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all ${taskAttachmentCount > 0 ? 'border-sky-400/40 bg-sky-500/10 text-sky-300 shadow-[0_0_18px_rgba(56,189,248,0.14)]' : 'border-slate-700/80 bg-slate-800/70 text-slate-300 hover:border-sky-500/40 hover:text-sky-300'} ${!canEdit || !!uploadingTaskId ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    title={taskAttachmentCount > 0 ? 'Gerenciar anexos da tarefa' : 'Anexar documento na tarefa'}
+                                                  >
+                                                    <span className={`material-symbols-outlined text-[16px] ${isTaskUploadingAttachment ? 'animate-spin' : ''}`}>
+                                                      {isTaskUploadingAttachment ? 'sync' : 'attach_file'}
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold whitespace-nowrap">
+                                                      {isTaskUploadingAttachment
+                                                        ? 'Enviando'
+                                                        : taskAttachmentCount > 0
+                                                          ? `${taskAttachmentCount} anexo${taskAttachmentCount > 1 ? 's' : ''}`
+                                                          : 'Anexar'}
+                                                    </span>
+                                                  </button>
+
+                                                  {/* Botao de Data da Tarefa */}
+                                                  {(() => {
+                                                    const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
+                                                      if (!dueDate) return '';
+
+                                                      if (isCompleted) {
+                                                        return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
+                                                      }
+
+                                                      const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
+                                                      const today = new Date();
+                                                      today.setHours(0, 0, 0, 0);
+                                                      taskDate.setHours(0, 0, 0, 0);
+
+                                                      const diffTime = taskDate.getTime() - today.getTime();
+                                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                                                      if (diffDays < 0) {
+                                                        return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
+                                                      } else if (diffDays < 7) {
+                                                        return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50';
+                                                      } else {
+                                                        return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+                                                      }
+                                                    };
+
+                                                    return (
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
+                                                          setEditingTaskDateId(task.id);
+                                                        }}
+                                                        className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
+                                                          ${task.dueDate
+                                                            ? getTaskDateColor(task.dueDate, isTaskCompleted)
+                                                            : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                          }`}
+                                                        title={task.dueDate
+                                                          ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
+                                                          : 'Definir data'}
+                                                      >
+                                                        <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                                                        {task.dueDate && (
+                                                          <span className="text-[10px] font-medium">
+                                                            {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
+                                                          </span>
+                                                        )}
+                                                      </button>
+                                                    );
+                                                  })()}
+                                                </div>
+                                                {taskFiles.length > 0 && (
+                                                  <div className="flex flex-wrap gap-2">
+                                                    {taskFiles.map((file) => (
+                                                      <div
+                                                        key={file.id}
+                                                        className="flex items-center gap-2 max-w-full pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-700/70 bg-slate-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+                                                      >
+                                                        <span className="material-symbols-outlined text-[15px] text-sky-400">
+                                                          {file.type === 'image' ? 'image' : 'description'}
+                                                        </span>
+                                                        <span
+                                                          className="text-[11px] font-medium text-slate-200 truncate max-w-[180px]"
+                                                          title={file.title || file.name}
+                                                        >
+                                                          {file.title || file.name}
+                                                        </span>
+                                                        <button
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handlePreviewProjectFile(file);
+                                                          }}
+                                                          className="text-slate-400 hover:text-sky-300 transition-colors"
+                                                          title="Visualizar documento"
+                                                        >
+                                                          <span className="material-symbols-outlined text-[16px]">visibility</span>
+                                                        </button>
+                                                        <button
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDownloadProjectFile(file);
+                                                          }}
+                                                          className="text-slate-400 hover:text-emerald-300 transition-colors"
+                                                          title="Baixar documento"
+                                                        >
+                                                          <span className="material-symbols-outlined text-[16px]">download</span>
+                                                        </button>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
                                               </div>
                                             )}
 
@@ -2767,7 +2899,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                         await updateProject(currentProject.id, updates);
                                                         setCurrentProject(prev => ({ ...prev, ...updates }));
                                                         const msg = updates.deadline || updates.maintenanceDate
-                                                          ? "Tarefa removida e data atualizada para próxima pendente"
+                                                          ? "Tarefa removida e data atualizada para prÃ³xima pendente"
                                                           : "Tarefa removida e datas limpas";
                                                         setToast({ message: msg, type: 'success' });
                                                         setTimeout(() => setToast(null), 3000);
@@ -2799,7 +2931,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         </p>
                                       )}
 
-                                      {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas exceto Revisão */}
+                                      {/* FormulÃ¡rio para adicionar nova tarefa - Agora disponÃ­vel em todas as etapas exceto RevisÃ£o */}
                                       {canEdit && !['review', 'review-recurring'].includes(currentProject.stageId || '') && (
                                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
                                           <input
@@ -2884,7 +3016,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   console.error("Error deleting credential:", error);
                                   setToast({ message: "Erro ao remover credencial", type: 'error' });
                                   setTimeout(() => setToast(null), 3000);
-                                  // Reverter mudança local em caso de erro
+                                  // Reverter mudanÃ§a local em caso de erro
                                   setCredentials(credentials);
                                 }
                               } : undefined}
@@ -2897,7 +3029,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     {activeTab === 'files' && (
                       <div>
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-bold">Mídias, Documentos e Links</h3>
+                          <h3 className="text-lg font-bold">MÃ­dias, Documentos e Links</h3>
                           <div className="flex items-center gap-2">
                             {canEdit && (
                               <>
@@ -2968,7 +3100,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         <span className="text-xs text-slate-400 truncate max-w-[200px]" title={file.isLink ? file.url : file.name}>
                                           {file.isLink ? file.url : file.name}
                                         </span>
-                                        <span className="text-xs text-slate-400">•</span>
+                                        <span className="text-xs text-slate-400">â€¢</span>
                                         <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
                                       </div>
                                     </>
@@ -2986,7 +3118,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         {!file.isLink && file.size > 0 && (
                                           <>
                                             <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
-                                            <span className="text-xs text-slate-400">•</span>
+                                            <span className="text-xs text-slate-400">â€¢</span>
                                           </>
                                         )}
                                         <span className="text-xs text-slate-500">{formatDate(file.uploadedAt)}</span>
@@ -3002,7 +3134,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         setEditingFileTitleValue(file.title || '');
                                       }}
                                       className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-primary transition-all p-1"
-                                      title="Editar título"
+                                      title="Editar tÃ­tulo"
                                     >
                                       <span className="material-symbols-outlined text-lg">edit</span>
                                     </button>
@@ -3070,14 +3202,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       <table className="w-full text-left">
                         <thead className="bg-slate-50 dark:bg-slate-800/50">
                           <tr>
-                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Descrição</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">DescriÃ§Ã£o</th>
                             <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
                             <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Valor</th>
                             <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
                             {currentWorkspace?.asaasApiKey && (
-                              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">Cobrança</th>
+                              <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider">CobranÃ§a</th>
                             )}
-                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">Ações</th>
+                            <th className="px-6 py-4 text-[13px] font-bold text-slate-500 uppercase tracking-wider text-center">AÃ§Ãµes</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -3124,7 +3256,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 <td className="px-6 py-4 text-sm font-bold">
                                   <div className="flex items-baseline gap-1.5">
                                     <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(invoice.amount)}</span>
-                                    {/* Mostrar contagem apenas para faturas de implementação (IMP-*) ou normais (INV-*), não para mensalidade (REC-*) */}
+                                    {/* Mostrar contagem apenas para faturas de implementaÃ§Ã£o (IMP-*) ou normais (INV-*), nÃ£o para mensalidade (REC-*) */}
                                     {sortedInvoices.length > 1 && !invoice.number.startsWith('REC-') && (
                                       <span className="text-[10px] font-normal text-slate-500">
                                         {(() => {
@@ -3227,7 +3359,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             onClick={() => handleCancelAsaasPayment(invoice)}
                                             disabled={cancelingAsaas === invoice.id}
                                             className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors text-red-500"
-                                            title="Cancelar cobrança"
+                                            title="Cancelar cobranÃ§a"
                                           >
                                             <span className={`material-symbols-outlined text-sm ${cancelingAsaas === invoice.id ? 'animate-spin' : ''}`}>
                                               {cancelingAsaas === invoice.id ? 'sync' : 'cancel'}
@@ -3244,7 +3376,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         Cobrar
                                       </button>
                                     ) : (
-                                      <span className="text-xs text-slate-400">—</span>
+                                      <span className="text-xs text-slate-400">â€”</span>
                                     )}
                                   </td>
                                 )}
@@ -3298,12 +3430,12 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
                     <div className="relative">
                       {[
-                        { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
-                        { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
+                        { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'ReuniÃ£o inicial com o cliente' },
+                        { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'DocumentaÃ§Ã£o de requisitos finalizada' },
                         { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
-                        { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
-                        { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
-                        { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
+                        { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'InÃ­cio da fase de codificaÃ§Ã£o' },
+                        { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'ValidaÃ§Ã£o e correÃ§Ãµes' },
+                        { id: '6', title: 'LanÃ§amento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produÃ§Ã£o' },
                       ].map((milestone, index) => (
                         <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
                           <div className="flex flex-col items-center">
@@ -3364,7 +3496,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   console.error("Error saving credential:", error);
                   setToast({ message: "Erro ao salvar credencial", type: 'error' });
                   setTimeout(() => setToast(null), 3000);
-                  // Reverter mudança local em caso de erro
+                  // Reverter mudanÃ§a local em caso de erro
                   setCredentials(credentials);
                 }
                 setShowAddCredential(false);
@@ -3390,7 +3522,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   console.error("Error updating credential:", error);
                   setToast({ message: "Erro ao atualizar credencial", type: 'error' });
                   setTimeout(() => setToast(null), 3000);
-                  // Reverter mudança local em caso de erro
+                  // Reverter mudanÃ§a local em caso de erro
                   setCredentials(credentials);
                 }
                 setShowEditCredential(null);
@@ -3412,7 +3544,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     projectId: currentProject.id,
                     text: activityData.text,
                     icon: activityData.icon,
-                    userName: activityData.userName || 'Usuário',
+                    userName: activityData.userName || 'UsuÃ¡rio',
                     createdAt: new Date()
                   });
                   console.log("Activity added successfully:", activityId);
@@ -3482,7 +3614,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           )
         }
 
-        {/* Modal Confirmar Exclusão de Arquivo */}
+        {/* Modal Confirmar ExclusÃ£o de Arquivo */}
         {
           fileToDelete && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3494,7 +3626,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                     <div>
                       <h3 className="text-xl font-bold">Excluir Arquivo</h3>
-                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                      <p className="text-sm text-slate-500 mt-1">Esta aÃ§Ã£o nÃ£o pode ser desfeita</p>
                     </div>
                   </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -3552,7 +3684,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Título (opcional)
+                      TÃ­tulo (opcional)
                     </label>
                     <input
                       type="text"
@@ -3577,7 +3709,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   <button
                     onClick={async () => {
                       if (!newLinkUrl.trim()) {
-                        setToast({ message: "Digite uma URL válida", type: 'error' });
+                        setToast({ message: "Digite uma URL vÃ¡lida", type: 'error' });
                         setTimeout(() => setToast(null), 3000);
                         return;
                       }
@@ -3605,7 +3737,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           )
         }
 
-        {/* Modal Editar Título do Arquivo/Link */}
+        {/* Modal Editar TÃ­tulo do Arquivo/Link */}
         {
           editingFileTitle && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3616,22 +3748,22 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       <span className="material-symbols-outlined text-primary">edit</span>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold">Editar Título</h3>
+                      <h3 className="text-xl font-bold">Editar TÃ­tulo</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        {editingFileTitle.isLink ? 'Altere o título do link' : 'Altere o título do arquivo'}
+                        {editingFileTitle.isLink ? 'Altere o tÃ­tulo do link' : 'Altere o tÃ­tulo do arquivo'}
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="p-6">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Título
+                    TÃ­tulo
                   </label>
                   <input
                     type="text"
                     value={editingFileTitleValue}
                     onChange={(e) => setEditingFileTitleValue(e.target.value)}
-                    placeholder="Digite um título"
+                    placeholder="Digite um tÃ­tulo"
                     className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                     autoFocus
                   />
@@ -3653,13 +3785,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     onClick={async () => {
                       try {
                         await updateProjectFile(editingFileTitle.id, { title: editingFileTitleValue });
-                        setToast({ message: "Título atualizado!", type: 'success' });
+                        setToast({ message: "TÃ­tulo atualizado!", type: 'success' });
                         setTimeout(() => setToast(null), 3000);
                         setEditingFileTitle(null);
                         setEditingFileTitleValue('');
                       } catch (error) {
                         console.error("Error updating title:", error);
-                        setToast({ message: "Erro ao atualizar título", type: 'error' });
+                        setToast({ message: "Erro ao atualizar tÃ­tulo", type: 'error' });
                         setTimeout(() => setToast(null), 3000);
                       }
                     }}
@@ -3673,7 +3805,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           )
         }
 
-        {/* Modal Confirmar Remoção de Membro */}
+        {/* Modal Confirmar RemoÃ§Ã£o de Membro */}
         {
           memberToRemove && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3685,7 +3817,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                     <div>
                       <h3 className="text-xl font-bold">Remover Membro</h3>
-                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                      <p className="text-sm text-slate-500 mt-1">Esta aÃ§Ã£o nÃ£o pode ser desfeita</p>
                     </div>
                   </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -3722,11 +3854,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                     <div>
                       <h3 className="text-xl font-bold">Excluir Projeto</h3>
-                      <p className="text-sm text-slate-500 mt-1">Esta ação não pode ser desfeita</p>
+                      <p className="text-sm text-slate-500 mt-1">Esta aÃ§Ã£o nÃ£o pode ser desfeita</p>
                     </div>
                   </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serão perdidos permanentemente.
+                    Tem certeza que deseja excluir o projeto <span className="font-bold">"{currentProject.name}"</span>? Todos os dados relacionados serÃ£o perdidos permanentemente.
                   </p>
                 </div>
                 <div className="p-6 flex items-center justify-end gap-3">
@@ -3740,7 +3872,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     onClick={async () => {
                       try {
                         await deleteProject(currentProject.id);
-                        setToast({ message: "Projeto excluído com sucesso!", type: 'success' });
+                        setToast({ message: "Projeto excluÃ­do com sucesso!", type: 'success' });
                         setTimeout(() => {
                           setShowDeleteProjectConfirm(false);
                           onClose();
@@ -3910,7 +4042,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                         }`}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-white">Próxima mensalidade</span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">PrÃ³xima mensalidade</span>
                         <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
                           {getRecurringDueDate(paidInvoiceForRecurring, 'original').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </span>
@@ -4043,13 +4175,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                   </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                    Tem certeza que deseja redefinir as tarefas desta etapa para o padrão? <strong className="text-amber-600">Todas as alterações serão perdidas.</strong>
+                    Tem certeza que deseja redefinir as tarefas desta etapa para o padrÃ£o? <strong className="text-amber-600">Todas as alteraÃ§Ãµes serÃ£o perdidas.</strong>
                   </p>
                   <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
                       <span className="text-xs text-slate-500">
-                        As tarefas serão substituídas pelas definidas em Configurações.
+                        As tarefas serÃ£o substituÃ­das pelas definidas em ConfiguraÃ§Ãµes.
                       </span>
                     </div>
                   </div>
@@ -4069,7 +4201,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           const projectTypes = currentProject.types || (currentProject.type ? [currentProject.type] : []);
                           const projectCategory = categories.find(c => projectTypes.includes(c.name));
                           await resetProjectStageTasks(currentProject.id, stageToReset.id, projectCategory?.id);
-                          setToast({ message: "Tarefas redefinidas para o padrão!", type: 'success' });
+                          setToast({ message: "Tarefas redefinidas para o padrÃ£o!", type: 'success' });
                           setTimeout(() => setToast(null), 3000);
                         } catch (error) {
                           console.error("Error resetting tasks:", error);
@@ -4091,7 +4223,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           )
         }
 
-        {/* Modal Marcar Próxima Data */}
+        {/* Modal Marcar PrÃ³xima Data */}
         {
           showNextDateModal && nextDateType && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
@@ -4111,10 +4243,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                        Marcar {nextDateType === 'maintenance' ? 'Manutenção' : 'Relatório'} como Concluído?
+                        Marcar {nextDateType === 'maintenance' ? 'ManutenÃ§Ã£o' : 'RelatÃ³rio'} como ConcluÃ­do?
                       </h3>
                       <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Deseja definir a próxima data?
+                        Deseja definir a prÃ³xima data?
                       </p>
                     </div>
                   </div>
@@ -4122,7 +4254,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                   {!selectedDays && !showCustomDatePicker ? (
                     <>
                       <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                        Selecione quando será a próxima {nextDateType === 'maintenance' ? 'manutenção' : 'relatório'}:
+                        Selecione quando serÃ¡ a prÃ³xima {nextDateType === 'maintenance' ? 'manutenÃ§Ã£o' : 'relatÃ³rio'}:
                       </p>
                       <div className="grid grid-cols-2 gap-3 mb-6">
                         {[3, 7, 15, 30].map((days) => (
@@ -4201,29 +4333,29 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     {!selectedDays && !showCustomDatePicker && (
                       <button
                         onClick={async () => {
-                          // Apenas limpar a data atual sem definir próxima
+                          // Apenas limpar a data atual sem definir prÃ³xima
                           try {
                             if (nextDateType === 'maintenance') {
                               await updateProject(currentProject.id, { maintenanceDate: null });
                               setCurrentProject(prev => ({ ...prev, maintenanceDate: null }));
-                              setToast({ message: "Manutenção marcada como concluída", type: 'success' });
+                              setToast({ message: "ManutenÃ§Ã£o marcada como concluÃ­da", type: 'success' });
                             } else {
                               await updateProject(currentProject.id, { reportDate: null });
                               setCurrentProject(prev => ({ ...prev, reportDate: null }));
-                              setToast({ message: "Relatório marcado como concluído", type: 'success' });
+                              setToast({ message: "RelatÃ³rio marcado como concluÃ­do", type: 'success' });
                             }
                             setTimeout(() => setToast(null), 3000);
                             setShowNextDateModal(false);
                             setNextDateType(null);
                           } catch (error) {
                             console.error("Error completing:", error);
-                            setToast({ message: "Erro ao marcar como concluído", type: 'error' });
+                            setToast({ message: "Erro ao marcar como concluÃ­do", type: 'error' });
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
                         className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                       >
-                        Não, apenas concluir
+                        NÃ£o, apenas concluir
                       </button>
                     )}
                   </div>
@@ -4249,7 +4381,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         )
       }
 
-      {/* Modal de Cobrança Asaas */}
+      {/* Modal de CobranÃ§a Asaas */}
       {
         showAsaasModal && selectedInvoiceForAsaas && currentWorkspace && (
           <AsaasChargeModal
@@ -4265,7 +4397,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         )
       }
 
-      {/* Modal de Resultado da Cobrança */}
+      {/* Modal de Resultado da CobranÃ§a */}
       {
         asaasResult && (
           <AsaasChargeResultModal
@@ -4301,8 +4433,8 @@ const InlineDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (dat
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   const today = new Date();
 
-  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const months = ['Janeiro', 'Fevereiro', 'MarÃ§o', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'SÃ¡b'];
 
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -4468,8 +4600,8 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
   }, [buttonRef, customPosition]);
   const today = new Date();
 
-  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const months = ['Janeiro', 'Fevereiro', 'MarÃ§o', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'SÃ¡b'];
 
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -4499,7 +4631,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
 
   const isSelected = (date: Date | null) => {
     if (!date || !selectedDate) return false;
-    // Comparar apenas ano, mês e dia para evitar problemas de timezone
+    // Comparar apenas ano, mÃªs e dia para evitar problemas de timezone
     return date.getFullYear() === selectedDate.getFullYear() &&
       date.getMonth() === selectedDate.getMonth() &&
       date.getDate() === selectedDate.getDate();
@@ -4507,7 +4639,7 @@ const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Dat
 
   const handleDateClick = (date: Date | null) => {
     if (date) {
-      // Criar data no horário local para evitar problemas de timezone
+      // Criar data no horÃ¡rio local para evitar problemas de timezone
       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       onSelectDate(localDate);
     }
@@ -4592,8 +4724,8 @@ const InvoiceDatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (da
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   const today = new Date();
 
-  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const months = ['Janeiro', 'Fevereiro', 'MarÃ§o', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'SÃ¡b'];
 
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
   const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -4802,13 +4934,13 @@ const CredentialCard: React.FC<{
           </div>
         </div>
         <div className="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
-          <span className="text-slate-500 dark:text-slate-400">Usuário</span>
+          <span className="text-slate-500 dark:text-slate-400">UsuÃ¡rio</span>
           <div className="flex items-center gap-2">
             <span className="font-medium">{user}</span>
             <button
-              onClick={() => copyToClipboard(user, 'Usuário')}
+              onClick={() => copyToClipboard(user, 'UsuÃ¡rio')}
               className="text-slate-400 hover:text-primary transition-colors"
-              title="Copiar usuário"
+              title="Copiar usuÃ¡rio"
             >
               <span className="material-symbols-outlined text-[14px]">content_copy</span>
             </button>
@@ -4817,7 +4949,7 @@ const CredentialCard: React.FC<{
         <div className="flex justify-between items-center text-xs py-1">
           <span className="text-slate-500 dark:text-slate-400">Senha</span>
           <div className="flex items-center gap-2">
-            <span className="font-medium">{showPassword ? password : '••••••••'}</span>
+            <span className="font-medium">{showPassword ? password : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowPassword(!showPassword)}
@@ -4876,7 +5008,7 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Título</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">TÃ­tulo</label>
             <input
               type="text"
               value={formData.title}
@@ -4887,17 +5019,17 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Subtítulo</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">SubtÃ­tulo</label>
             <input
               type="text"
               value={formData.sub}
               onChange={(e) => setFormData({ ...formData, sub: e.target.value })}
               className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-              placeholder="Ex: Servidor de Produção"
+              placeholder="Ex: Servidor de ProduÃ§Ã£o"
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ícone</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ãcone</label>
             <div className="grid grid-cols-5 gap-2">
               {iconOptions.map((option) => (
                 <button
@@ -4934,7 +5066,7 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Usuário</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">UsuÃ¡rio</label>
             <input
               type="text"
               value={formData.user}
@@ -4952,7 +5084,7 @@ const AddCredentialModal: React.FC<{ onClose: () => void; onSave: (data: { title
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full px-4 py-2.5 pr-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
               />
               <div
                 onMouseDown={(e) => {
@@ -5040,7 +5172,7 @@ const EditCredentialModal: React.FC<{
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Título</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">TÃ­tulo</label>
             <input
               type="text"
               value={formData.title}
@@ -5051,17 +5183,17 @@ const EditCredentialModal: React.FC<{
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Subtítulo</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">SubtÃ­tulo</label>
             <input
               type="text"
               value={formData.sub}
               onChange={(e) => setFormData({ ...formData, sub: e.target.value })}
               className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-              placeholder="Ex: Servidor de Produção"
+              placeholder="Ex: Servidor de ProduÃ§Ã£o"
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ícone</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Ãcone</label>
             <div className="grid grid-cols-5 gap-2">
               {iconOptions.map((option) => (
                 <button
@@ -5098,7 +5230,7 @@ const EditCredentialModal: React.FC<{
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Usuário</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">UsuÃ¡rio</label>
             <input
               type="text"
               value={formData.user}
@@ -5116,7 +5248,7 @@ const EditCredentialModal: React.FC<{
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full px-4 py-2.5 pr-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
               />
               <div
                 onMouseDown={(e) => {
@@ -5156,7 +5288,7 @@ const EditCredentialModal: React.FC<{
               type="submit"
               className="px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Salvar Alterações
+              Salvar AlteraÃ§Ãµes
             </button>
           </div>
         </form>
@@ -5168,11 +5300,11 @@ const EditCredentialModal: React.FC<{
 const AddActivityModal: React.FC<{ projectId: string; onClose: () => void; onSave: (data: { text: string; icon: string; userName?: string }) => void }> = ({ onClose, onSave }) => {
   const [formData, setFormData] = useState({ text: '', icon: 'check_circle', userName: '' });
   const iconOptions = [
-    { value: 'check_circle', label: 'Concluído' },
+    { value: 'check_circle', label: 'ConcluÃ­do' },
     { value: 'description', label: 'Documento' },
     { value: 'person', label: 'Equipe' },
-    { value: 'comment', label: 'Comentário' },
-    { value: 'update', label: 'Atualização' },
+    { value: 'comment', label: 'ComentÃ¡rio' },
+    { value: 'update', label: 'AtualizaÃ§Ã£o' },
     { value: 'event', label: 'Evento' },
   ];
 
@@ -5186,7 +5318,7 @@ const AddActivityModal: React.FC<{ projectId: string; onClose: () => void; onSav
         console.error("Error in handleSubmit:", error);
       }
     } else {
-      alert("Por favor, preencha a descrição da atividade.");
+      alert("Por favor, preencha a descriÃ§Ã£o da atividade.");
     }
   };
 
@@ -5201,7 +5333,7 @@ const AddActivityModal: React.FC<{ projectId: string; onClose: () => void; onSav
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Descrição da Atividade</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">DescriÃ§Ã£o da Atividade</label>
             <textarea
               value={formData.text}
               onChange={(e) => setFormData({ ...formData, text: e.target.value })}
@@ -5276,7 +5408,7 @@ const AddMemberModal: React.FC<{ projectId: string; onClose: () => void; onSave:
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Função/Cargo</label>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">FunÃ§Ã£o/Cargo</label>
             <input
               type="text"
               value={formData.role}
@@ -5448,14 +5580,14 @@ const AddInvoiceModal: React.FC<{
   });
   const [amountDisplay, setAmountDisplay] = useState<string>('0,00');
 
-  // Atualizar descrição e valor quando o tipo de fatura muda
+  // Atualizar descriÃ§Ã£o e valor quando o tipo de fatura muda
   useEffect(() => {
     if (invoiceType === 'recurring' && recurringAmount > 0) {
       const year = new Date().getFullYear();
       setFormData(prev => ({
         ...prev,
         number: `REC-${year}-${defaultNumber.split('-').pop() || '001'}`,
-        description: 'Mensalidade - Recorrência'
+        description: 'Mensalidade - RecorrÃªncia'
       }));
       setAmountDisplay(new Intl.NumberFormat('pt-BR', {
         minimumFractionDigits: 2,
@@ -5466,7 +5598,7 @@ const AddInvoiceModal: React.FC<{
       setFormData(prev => ({
         ...prev,
         number: `IMP-${year}-${defaultNumber.split('-').pop() || '001'}`,
-        description: 'Implementação do Projeto'
+        description: 'ImplementaÃ§Ã£o do Projeto'
       }));
       setAmountDisplay('0,00');
     } else if (invoiceType === 'custom') {
@@ -5496,13 +5628,13 @@ const AddInvoiceModal: React.FC<{
   }, [showDatePicker]);
 
   const formatCurrency = (value: string): string => {
-    // Remove tudo que não é dígito
+    // Remove tudo que nÃ£o Ã© dÃ­gito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
 
-    // Converte para número e divide por 100 para ter centavos
+    // Converte para nÃºmero e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
-    // Formata como número brasileiro (sem o símbolo R$)
+    // Formata como nÃºmero brasileiro (sem o sÃ­mbolo R$)
     return new Intl.NumberFormat('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -5511,20 +5643,20 @@ const AddInvoiceModal: React.FC<{
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
-    // Remove tudo que não é dígito
+    // Remove tudo que nÃ£o Ã© dÃ­gito
     const numbers = inputValue.replace(/\D/g, '');
 
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
 
-    // Extrai o valor numérico (divide por 100 porque estamos trabalhando com centavos)
+    // Extrai o valor numÃ©rico (divide por 100 porque estamos trabalhando com centavos)
     const numericValue = numbers ? parseFloat(numbers) / 100 : 0;
     setFormData({ ...formData, amount: numericValue.toString() });
   };
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Ao focar, seleciona todo o texto para facilitar substituição
+    // Ao focar, seleciona todo o texto para facilitar substituiÃ§Ã£o
     e.target.select();
   };
 
@@ -5536,7 +5668,7 @@ const AddInvoiceModal: React.FC<{
     }
 
     try {
-      // Converte o valor formatado para número
+      // Converte o valor formatado para nÃºmero
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
 
       // Parse da data sem problemas de timezone
@@ -5598,7 +5730,7 @@ const AddInvoiceModal: React.FC<{
                     }`}
                 >
                   <span className="material-symbols-outlined text-sm mr-1">build</span>
-                  Implementação
+                  ImplementaÃ§Ã£o
                 </button>
                 <button
                   type="button"
@@ -5621,7 +5753,7 @@ const AddInvoiceModal: React.FC<{
           )}
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Número da Fatura</label>
+            <label className="block text-sm font-semibold mb-1.5">NÃºmero da Fatura</label>
             <input
               type="text"
               value={formData.number}
@@ -5632,7 +5764,7 @@ const AddInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Descrição</label>
+            <label className="block text-sm font-semibold mb-1.5">DescriÃ§Ã£o</label>
             <input
               type="text"
               value={formData.description}
@@ -5749,13 +5881,13 @@ const EditInvoiceModal: React.FC<{
   };
 
   const formatCurrency = (value: string): string => {
-    // Remove tudo que não é dígito
+    // Remove tudo que nÃ£o Ã© dÃ­gito
     const numbers = value.replace(/\D/g, '');
     if (numbers === '' || numbers === '0') return '0,00';
 
-    // Converte para número e divide por 100 para ter centavos
+    // Converte para nÃºmero e divide por 100 para ter centavos
     const amount = parseFloat(numbers) / 100;
-    // Formata como número brasileiro (sem o símbolo R$)
+    // Formata como nÃºmero brasileiro (sem o sÃ­mbolo R$)
     return new Intl.NumberFormat('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -5773,7 +5905,7 @@ const EditInvoiceModal: React.FC<{
         const day = String(invoice.date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       } else if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
-        return invoice.date.split('T')[0]; // Já está no formato YYYY-MM-DD
+        return invoice.date.split('T')[0]; // JÃ¡ estÃ¡ no formato YYYY-MM-DD
       } else if (invoice.date?.toDate) {
         const d = invoice.date.toDate();
         const year = d.getFullYear();
@@ -5807,19 +5939,19 @@ const EditInvoiceModal: React.FC<{
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
-    // Remove tudo que não é dígito
+    // Remove tudo que nÃ£o Ã© dÃ­gito
     const numbers = inputValue.replace(/\D/g, '');
 
     // Atualiza o display formatado
     const formatted = formatCurrency(numbers);
     setAmountDisplay(formatted);
 
-    // Atualiza formData com o valor formatado para manter consistência
+    // Atualiza formData com o valor formatado para manter consistÃªncia
     setFormData({ ...formData, amount: formatted });
   };
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Ao focar, seleciona todo o texto para facilitar substituição
+    // Ao focar, seleciona todo o texto para facilitar substituiÃ§Ã£o
     e.target.select();
   };
 
@@ -5831,7 +5963,7 @@ const EditInvoiceModal: React.FC<{
     }
 
     try {
-      // Converte o valor formatado para número
+      // Converte o valor formatado para nÃºmero
       const numericAmount = parseFloat(amountDisplay.replace(/\./g, '').replace(',', '.'));
 
       // Parse da data sem problemas de timezone
@@ -5882,7 +6014,7 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Número da Fatura</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">NÃºmero da Fatura</label>
             <input
               type="text"
               value={formData.number}
@@ -5893,7 +6025,7 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Descrição</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">DescriÃ§Ã£o</label>
             <input
               type="text"
               value={formData.description}
@@ -6011,7 +6143,7 @@ const EditInvoiceModal: React.FC<{
         onClose={() => setShowDeleteInvoiceConfirm(false)}
         onConfirm={handleDelete}
         title="Excluir fatura"
-        message="Deseja excluir esta fatura? Esta ação não pode ser desfeita."
+        message="Deseja excluir esta fatura? Esta aÃ§Ã£o nÃ£o pode ser desfeita."
         confirmText={isDeleting ? 'Excluindo...' : 'Excluir fatura'}
         cancelText="Cancelar"
         type="danger"

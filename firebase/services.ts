@@ -1539,7 +1539,8 @@ export const uploadProjectFile = async (
   projectId: string,
   file: File,
   uploadedBy?: string,
-  userId?: string | null
+  userId?: string | null,
+  taskId?: string
 ): Promise<string> => {
   try {
     if (!storage) {
@@ -1561,6 +1562,7 @@ export const uploadProjectFile = async (
     // Salvar metadados no Firestore
     const fileData = {
       projectId,
+      ...(taskId ? { taskId } : {}),
       name: file.name,
       url: downloadURL,
       type: getFileType(file.name, file.type),
