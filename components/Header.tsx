@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from 'firebase/auth';
-import { Workspace } from '../types';
+import { ViewState, Workspace } from '../types';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
   onSearch?: (query: string) => void;
+  currentView: ViewState;
   currentWorkspace?: Workspace | null;
   user: User | null;
   onLogout: () => void;
@@ -13,7 +13,7 @@ interface HeaderProps {
   onToggleTheme: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, currentWorkspace, user, onLogout, theme, onToggleTheme }) => {
+export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, currentView, currentWorkspace, user, onLogout, theme, onToggleTheme }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -28,6 +28,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (currentView !== 'Dashboard' && searchQuery) {
+      setSearchQuery('');
+      onSearch?.('');
+    }
+  }, [currentView, searchQuery, onSearch]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -45,7 +52,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
     }
   };
 
-  // Gerar avatar do usuário
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    onSearch?.('');
+  };
+
+  // Gerar avatar do usuario
   const getUserAvatar = () => {
     if (user?.photoURL) {
       return user.photoURL;
@@ -56,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
   };
 
   const getUserDisplayName = () => {
-    return user?.displayName || user?.email?.split('@')[0] || 'Usuário';
+    return user?.displayName || user?.email?.split('@')[0] || 'Usuario';
   };
 
   return (
@@ -74,9 +86,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
             type="text"
             value={searchQuery}
             onChange={handleSearchChange}
-            className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/50 outline-none transition-shadow"
+            className="w-full pl-10 pr-11 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary/50 outline-none transition-shadow"
             placeholder="Buscar clientes ou projetos..."
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200/90 text-slate-500 transition-all hover:bg-slate-300 hover:text-slate-700 dark:bg-slate-700/90 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:text-white"
+              aria-label="Limpar busca"
+              title="Limpar busca"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+          )}
         </form>
       </div>
       <div className="flex items-center gap-4">

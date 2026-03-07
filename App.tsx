@@ -268,6 +268,7 @@ const App: React.FC = () => {
         <Header
           onToggleSidebar={toggleSidebar}
           onSearch={handleSearch}
+          currentView={currentView}
           currentWorkspace={currentWorkspace}
           user={user}
           onLogout={handleLogout}
@@ -328,3 +329,6 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
+

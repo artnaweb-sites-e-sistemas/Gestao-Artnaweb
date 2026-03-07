@@ -2191,8 +2191,8 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
   const missingDateWarnings: string[] = [];
 
   if (isMaintenanceProject) {
-    if (!project.maintenanceDate) missingDateWarnings.push('manutenÁ„o');
-    if (!project.reportDate) missingDateWarnings.push('relatÛrio');
+      if (!project.maintenanceDate) missingDateWarnings.push('manuten\u00e7\u00e3o');
+      if (!project.reportDate) missingDateWarnings.push('relat\u00f3rio');
   } else if (!project.deadline) {
     missingDateWarnings.push('entrega');
   }
@@ -2367,11 +2367,13 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       </div>
 
       {hasFinancialPendingCard && (project.status === 'Completed' || project.status === 'Finished') && (
-        <div className="mb-3 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-700/60 shadow-sm shadow-rose-500/10">
-          <span className="material-symbols-outlined text-[18px]">payments</span>
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.12em] leading-none">PendÍncia financeira</div>
-            <div className="text-[11px] font-semibold leading-tight">Pagamento pendente</div>
+        <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/8 px-3 py-2.5">
+          <div className="flex size-8 items-center justify-center rounded-full bg-rose-500/15 text-rose-400">
+            <span className="material-symbols-outlined text-[16px]">payments</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-300/75">Financeiro</div>
+            <div className="text-[12px] font-semibold leading-tight text-rose-100">Pagamento pendente</div>
           </div>
         </div>
       )}
@@ -2472,7 +2474,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       {project.progress >= 10 && (
         <div className="space-y-1.5 mb-4">
           <div className="flex justify-between text-[10px] font-bold text-slate-400">
-            <span>{project.status === 'Active' ? 'Fase de Codifica√ß√£o' : 'Testes'}</span>
+            <span>{project.status === 'Active' ? 'Fase de Codifica\u00e7\u00e3o' : 'Testes'}</span>
             <span>{project.progress}%</span>
           </div>
           <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
@@ -2507,7 +2509,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
           <div className={`flex items-center gap-1.5 mb-3 text-xs font-semibold ${deadlineColor}`}>
             <span className="material-symbols-outlined text-sm">calendar_today</span>
             <span>
-              {project.status === 'Completed' ? 'Data de conclus√£o: ' : 'Data de entrega: '}
+              {project.status === 'Completed' ? 'Data de conclus\u00e3o: ' : 'Data de entrega: '}
               {parseSafeDate(project.deadline)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </span>
           </div>
@@ -2542,7 +2544,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.maintenanceDate)}`}>
                 <span className={`material-symbols-outlined text-sm ${getDateColor(project.maintenanceDate)}`}>build</span>
                 <span>
-                  Manuten√ß√£o: {parseSafeDate(project.maintenanceDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {'Manuten\u00e7\u00e3o: '}{parseSafeDate(project.maintenanceDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
             )}
@@ -2550,7 +2552,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${getDateColor(project.reportDate)}`}>
                 <span className={`material-symbols-outlined text-sm ${getDateColor(project.reportDate)}`}>description</span>
                 <span>
-                  Relat√≥rio: {parseSafeDate(project.reportDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {'Relat\u00f3rio: '}{parseSafeDate(project.reportDate)?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
             )}
@@ -2614,8 +2616,8 @@ const ListView: React.FC<{
     const warnings: string[] = [];
 
     if (isMaintenanceProject) {
-      if (!project.maintenanceDate) warnings.push('manutenÁ„o');
-      if (!project.reportDate) warnings.push('relatÛrio');
+      if (!project.maintenanceDate) warnings.push('manuten\u00e7\u00e3o');
+      if (!project.reportDate) warnings.push('relat\u00f3rio');
       return warnings;
     }
 
@@ -2752,7 +2754,7 @@ const ListView: React.FC<{
             const isCompletedWithPendingPayment =
               isCompletedFinancialPriority(project) && hasFinancialPendingInSort(project);
 
-            // 0. Prioridade m·xima: somente "ConcluÌdo" com pendÍncia financeira
+            // 0. Prioridade m?xima: somente "Conclu?do" com pend?ncia financeira
             if (isCompletedWithPendingPayment) return -1;
 
             // 1. On-boarding (Weight 0)
@@ -2999,10 +3001,10 @@ const ListView: React.FC<{
                             const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
                             const isLate = dateOnly < today;
                             return (
-                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`} title="Data da Manuten√ß√£o">
+                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`} title="Data da Manuten??o">
                                 <span className="material-symbols-outlined text-[14px] flex-shrink-0">build</span>
                                 <span className="text-[10px] font-bold truncate whitespace-nowrap">
-                                  Manuten√ß√£o: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                  Manuten??o: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                 </span>
                               </div>
                             );
@@ -3015,10 +3017,10 @@ const ListView: React.FC<{
                             const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
                             const isLate = dateOnly < today;
                             return (
-                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} title="Data do Relat√≥rio">
+                              <div className={`flex items-center gap-1 min-w-0 ${isLate ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} title="Data do Relat?rio">
                                 <span className="material-symbols-outlined text-[14px] flex-shrink-0">description</span>
                                 <span className="text-[10px] font-bold truncate whitespace-nowrap">
-                                  Relat√≥rio: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                  Relat?rio: {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                 </span>
                               </div>
                             );
@@ -3027,7 +3029,7 @@ const ListView: React.FC<{
                       )}
 
                       {hasFinancialPending(project) && (project.status === 'Completed' || project.status === 'Finished') && (
-                        <div className="flex items-center gap-1 min-w-0 text-rose-600 dark:text-rose-400" title="PendÍncia financeira">
+                        <div className="flex items-center gap-1 min-w-0 text-rose-600 dark:text-rose-400" title="Pend?ncia financeira">
                           <span className="material-symbols-outlined text-[14px] flex-shrink-0">payments</span>
                           <span className="text-[10px] font-bold uppercase whitespace-nowrap">Pagamento pendente</span>
                         </div>
