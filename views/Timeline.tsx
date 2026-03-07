@@ -18,6 +18,8 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasMovedRef = useRef(false); // Rastrear se houve movimento significativo
   const clickPreventedRef = useRef(false); // Prevenir clique se houve arrasto
+  const TIMELINE_NAME_COLUMN_WIDTH = 256;
+  const TIMELINE_DAY_WIDTH = 100;
   // Carregar projetos do Firebase
   useEffect(() => {
     if (!currentWorkspace?.id) return;
@@ -215,6 +217,13 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   };
 
   const days = generateDays();
+
+  const timelineGridLineColor = 'rgba(148, 163, 184, 0.08)';
+  const timelineGridVerticalStyle = {
+    backgroundImage: `linear-gradient(to right, ${timelineGridLineColor} 1px, transparent 1px)`,
+    backgroundSize: `${TIMELINE_DAY_WIDTH}px 100%`
+  };
+
 
   // Função para verificar se uma data é hoje
   const isToday = (date: Date): boolean => {
@@ -717,10 +726,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             <p className="text-sm text-slate-500">Projetos ativos com prazos ou serviços recorrentes em manutenção aparecerão aqui.</p>
           </div>
         ) : (
-          <div className="min-w-full">
+          <div className="min-w-full min-h-full">
             <div className="sticky top-0 z-10 flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
               <div className="w-64 flex-shrink-0 sticky left-0 z-20 p-4 border-r border-slate-200 dark:border-slate-600 font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-[4px_0_16px_-2px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_16px_-2px_rgba(0,0,0,0.5)]">Projetos / Clientes</div>
-              <div className="flex-1 flex bg-white/70 dark:bg-slate-900/70 backdrop-blur-md">
+              <div className="flex-1 flex bg-white/70 dark:bg-slate-900/70 backdrop-blur-md" style={timelineGridVerticalStyle}>
                 {days.map((day, i) => {
                   const today = isToday(day.date);
 
@@ -769,12 +778,20 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   );
                 })}
                 {/* Preenchimento para ocupar o resto do espaço */}
-                <div className="flex-1 bg-white dark:bg-slate-900" />
+                <div className="flex-1" />
               </div>
             </div>
 
             {/* Container dos projetos com linha vertical contínua */}
-            <div className="relative">
+            <div className="relative min-h-full">
+              <div
+                className="absolute inset-y-0 right-0 pointer-events-none"
+                style={{
+                  left: `${TIMELINE_NAME_COLUMN_WIDTH}px`,
+                  ...timelineGridVerticalStyle
+                }}
+              />
+
               {/* Linha vertical contínua do dia atual - atravessa todos os projetos */}
               {(() => {
                 const todayIndex = days.findIndex(day => isToday(day.date));
@@ -784,7 +801,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                 const minutesInDay = (now.getHours() * 60) + now.getMinutes();
                 const positionX = (minutesInDay / 1440) * 100;
                 // Posição = largura da coluna de nomes (256px) + (índice do dia * largura da coluna) + posição dentro da coluna
-                const leftPosition = 256 + (todayIndex * 100) + positionX;
+                const leftPosition = TIMELINE_NAME_COLUMN_WIDTH + (todayIndex * TIMELINE_DAY_WIDTH) + positionX;
 
                 return (
                   <div
@@ -794,7 +811,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                 );
               })()}
 
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="divide-y divide-slate-100/60 dark:divide-slate-800/60">
                 {projectsForTimeline.map((project) => {
                   const { startColumn, duration } = getProjectPosition(project);
                   const pTypes = project.types || (project.type ? [project.type] : []);
@@ -901,7 +918,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                         </div>
                       </div>
                       {/* Colunas - mesma estrutura flex do header */}
-                      <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20">
+                      <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20" style={timelineGridVerticalStyle}>
                         {/* Sinalização de vencido na área do calendário (recorrentes) - no canto superior esquerdo da linha para não sobrepor a barra */}
                         {isRecurringOverdue && (
                           <div className="absolute left-2 top-1.5 z-0 flex items-center gap-1.5 flex-wrap">
@@ -933,7 +950,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           );
                         })}
                         {/* Preenchimento para ocupar o resto do espaço */}
-                        <div className="flex-1 h-20 bg-white dark:bg-slate-900" />
+                        <div className="flex-1 h-20" />
 
                         {/* Barra do projeto (se aplicável) */}
                         {showProjectBar && (() => {
@@ -1165,4 +1182,5 @@ const Badge: React.FC<{ color: string; dotColor: string; label: string }> = ({ c
     <span className={`size-1.5 rounded-full ${dotColor}`}></span> {label}
   </span>
 );
+
 
