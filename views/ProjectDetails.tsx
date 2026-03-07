@@ -2406,18 +2406,26 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10'
                                   : 'border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30'
                                 }`}>
-                                {/* Cabeçalho da Etapa - Clicável para expandir/colapsar */}
+                                {/* Cabeçalho da Etapa - Clicável para expandir/colapsar (Revisão e Concluído não colapsam) */}
                                 <button
                                   onClick={() => {
-                                    if (['review', 'review-recurring'].includes(stage.id)) return;
+                                    if (['review', 'review-recurring', 'completed', 'finished-recurring'].includes(stage.id)) return;
                                     setExpandedStages(prev => ({
                                       ...prev,
                                       [stage.id]: !isExpanded
                                     }));
                                   }}
-                                  className={`w-full flex items-center gap-3 p-4 text-left transition-colors rounded-t-xl ${['review', 'review-recurring'].includes(stage.id) ? 'cursor-default' : 'hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
+                                  className={`w-full flex items-center gap-3 p-4 text-left transition-colors rounded-t-xl ${['review', 'review-recurring', 'completed', 'finished-recurring'].includes(stage.id) ? 'cursor-default' : 'hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                                 >
-                                  {!['review', 'review-recurring'].includes(stage.id) && (
+                                  {['review', 'review-recurring'].includes(stage.id) ? (
+                                    <span className="material-symbols-outlined text-lg text-amber-500 dark:text-amber-400" title="Em Revisão">
+                                      rate_review
+                                    </span>
+                                  ) : ['completed', 'finished-recurring'].includes(stage.id) ? (
+                                    <span className="material-symbols-outlined text-lg text-emerald-500 dark:text-emerald-400" title={stage.id === 'finished-recurring' ? 'Finalizado' : 'Concluído'}>
+                                      check_circle
+                                    </span>
+                                  ) : (
                                     <span className={`material-symbols-outlined text-lg transition-transform ${isExpanded ? 'rotate-90' : ''} ${isCurrentStage ? 'text-primary' : isCompleted ? 'text-emerald-500' : 'text-slate-400'
                                       }`}>
                                       chevron_right
@@ -2458,8 +2466,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   </div>
                                 </button>
 
-                                {/* Conteúdo Expandível - Oculto na etapa de Revisão */}
-                                {isExpanded && !['review', 'review-recurring'].includes(stage.id) && (
+                                {/* Conteúdo Expandível - Oculto em Revisão e em Concluído/Finalizado (só o cabeçalho aparece, igual Revisão) */}
+                                {isExpanded && !['review', 'review-recurring', 'completed', 'finished-recurring'].includes(stage.id) && (
                                   <div className="px-4 pb-4">
                                     {/* Botão Redefinir Tarefas - Agora disponível para todas as etapas */}
                                     <div className="flex justify-end mb-2">
@@ -2957,8 +2965,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         </p>
                                       )}
 
-                                      {/* Formulário para adicionar nova tarefa - Agora disponível em todas as etapas exceto Revisão */}
-                                      {canEdit && !['review', 'review-recurring'].includes(currentProject.stageId || '') && (
+                                      {/* Formulário para adicionar nova tarefa — oculto em Revisão, Concluído e Finalizado */}
+                                      {canEdit && !['review', 'review-recurring', 'completed', 'finished-recurring'].includes(stage.id) && (
                                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
                                           <input
                                             type="text"
