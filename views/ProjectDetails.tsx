@@ -766,6 +766,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     document.body.removeChild(link);
   };
 
+  const handleDeleteTaskAttachment = async (file: ProjectFile) => {
+    try {
+      await deleteProjectFile(file.id, file.url);
+      setToast({ message: 'Anexo removido com sucesso!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      console.error('Error deleting task attachment:', error);
+      setToast({ message: 'Erro ao remover anexo.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -2467,7 +2479,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         return (
                                           <div
                                             key={task.id}
-                                            className={`relative flex items-center gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
+                                            className={`relative flex items-start gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
                                             draggable={canEdit}
                                             onDragStart={(e) => {
                                               e.stopPropagation();
@@ -2657,7 +2669,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                 }
                                               }}
                                               disabled={!canEdit}
-                                              className={`flex-shrink-0 ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
+                                              className={`flex-shrink-0 mt-1 ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
                                             >
                                               <span className={`material-symbols-outlined transition-colors ${isTaskCompleted
                                                 ? 'text-green-500'
@@ -2713,91 +2725,163 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                   >
                                                     {task.title || 'Sem titulo'}
                                                   </p>
-                                                  {canEdit && (
-                                                    <button
-                                                      onClick={() => {
-                                                        setEditingTaskId(task.id);
-                                                        setEditingTaskTitle(task.title || '');
-                                                      }}
-                                                      className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
-                                                      title="Editar tarefa"
-                                                    >
-                                                      <span className="material-symbols-outlined text-sm">edit</span>
-                                                    </button>
-                                                  )}
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      handleTaskAttachmentButtonClick(task.id);
-                                                    }}
-                                                    disabled={!canEdit || !!uploadingTaskId}
-                                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all ${taskAttachmentCount > 0 ? 'border-sky-400/40 bg-sky-500/10 text-sky-300 shadow-[0_0_18px_rgba(56,189,248,0.14)]' : 'border-slate-700/80 bg-slate-800/70 text-slate-300 hover:border-sky-500/40 hover:text-sky-300'} ${!canEdit || !!uploadingTaskId ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    title={taskAttachmentCount > 0 ? 'Gerenciar anexos da tarefa' : 'Anexar documento na tarefa'}
-                                                  >
-                                                    <span className={`material-symbols-outlined text-[16px] ${isTaskUploadingAttachment ? 'animate-spin' : ''}`}>
-                                                      {isTaskUploadingAttachment ? 'sync' : 'attach_file'}
-                                                    </span>
-                                                    <span className="text-[10px] font-semibold whitespace-nowrap">
-                                                      {isTaskUploadingAttachment
-                                                        ? 'Enviando'
-                                                        : taskAttachmentCount > 0
-                                                          ? `${taskAttachmentCount} anexo${taskAttachmentCount > 1 ? 's' : ''}`
-                                                          : 'Anexar'}
-                                                    </span>
-                                                  </button>
-
-                                                  {/* Botao de Data da Tarefa */}
-                                                  {(() => {
-                                                    const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
-                                                      if (!dueDate) return '';
-
-                                                      if (isCompleted) {
-                                                        return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
-                                                      }
-
-                                                      const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
-                                                      const today = new Date();
-                                                      today.setHours(0, 0, 0, 0);
-                                                      taskDate.setHours(0, 0, 0, 0);
-
-                                                      const diffTime = taskDate.getTime() - today.getTime();
-                                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                                                      if (diffDays < 0) {
-                                                        return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
-                                                      } else if (diffDays < 7) {
-                                                        return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50';
-                                                      } else {
-                                                        return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
-                                                      }
-                                                    };
-
-                                                    return (
+                                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                                    {canEdit && (
                                                       <button
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
-                                                          setEditingTaskDateId(task.id);
+                                                        onClick={() => {
+                                                          setEditingTaskId(task.id);
+                                                          setEditingTaskTitle(task.title || '');
                                                         }}
-                                                        className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded
-                                                          ${task.dueDate
-                                                            ? getTaskDateColor(task.dueDate, isTaskCompleted)
-                                                            : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                                          }`}
-                                                        title={task.dueDate
-                                                          ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
-                                                          : 'Definir data'}
+                                                        className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-primary"
+                                                        title="Editar tarefa"
                                                       >
-                                                        <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-                                                        {task.dueDate && (
-                                                          <span className="text-[10px] font-medium">
-                                                            {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
-                                                          </span>
-                                                        )}
+                                                        <span className="material-symbols-outlined text-sm">edit</span>
                                                       </button>
-                                                    );
-                                                  })()}
+                                                    )}
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleTaskAttachmentButtonClick(task.id);
+                                                      }}
+                                                      disabled={!canEdit || !!uploadingTaskId}
+                                                      className={`opacity-0 group-hover/task:opacity-100 flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all ${taskAttachmentCount > 0 ? 'border-sky-400/40 bg-sky-500/10 text-sky-300 shadow-[0_0_18px_rgba(56,189,248,0.14)]' : 'border-slate-700/80 bg-slate-800/70 text-slate-300 hover:border-sky-500/40 hover:text-sky-300'} ${!canEdit || !!uploadingTaskId ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                      title={taskAttachmentCount > 0 ? 'Gerenciar anexos da tarefa' : 'Anexar documento na tarefa'}
+                                                    >
+                                                      <span className={`material-symbols-outlined text-[16px] ${isTaskUploadingAttachment ? 'animate-spin' : ''}`}>
+                                                        {isTaskUploadingAttachment ? 'sync' : 'attach_file'}
+                                                      </span>
+                                                      <span className="text-[10px] font-semibold whitespace-nowrap">
+                                                        {isTaskUploadingAttachment
+                                                          ? 'Enviando'
+                                                          : taskAttachmentCount > 0
+                                                            ? `${taskAttachmentCount} anexo${taskAttachmentCount > 1 ? 's' : ''}`
+                                                            : 'Anexar'}
+                                                      </span>
+                                                    </button>
+
+                                                    {(() => {
+                                                      const getTaskDateColor = (dueDate: any, isCompleted: boolean): string => {
+                                                        if (!dueDate) return '';
+
+                                                        if (isCompleted) {
+                                                          return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-50 border border-emerald-200 dark:border-emerald-800/50';
+                                                        }
+
+                                                        const taskDate = new Date(dueDate.seconds ? dueDate.seconds * 1000 : dueDate);
+                                                        const today = new Date();
+                                                        today.setHours(0, 0, 0, 0);
+                                                        taskDate.setHours(0, 0, 0, 0);
+
+                                                        const diffTime = taskDate.getTime() - today.getTime();
+                                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                                                        if (diffDays < 0) {
+                                                          return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50';
+                                                        } else if (diffDays < 7) {
+                                                          return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50';
+                                                        } else {
+                                                          return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+                                                        }
+                                                      };
+
+                                                      return (
+                                                        <button
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                            setTaskDatePickerPosition({ top: rect.bottom + 5, left: rect.left });
+                                                            setEditingTaskDateId(task.id);
+                                                          }}
+                                                          className={`transition-opacity flex items-center gap-1.5 px-2 py-0.5 rounded ${task.dueDate ? getTaskDateColor(task.dueDate, isTaskCompleted) : 'opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                                                          title={task.dueDate
+                                                            ? `Data: ${new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString()}`
+                                                            : 'Definir data'}
+                                                        >
+                                                          <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                                                          {task.dueDate && (
+                                                            <span className="text-[10px] font-medium">
+                                                              {new Date(task.dueDate.seconds ? task.dueDate.seconds * 1000 : task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
+                                                            </span>
+                                                          )}
+                                                        </button>
+                                                      );
+                                                    })()}
+                                                    {canEdit && (
+                                                      <button
+                                                        onClick={async () => {
+                                                          try {
+                                                            await removeProjectTask(task.id);
+
+                                                            if (task.dueDate) {
+                                                              const date = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
+                                                              const taskDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                                                              let updateNeeded = false;
+                                                              const updates: any = {};
+
+                                                              const otherPendingTasksWithSameDate = projectStageTasks.filter(t =>
+                                                                t.id !== task.id &&
+                                                                !t.completed &&
+                                                                t.dueDate
+                                                              ).filter(t => {
+                                                                const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                                const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                                                return dStr === taskDateStr;
+                                                              });
+
+                                                              if (otherPendingTasksWithSameDate.length === 0) {
+                                                                const pendingTasksWithDates = projectStageTasks.filter(t =>
+                                                                  t.id !== task.id &&
+                                                                  !t.completed &&
+                                                                  t.dueDate
+                                                                ).map(t => {
+                                                                  const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
+                                                                  return {
+                                                                    date: d,
+                                                                    dateStr: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                                                                  };
+                                                                }).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                                                                const nextDate = pendingTasksWithDates.length > 0 ? pendingTasksWithDates[0].dateStr : null;
+
+                                                                if (currentProject.maintenanceDate === taskDateStr) {
+                                                                  updates.maintenanceDate = nextDate;
+                                                                  updateNeeded = true;
+                                                                }
+
+                                                                if (currentProject.deadline === taskDateStr) {
+                                                                  updates.deadline = nextDate;
+                                                                  updateNeeded = true;
+                                                                }
+                                                              }
+
+                                                              if (updateNeeded) {
+                                                                await updateProject(currentProject.id, updates);
+                                                                setCurrentProject(prev => ({ ...prev, ...updates }));
+                                                                const msg = updates.deadline || updates.maintenanceDate
+                                                                  ? "Tarefa removida e data atualizada para pr??xima pendente"
+                                                                  : "Tarefa removida e datas limpas";
+                                                                setToast({ message: msg, type: 'success' });
+                                                                setTimeout(() => setToast(null), 3000);
+                                                                return;
+                                                              }
+                                                            }
+
+                                                            setToast({ message: "Tarefa removida", type: 'success' });
+                                                            setTimeout(() => setToast(null), 3000);
+                                                          } catch (error) {
+                                                            console.error("Error removing task:", error);
+                                                            setToast({ message: "Erro ao remover tarefa", type: 'error' });
+                                                            setTimeout(() => setToast(null), 3000);
+                                                          }
+                                                        }}
+                                                        className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-red-500 mt-1"
+                                                        title="Remover tarefa"
+                                                      >
+                                                        <span className="material-symbols-outlined text-lg">delete</span>
+                                                      </button>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 {taskFiles.length > 0 && (
                                                   <div className="flex flex-wrap gap-2">
@@ -2835,91 +2919,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                                         >
                                                           <span className="material-symbols-outlined text-[16px]">download</span>
                                                         </button>
+                                                        {canEdit && (
+                                                          <button
+                                                            onClick={async (e) => {
+                                                              e.stopPropagation();
+                                                              await handleDeleteTaskAttachment(file);
+                                                            }}
+                                                            className="text-slate-400 hover:text-red-400 transition-colors"
+                                                            title="Excluir anexo"
+                                                          >
+                                                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                          </button>
+                                                        )}
                                                       </div>
                                                     ))}
                                                   </div>
                                                 )}
                                               </div>
-                                            )}
-
-                                            {canEdit && (
-                                              <button
-                                                onClick={async () => {
-                                                  try {
-                                                    await removeProjectTask(task.id);
-
-                                                    // Logic to clear project date if task is removed
-                                                    if (task.dueDate) {
-                                                      const date = task.dueDate.seconds ? new Date(task.dueDate.seconds * 1000) : new Date(task.dueDate);
-                                                      const taskDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-                                                      let updateNeeded = false;
-                                                      const updates: any = {};
-
-                                                      // Check if there are other pending tasks with the same date
-                                                      const otherPendingTasksWithSameDate = projectStageTasks.filter(t =>
-                                                        t.id !== task.id &&
-                                                        !t.completed &&
-                                                        t.dueDate
-                                                      ).filter(t => {
-                                                        const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
-                                                        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                                                        return dStr === taskDateStr;
-                                                      });
-
-                                                      // Only update date if there are no other pending tasks with the same date
-                                                      if (otherPendingTasksWithSameDate.length === 0) {
-                                                        // Find next closest date among remaining pending tasks
-                                                        const pendingTasksWithDates = projectStageTasks.filter(t =>
-                                                          t.id !== task.id &&
-                                                          !t.completed &&
-                                                          t.dueDate
-                                                        ).map(t => {
-                                                          const d = t.dueDate.seconds ? new Date(t.dueDate.seconds * 1000) : new Date(t.dueDate);
-                                                          return {
-                                                            date: d,
-                                                            dateStr: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-                                                          };
-                                                        }).sort((a, b) => a.date.getTime() - b.date.getTime());
-
-                                                        const nextDate = pendingTasksWithDates.length > 0 ? pendingTasksWithDates[0].dateStr : null;
-
-                                                        if (currentProject.maintenanceDate === taskDateStr) {
-                                                          updates.maintenanceDate = nextDate;
-                                                          updateNeeded = true;
-                                                        }
-
-                                                        if (currentProject.deadline === taskDateStr) {
-                                                          updates.deadline = nextDate;
-                                                          updateNeeded = true;
-                                                        }
-                                                      }
-
-                                                      if (updateNeeded) {
-                                                        await updateProject(currentProject.id, updates);
-                                                        setCurrentProject(prev => ({ ...prev, ...updates }));
-                                                        const msg = updates.deadline || updates.maintenanceDate
-                                                          ? "Tarefa removida e data atualizada para prÃ³xima pendente"
-                                                          : "Tarefa removida e datas limpas";
-                                                        setToast({ message: msg, type: 'success' });
-                                                        setTimeout(() => setToast(null), 3000);
-                                                        return; // Avoid double toast
-                                                      }
-                                                    }
-
-                                                    setToast({ message: "Tarefa removida", type: 'success' });
-                                                    setTimeout(() => setToast(null), 3000);
-                                                  } catch (error) {
-                                                    console.error("Error removing task:", error);
-                                                    setToast({ message: "Erro ao remover tarefa", type: 'error' });
-                                                    setTimeout(() => setToast(null), 3000);
-                                                  }
-                                                }}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500"
-                                                title="Remover tarefa"
-                                              >
-                                                <span className="material-symbols-outlined text-lg">delete</span>
-                                              </button>
                                             )}
                                           </div>
                                         );
