@@ -460,11 +460,47 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
 
+    const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     if (isRecurringService) {
-      const hasImplementationCharge = (project.budget || 0) > 0;
-      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
-      return (hasImplementationCharge && !project.isImplementationPaid) ||
-        (hasRecurringCharge && !project.isRecurringPaid);
+      // 1. Verificar implementação via faturas IMP- (se existirem)
+      const implementationInvoices = projectInvoices.filter(inv => inv.number.startsWith('IMP-'));
+      const implementationPending = implementationInvoices.length > 0
+        ? !implementationInvoices.every(inv => inv.status === 'Paid')
+        : (project.budget || 0) > 0 && !project.isImplementationPaid;
+
+      if (implementationPending) return true;
+
+      // 2. Verificar recorrência (mensalidades) via faturas REC-
+      const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+      if ((project.recurringAmount || 0) > 0) {
+        // Se ainda não tem nenhuma fatura REC-, mas o projeto já está em etapas que exigem pagamento
+        if (recurringInvoices.length === 0) {
+          const stageLabel = getStatusLabel(project);
+          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+          if (targetTitles.includes(stageLabel)) return true;
+        }
+
+        // Verificar se há faturas vencidas não pagas
+        const hasUnpaidOverdue = recurringInvoices.some(inv => {
+          if (inv.status === 'Paid') return false;
+          const invDate = getInvoiceReferenceDate(inv);
+          const d = new Date(invDate);
+          d.setHours(0, 0, 0, 0);
+          return d <= today; // Vencida ou de hoje
+        });
+
+        if (hasUnpaidOverdue) return true;
+      }
+
+      return false;
+    }
+
+    // Projeto normal: usar faturas se existirem, senão usar o flag isPaid do projeto
+    if (projectInvoices.length > 0) {
+      return !projectInvoices.every(inv => inv.status === 'Paid');
     }
 
     return (project.budget || 0) > 0 && !project.isPaid;

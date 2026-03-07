@@ -1401,16 +1401,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               categories.find(cat => cat.name === typeName && cat.isRecurring)
             );
 
-
+            const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
             if (isRecurring) {
-              const hasImplementationCharge = (project.budget || 0) > 0;
-              const hasRecurringCharge = (project.recurringAmount || 0) > 0;
-              return (hasImplementationCharge && !project.isImplementationPaid) ||
-                (hasRecurringCharge && !project.isRecurringPaid);
+              // 1. Verificar implementação via faturas IMP- (se existirem)
+              const implementationInvoices = projectInvoices.filter(inv => inv.number.startsWith('IMP-'));
+              const implementationPending = implementationInvoices.length > 0
+                ? !implementationInvoices.every(inv => inv.status === 'Paid')
+                : (project.budget || 0) > 0 && !project.isImplementationPaid;
+
+              if (implementationPending) return true;
+
+              // 2. Verificar recorrência (mensalidades) via faturas REC-
+              const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+              if ((project.recurringAmount || 0) > 0) {
+                // Se não tem faturas REC-, mas já está em etapas de manutenção/gestão
+                if (recurringInvoices.length === 0) {
+                  const stageTitle = stages.find(s => s.id === project.stageId)?.title ||
+                    stages.find(s => s.status === project.status)?.title || '';
+                  const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+                  if (targetTitles.includes(stageTitle)) return true;
+                }
+
+                // Verificar se há faturas vencidas não pagas
+                const hasUnpaidOverdue = recurringInvoices.some(inv => {
+                  if (inv.status === 'Paid') return false;
+                  const invDate = getInvoiceReferenceDate(inv);
+                  const d = new Date(invDate);
+                  d.setHours(0, 0, 0, 0);
+                  return d <= today; // Vencida ou de hoje
+                });
+
+                if (hasUnpaidOverdue) return true;
+              }
+
+              return false;
             }
 
-
+            // Projeto normal: usar faturas se existirem, senão usar o flag isPaid do projeto
+            if (projectInvoices.length > 0) {
+              return !projectInvoices.every(inv => inv.status === 'Paid');
+            }
 
             return (project.budget || 0) > 0 && !project.isPaid;
           };
@@ -2652,14 +2685,45 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
 
 
   const hasFinancialPendingCard = (() => {
+    const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     if (isRecurringProject) {
-      const hasImplementationCharge = (project.budget || 0) > 0;
-      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
-      return (hasImplementationCharge && !project.isImplementationPaid) ||
-        (hasRecurringCharge && !project.isRecurringPaid);
+      // 1. Verificar implementação
+      const implementationInvoices = projectInvoices.filter(inv => inv.number.startsWith('IMP-'));
+      const implementationPending = implementationInvoices.length > 0
+        ? !implementationInvoices.every(inv => inv.status === 'Paid')
+        : (project.budget || 0) > 0 && !project.isImplementationPaid;
+
+      if (implementationPending) return true;
+
+      // 2. Verificar mensalidade
+      const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+      if ((project.recurringAmount || 0) > 0) {
+        if (recurringInvoices.length === 0) {
+          const stageTitle = stages.find(s => s.id === project.stageId || s.status === project.status)?.title || '';
+          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+          if (targetTitles.includes(stageTitle)) return true;
+        }
+
+        const hasUnpaidOverdue = recurringInvoices.some(inv => {
+          if (inv.status === 'Paid') return false;
+          const invDate = getInvoiceReferenceDate(inv);
+          const d = new Date(invDate);
+          d.setHours(0, 0, 0, 0);
+          return d <= today;
+        });
+
+        if (hasUnpaidOverdue) return true;
+      }
+
+      return false;
     }
 
-
+    if (projectInvoices.length > 0) {
+      return !projectInvoices.every(inv => inv.status === 'Paid');
+    }
 
     return (project.budget || 0) > 0 && !project.isPaid;
   })();
@@ -2975,17 +3039,32 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
                       </span>
                     </div>
                   </div>
-                  {project.isRecurringPaid ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                      <span className="material-symbols-outlined text-xs">check_circle</span>
-                      Pago
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                      <span className="material-symbols-outlined text-xs">pending</span>
-                      Pendente
-                    </span>
-                  )}
+                  {(() => {
+                    const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+                    const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    const isPaidForViz = recurringInvoices.length > 0 && recurringInvoices.every(inv => {
+                      if (inv.status === 'Paid') return true;
+                      const invDate = getInvoiceReferenceDate(inv);
+                      const d = new Date(invDate);
+                      d.setHours(0, 0, 0, 0);
+                      return d > today;
+                    });
+
+                    return isPaidForViz ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                        <span className="material-symbols-outlined text-xs">check_circle</span>
+                        Pago
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                        <span className="material-symbols-outlined text-xs">pending</span>
+                        Pendente
+                      </span>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -3223,16 +3302,48 @@ const ListView: React.FC<{
   const hasFinancialPending = (project: Project): boolean => {
     const isRecurringProject = projectHasRecurringType(project, categories);
 
-
+    const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     if (isRecurringProject) {
-      const hasImplementationCharge = (project.budget || 0) > 0;
-      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
-      return (hasImplementationCharge && !project.isImplementationPaid) ||
-        (hasRecurringCharge && !project.isRecurringPaid);
+      // 1. Verificar implementação via faturas IMP- (se existirem)
+      const implementationInvoices = projectInvoices.filter(inv => inv.number.startsWith('IMP-'));
+      const implementationPending = implementationInvoices.length > 0
+        ? !implementationInvoices.every(inv => inv.status === 'Paid')
+        : (project.budget || 0) > 0 && !project.isImplementationPaid;
+
+      if (implementationPending) return true;
+
+      // 2. Verificar recorrência (mensalidades) via faturas REC-
+      const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+      if ((project.recurringAmount || 0) > 0) {
+        // Se ainda não tem nenhuma fatura REC-, mas o projeto já está em etapas que exigem pagamento
+        if (recurringInvoices.length === 0) {
+          const stageTitle = getStatusLabel(project);
+          const targetTitles = ['Ajustes', 'Gestão', 'Manutenção'];
+          if (targetTitles.includes(stageTitle)) return true;
+        }
+
+        // Verificar se há faturas vencidas não pagas
+        const hasUnpaidOverdue = recurringInvoices.some(inv => {
+          if (inv.status === 'Paid') return false;
+          const invDate = getInvoiceReferenceDate(inv);
+          const d = new Date(invDate);
+          d.setHours(0, 0, 0, 0);
+          return d <= today; // Vencida ou de hoje
+        });
+
+        if (hasUnpaidOverdue) return true;
+      }
+
+      return false;
     }
 
-
+    // Projeto normal: usar faturas se existirem, senão usar o flag isPaid do projeto
+    if (projectInvoices.length > 0) {
+      return !projectInvoices.every(inv => inv.status === 'Paid');
+    }
 
     return (project.budget || 0) > 0 && !project.isPaid;
   };
@@ -3351,25 +3462,7 @@ const ListView: React.FC<{
           bValue = b.progress || 0;
           break;
         case 'prazo': {
-          const hasFinancialPendingInSort = (project: Project) => {
-            const pTypes = project.types || (project.type ? [project.type] : []);
-            const isRecurring = pTypes.some(typeName =>
-              categories.find(cat => cat.name === typeName && cat.isRecurring)
-            );
-
-
-
-            if (isRecurring) {
-              const hasImplementationCharge = (project.budget || 0) > 0;
-              const hasRecurringCharge = (project.recurringAmount || 0) > 0;
-              return (hasImplementationCharge && !project.isImplementationPaid) ||
-                (hasRecurringCharge && !project.isRecurringPaid);
-            }
-
-
-
-            return (project.budget || 0) > 0 && !project.isPaid;
-          };
+          const hasFinancialPendingInSort = (project: Project) => hasFinancialPending(project);
 
 
 
