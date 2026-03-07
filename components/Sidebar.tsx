@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewState, Workspace } from '../types';
 import { subscribeToWorkspaces, addWorkspace, deleteWorkspace } from '../firebase/services';
@@ -7,6 +6,8 @@ interface SidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   isOpen: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
   onCreateProject?: () => void;
   currentWorkspace: Workspace | null;
   workspaces: Workspace[];
@@ -24,6 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   setView,
   isOpen,
+  isCollapsed = false,
+  onToggleCollapsed,
   onCreateProject,
   currentWorkspace,
   workspaces,
@@ -158,36 +161,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!isOpen) return null;
 
   return (
-    <aside className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-all z-20">
+    <aside
+      className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-[width] duration-300 ease-in-out z-20 relative overflow-hidden ${
+        isCollapsed ? 'w-[72px]' : 'w-64'
+      }`}
+    >
       {/* Premium Workspace Switcher Trigger */}
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800/50">
+      <div className={`border-b border-slate-100 dark:border-slate-800/50 transition-all duration-300 ${isCollapsed ? 'p-3' : 'p-4'}`}>
         <div className="relative">
           <button
             onClick={() => {
+              if (isCollapsed) { onToggleCollapsed?.(); return; }
               setShowWorkspaceMenu(!showWorkspaceMenu);
               setWorkspaceSearch('');
             }}
-            className={`w-full flex items-center gap-3 p-2 rounded-2xl transition-all hover:bg-slate-100 dark:hover:bg-slate-800 group ${showWorkspaceMenu ? 'bg-slate-100 dark:bg-slate-800 shadow-sm' : ''}`}
+            title={isCollapsed ? (currentWorkspace?.name || 'Workspace') : undefined}
+            className={`w-full flex items-center rounded-2xl transition-all hover:bg-slate-100 dark:hover:bg-slate-800 group ${showWorkspaceMenu && !isCollapsed ? 'bg-slate-100 dark:bg-slate-800 shadow-sm' : ''} ${isCollapsed ? 'justify-center p-2' : 'gap-3 p-2'}`}
           >
             {currentWorkspace?.avatar ? (
               <div
-                className="size-10 rounded-xl shadow-lg shadow-primary/20 rotate-3 group-hover:rotate-0 transition-transform flex-shrink-0 bg-cover bg-center"
+                className={`rounded-xl shadow-lg shadow-primary/20 flex-shrink-0 bg-cover bg-center transition-all ${isCollapsed ? 'size-9 rotate-0' : 'size-10 rotate-3 group-hover:rotate-0'}`}
                 style={{ backgroundImage: `url("${currentWorkspace.avatar}")` }}
               />
             ) : (
-              <div className="size-10 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-400 flex-shrink-0 shadow-lg shadow-primary/5 transition-all group-hover:border-primary group-hover:bg-primary/5">
+              <div className={`rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-400 flex-shrink-0 shadow-lg shadow-primary/5 transition-all group-hover:border-primary group-hover:bg-primary/5 ${isCollapsed ? 'size-9' : 'size-10'}`}>
                 <span className="material-symbols-outlined text-[20px]">person</span>
               </div>
             )}
-            <div className="flex-1 text-left min-w-0 pr-1">
-              <h2 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight">
-                {currentWorkspace?.name || 'Carregando...'}
-              </h2>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Workspace</span>
-                <span className="material-symbols-outlined text-xs text-slate-400 group-hover:text-primary transition-colors">unfold_more</span>
+            {!isCollapsed && (
+              <div className="flex-1 text-left min-w-0 pr-1">
+                <h2 className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight">
+                  {currentWorkspace?.name || 'Carregando...'}
+                </h2>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Workspace</span>
+                  <span className="material-symbols-outlined text-xs text-slate-400 group-hover:text-primary transition-colors">unfold_more</span>
+                </div>
               </div>
-            </div>
+            )}
           </button>
 
           {/* Premium Dropdown Menu */}
@@ -291,23 +302,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <nav className="flex-1 px-4 space-y-1.5 mt-2">
+      <nav className={`flex-1 space-y-1.5 mt-2 transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-4'}`}>
         {menuItems.filter(item => !item.requiredPermission || !permissions || permissions.canView(item.requiredPermission)).map((item) => {
           const isActive = currentView === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold relative group ${isActive
+              title={isCollapsed ? item.label : undefined}
+              className={`w-full flex items-center rounded-xl transition-all text-sm font-bold relative group ${isCollapsed ? 'justify-center p-3' : 'gap-3 px-4 py-3'} ${isActive
                 ? 'bg-primary text-white shadow-lg shadow-primary/20'
                 : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
-              <span className={`material-symbols-outlined text-[20px] transition-transform ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+              <span className={`material-symbols-outlined text-[20px] transition-transform flex-shrink-0 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
                 {item.icon}
               </span>
-              <span>{item.label}</span>
-              {isActive && (
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
+              {isActive && !isCollapsed && (
                 <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-white/50" />
               )}
             </button>
@@ -315,13 +327,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      <div className="p-6">
+      <div className={`transition-all duration-300 ${isCollapsed ? 'p-3' : 'p-6'}`}>
         <button
           onClick={onCreateProject}
-          className="w-full h-12 flex items-center justify-center gap-3 bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-200 border border-transparent dark:border-slate-700/50 rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl dark:shadow-black/20 active:opacity-90"
+          title={isCollapsed ? 'Criar projeto' : undefined}
+          className={`w-full h-12 flex items-center justify-center bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-200 border border-transparent dark:border-slate-700/50 rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl dark:shadow-black/20 active:opacity-90 ${isCollapsed ? 'gap-0' : 'gap-3'}`}
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
-          <span>CRIAR PROJETO</span>
+          {!isCollapsed && <span>CRIAR PROJETO</span>}
         </button>
       </div>
 

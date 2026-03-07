@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
   };
 
   return (
-    <header className="h-16 flex items-center justify-between px-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
+    <header className="h-16 flex items-center justify-between pl-14 pr-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
       <div className="flex items-center gap-6 flex-1">
         <button
           onClick={onToggleSidebar}
@@ -105,8 +105,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onSearch, curre
       <div className="flex items-center gap-4">
         <button
           onClick={onToggleTheme}
-          className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 transition-all active:scale-95"
+          className="flex size-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-800/60 text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:border-amber-200 dark:hover:border-amber-500/30 hover:text-amber-600 dark:hover:text-amber-300 transition-all duration-200 active:scale-95 shadow-sm"
           title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+          aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
         >
           <span className="material-symbols-outlined text-[22px]">
             {theme === 'light' ? 'dark_mode' : 'light_mode'}

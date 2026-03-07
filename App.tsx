@@ -21,11 +21,20 @@ import { ViewState, Project, Workspace } from './types';
 import { getProjects, onAuthStateChange, signOut } from './firebase/services';
 import { useAccessControl } from './hooks/useAccessControl';
 
+const SIDEBAR_COLLAPSED_KEY = 'artnaweb_sidebar_collapsed';
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentView, setCurrentView] = useState<ViewState>('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectInitialManagementTab, setProjectInitialManagementTab] = useState<'overview' | 'billing' | 'roadmap'>('overview');
   const [previousView, setPreviousView] = useState<ViewState>('Dashboard');
@@ -97,6 +106,22 @@ const App: React.FC = () => {
   const toggleSidebar = useCallback(() => {
     setIsSidebarOpen(prev => !prev);
   }, []);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch (_) {}
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
+    } catch (_) {}
+  }, [isSidebarCollapsed]);
 
   const navigateToView = useCallback((view: ViewState, project?: Project) => {
     if (view !== currentView) {
@@ -269,6 +294,8 @@ const App: React.FC = () => {
         currentView={currentView}
         setView={(view) => navigateToView(view)}
         isOpen={isSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
         onCreateProject={handleCreateProject}
         currentWorkspace={currentWorkspace}
         workspaces={workspaces}
@@ -280,8 +307,20 @@ const App: React.FC = () => {
         permissions={permissions}
       />
 
-
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Botão colapsar/expandir — fora da sidebar, na área do conteúdo, conectado à lateral */}
+        {isSidebarOpen && (
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            className="absolute left-0 top-5 z-40 flex h-7 w-7 items-center justify-center rounded-l-none rounded-r-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-md hover:bg-primary hover:text-white transition-all duration-200 hover:scale-110 active:scale-95 outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          >
+            <span className="material-symbols-outlined text-[20px] select-none">
+              {isSidebarCollapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
+            </span>
+          </button>
+        )}
         <Header
           onToggleSidebar={toggleSidebar}
           onSearch={handleSearch}
