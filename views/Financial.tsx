@@ -1,10 +1,115 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Invoice, Project, Workspace, Category } from '../types';
 import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects, subscribeToCategories, addInvoice, updateProject } from '../firebase/services';
 import { AsaasChargeModal, AsaasChargeResultModal } from '../components/AsaasChargeModal';
 import { AsaasPaymentResult, cancelAsaasPayment } from '../firebase/asaas';
+
+type PeriodOption = {
+  value: string | number;
+  label: string;
+};
+
+const PeriodSelect: React.FC<{
+  value: string | number;
+  onChange: (value: string | number) => void;
+  options: PeriodOption[];
+  icon: string;
+  label: string;
+  minWidth?: string;
+}> = ({ value, onChange, options, icon, label, minWidth = 'min-w-[180px]' }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen]);
+
+  const selectedOption = options.find(option => option.value === value) ?? options[0];
+
+  return (
+    <div ref={containerRef} className={`relative ${minWidth}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(prev => !prev)}
+        className={`group flex w-full items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-all outline-none ${isOpen
+          ? 'border-primary bg-white dark:bg-slate-800 shadow-lg shadow-primary/10 ring-4 ring-primary/10'
+          : 'border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:border-primary/40 hover:bg-white dark:hover:bg-slate-800'
+          }`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <span className="material-symbols-outlined text-[18px]">{icon}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            {label}
+          </span>
+          <span className="block truncate text-sm font-bold text-slate-700 dark:text-slate-200">
+            {selectedOption.label}
+          </span>
+        </div>
+        <span className={`material-symbols-outlined text-lg text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-primary' : 'group-hover:text-primary'}`}>
+          expand_more
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl shadow-slate-900/10 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
+          <div className="max-h-72 overflow-y-auto p-2">
+            {options.map(option => {
+              const isSelected = option.value === value;
+
+              return (
+                <button
+                  key={String(option.value)}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setIsOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${isSelected
+                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  role="option"
+                  aria-selected={isSelected}
+                >
+                  <span>{option.label}</span>
+                  {isSelected && (
+                    <span className="material-symbols-outlined text-base">check</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface FinancialProps {
   currentWorkspace?: Workspace | null;
@@ -22,7 +127,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
   const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  
+
   // Estados para integração Asaas
   const [showAsaasModal, setShowAsaasModal] = useState(false);
   const [selectedInvoiceForAsaas, setSelectedInvoiceForAsaas] = useState<Invoice | null>(null);
@@ -34,11 +139,24 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
 
+  // Estado para modal de nova fatura recorrente
+  const [recurringInvoiceDateMode, setRecurringInvoiceDateMode] = useState<'original' | 'custom'>('original');
+  const [customRecurringDate, setCustomRecurringDate] = useState('');
+  const [showRecurringCustomDatePicker, setShowRecurringCustomDatePicker] = useState(false);
+  const recurringCustomDatePickerButtonRef = useRef<HTMLButtonElement>(null);
+
   // Nomes dos meses
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
   // Gerar lista de anos disponíveis (últimos 3 anos + atual)
   const availableYears = Array.from({ length: 4 }, (_, i) => currentDate.getFullYear() - i);
+  const monthOptions: PeriodOption[] = useMemo(() => ([
+    { value: 'all', label: 'Todos os meses' },
+    ...monthNames.map((month, index) => ({ value: index, label: month }))
+  ]), [monthNames]);
+  const yearOptions: PeriodOption[] = useMemo(() => (
+    availableYears.map(year => ({ value: year, label: String(year) }))
+  ), [availableYears]);
 
   // Carregar dados do Firebase
   useEffect(() => {
@@ -268,24 +386,47 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     return { label: 'Avulso', color: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' };
   };
 
-  // Criar nova fatura recorrente (+30 dias)
-  const createRecurringInvoice = async (previousInvoice: Invoice) => {
-    try {
-      // Calcular data da próxima fatura (+30 dias)
-      let previousDate: Date;
-      if (previousInvoice.date instanceof Date) {
-        previousDate = previousInvoice.date;
-      } else if (typeof previousInvoice.date === 'string' && previousInvoice.date.includes('-')) {
-        const [year, month, day] = previousInvoice.date.split('-').map(Number);
-        previousDate = new Date(year, month - 1, day);
-      } else if (previousInvoice.date?.toDate) {
-        previousDate = previousInvoice.date.toDate();
-      } else {
-        previousDate = new Date();
+  // Helper para calcular a data da próxima mensalidade (mesmo dia do próximo mês)
+  const getRecurringDueDate = (previousInvoice: Invoice, mode: 'original' | 'custom' = 'original', customDate?: string): Date => {
+    if (mode === 'custom' && customDate) {
+      const [year, month, day] = customDate.split('-').map(Number);
+      const custom = new Date(year, month - 1, day);
+      if (!Number.isNaN(custom.getTime())) {
+        return custom;
       }
+    }
 
-      const nextDate = new Date(previousDate);
-      nextDate.setDate(nextDate.getDate() + 30);
+    const previousDate = getInvoiceDate(previousInvoice.date);
+    const nextDate = new Date(previousDate.getFullYear(), previousDate.getMonth() + 1, previousDate.getDate());
+
+    // Garantir que não pulamos o mês se o dia for 31 e o próximo mês tiver 30
+    if (nextDate.getDate() !== previousDate.getDate()) {
+      nextDate.setDate(0);
+    }
+
+    return nextDate;
+  };
+
+  const getCustomDefaultDueDate = (): Date => {
+    const today = new Date();
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+
+    if (nextMonth.getDate() !== today.getDate()) {
+      nextMonth.setDate(0);
+    }
+
+    return nextMonth;
+  };
+
+  // Criar nova fatura recorrente
+  const createRecurringInvoice = async (previousInvoice: Invoice, mode: 'original' | 'custom' = 'original', customDate?: string) => {
+    try {
+      const nextDate = mode === 'custom' && customDate
+        ? (() => {
+          const [y, m, d] = customDate.split('-').map(Number);
+          return new Date(y, m - 1, d);
+        })()
+        : getRecurringDueDate(previousInvoice);
 
       // Gerar número sequencial baseado nas faturas do PROJETO
       const projectInvoices = invoices.filter(inv => inv.projectId === previousInvoice.projectId);
@@ -316,36 +457,71 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     try {
       const newStatus = invoice.status === 'Paid' ? 'Pending' : 'Paid';
       await updateInvoice(invoice.id, { status: newStatus });
+
+      // Atualizar a lista local de faturas para o cálculo de sync
+      const updatedInvoices = invoices.map(inv =>
+        inv.id === invoice.id ? { ...inv, status: newStatus } : inv
+      );
+
       setToast({ message: `Fatura marcada como ${newStatus === 'Paid' ? 'paga' : 'pendente'}`, type: 'success' });
 
-      // Lógica para projetos recorrentes
-      if (newStatus === 'Paid') {
-        const project = projects.find(p => p.id === invoice.projectId);
+      // Lógica para sincronizar flags do projeto
+      const project = projects.find(p => p.id === invoice.projectId);
+      if (project) {
+        const projectInvoices = updatedInvoices.filter(inv => inv.projectId === project.id);
+        const projTypes = project.types || (project.type ? [project.type] : []);
+        const isRecurring = projTypes.some(typeName =>
+          categories.find(cat => cat.name === typeName && cat.isRecurring)
+        );
 
-        if (project) {
-          // Verificar se é recorrente (mesma lógica do ProjectDetails)
-          const projTypes = project.types || (project.type ? [project.type] : []);
-          const isRecurring = projTypes.some(typeName =>
-            categories.find(cat => cat.name === typeName && cat.isRecurring)
-          );
+        if (isRecurring) {
+          // Sync para projeto recorrente
+          const recurringInvoices = projectInvoices.filter(inv => inv.number.startsWith('REC-'));
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-          // Se for recorrente e não for implementação, oferecer criar nova fatura
-          if (isRecurring && !invoice.number.startsWith('IMP-')) {
-            await updateProject(project.id, { isRecurringPaid: true });
+          const nextRecurringPaid = recurringInvoices.length > 0 && recurringInvoices.every(inv => {
+            if (inv.status === 'Paid') return true;
+            const date = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
+            const invoiceDate = new Date(date);
+            invoiceDate.setHours(0, 0, 0, 0);
+            return invoiceDate >= today;
+          });
+
+          const implementationInvoices = projectInvoices.filter(inv => inv.number.startsWith('IMP-'));
+          const nextImplementationPaid = implementationInvoices.length === 0
+            ? project.isImplementationPaid
+            : implementationInvoices.every(inv => inv.status === 'Paid');
+
+          const updates: Partial<Project> = {};
+          if (nextRecurringPaid !== project.isRecurringPaid) {
+            updates.isRecurringPaid = nextRecurringPaid;
+          }
+          if (nextImplementationPaid !== project.isImplementationPaid) {
+            updates.isImplementationPaid = nextImplementationPaid;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await updateProject(project.id, updates);
+          }
+
+          // Se marcou como pago e é recorrente, oferecer criar próxima
+          if (newStatus === 'Paid' && !invoice.number.startsWith('IMP-')) {
             setPaidInvoiceForRecurring(invoice);
+            setRecurringInvoiceDateMode('original');
+
+            const customDefault = getCustomDefaultDueDate();
+            const formattedCustom = `${customDefault.getFullYear()}-${String(customDefault.getMonth() + 1).padStart(2, '0')}-${String(customDefault.getDate()).padStart(2, '0')}`;
+            setCustomRecurringDate(formattedCustom);
+
+            setShowRecurringCustomDatePicker(false);
             setShowRecurringConfirm(true);
           }
-        }
-      } else if (newStatus === 'Pending') {
-        // Se voltou para pendente, resetar flag se for recorrente
-        const project = projects.find(p => p.id === invoice.projectId);
-        if (project) {
-          const projTypes = project.types || (project.type ? [project.type] : []);
-          const isRecurring = projTypes.some(typeName =>
-            categories.find(cat => cat.name === typeName && cat.isRecurring)
-          );
-          if (isRecurring && !invoice.number.startsWith('IMP-')) {
-            await updateProject(project.id, { isRecurringPaid: false });
+        } else {
+          // Sync para projeto normal
+          const nextIsPaid = projectInvoices.length > 0 ? projectInvoices.every(inv => inv.status === 'Paid') : false;
+          if (nextIsPaid !== project.isPaid) {
+            await updateProject(project.id, { isPaid: nextIsPaid });
           }
         }
       }
@@ -380,7 +556,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   // Função para cancelar cobrança Asaas
   const handleCancelAsaasPayment = async (invoice: Invoice) => {
     if (!currentWorkspace?.id || !invoice.asaasPaymentId) return;
-    
+
     if (!confirm('Tem certeza que deseja cancelar esta cobrança no Asaas?')) return;
 
     setCancelingAsaas(invoice.id);
@@ -434,19 +610,13 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
           </h2>
           <p className="text-base text-slate-500 font-medium font-jakarta">Acompanhe todas as receitas e faturas com precisão cirúrgica</p>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-black hover:scale-105 transition-all shadow-xl shadow-slate-200/50 dark:shadow-none">
-            <span className="material-symbols-outlined text-[20px]">download</span>
-            EXPORTAR
-          </button>
-        </div>
       </div>
 
       {/* Filtro de Período - Design UI/UX Melhorado */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-8">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative z-[20] mb-8">
         <div className="flex flex-col lg:flex-row lg:items-center">
           {/* Lado Esquerdo: Título e Ícone */}
-          <div className="bg-slate-50/50 dark:bg-slate-800/30 px-6 py-4 lg:py-0 lg:h-16 flex items-center gap-3 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/50 dark:bg-slate-800/30 px-6 py-4 lg:py-0 lg:h-16 flex items-center gap-3 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none">
             <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
               <span className="material-symbols-outlined text-xl">calendar_today</span>
             </div>
@@ -459,44 +629,25 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
           {/* Lado Direito: Controles e Atalhos */}
           <div className="flex-1 px-6 py-4 flex flex-wrap items-center justify-between gap-6">
             <div className="flex flex-wrap items-center gap-4">
-              {/* Seletor de Mês Customizado */}
-              <div className="relative group">
-                <select
-                  value={selectedMonth === 'all' ? 'all' : selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                  className="appearance-none pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all outline-none cursor-pointer min-w-[160px]"
-                >
-                  <option value="all">Todos os meses</option>
-                  {monthNames.map((month, index) => (
-                    <option key={index} value={index}>{month}</option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-primary transition-colors pointer-events-none">
-                  event_note
-                </span>
-                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg pointer-events-none group-hover:text-primary transition-colors">
-                  expand_more
-                </span>
-              </div>
+              {/* Seletor de Mês */}
+              <PeriodSelect
+                value={selectedMonth}
+                onChange={(value) => setSelectedMonth(value === 'all' ? 'all' : Number(value))}
+                options={monthOptions}
+                icon="event_note"
+                label="Mês"
+                minWidth="min-w-[220px]"
+              />
 
-              {/* Seletor de Ano Customizado */}
-              <div className="relative group">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                  className="appearance-none pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all outline-none cursor-pointer min-w-[110px]"
-                >
-                  {availableYears.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-primary transition-colors pointer-events-none">
-                  schedule
-                </span>
-                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg pointer-events-none group-hover:text-primary transition-colors">
-                  expand_more
-                </span>
-              </div>
+              {/* Seletor de Ano */}
+              <PeriodSelect
+                value={selectedYear}
+                onChange={(value) => setSelectedYear(Number(value))}
+                options={yearOptions}
+                icon="schedule"
+                label="Ano"
+                minWidth="min-w-[140px]"
+              />
 
               {/* Divisor Visual */}
               <div className="hidden sm:block w-px h-8 bg-slate-200 dark:bg-slate-800 mx-2"></div>
@@ -837,19 +988,105 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
             <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Criar Próxima Mensalidade?</h3>
+                    <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
-                  <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
-                </div>
+                <button
+                  onClick={() => {
+                    setShowRecurringConfirm(false);
+                    setPaidInvoiceForRecurring(null);
+                    setRecurringInvoiceDateMode('original');
+                    setCustomRecurringDate('');
+                    setShowRecurringCustomDatePicker(false);
+                  }}
+                  className="size-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                  aria-label="Fechar modal"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
               </div>
 
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+                Selecione a data de vencimento para a próxima mensalidade.
               </p>
+
+              <div className="space-y-3 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setRecurringInvoiceDateMode('original')}
+                  className={`w-full rounded-xl border px-4 py-3 text-left transition-all ${recurringInvoiceDateMode === 'original'
+                    ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700'
+                    }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">Próxima mensalidade</span>
+                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                      {getRecurringDueDate(paidInvoiceForRecurring, 'original').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </span>
+                  </div>
+                </button>
+
+
+                <div
+                  className={`w-full rounded-xl border px-4 py-3 transition-all ${recurringInvoiceDateMode === 'custom'
+                    ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-700'
+                    }`}
+                >
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">Data personalizada</span>
+                    <button
+                      type="button"
+                      onClick={() => setRecurringInvoiceDateMode('custom')}
+                      className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+                    >
+                      Usar esta opcao
+                    </button>
+                  </div>
+                  <div className="relative date-picker-container">
+                    <button
+                      type="button"
+                      ref={recurringCustomDatePickerButtonRef}
+                      onClick={() => {
+                        setRecurringInvoiceDateMode('custom');
+                        setShowRecurringCustomDatePicker(prev => !prev);
+                      }}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white flex items-center justify-between"
+                    >
+                      <span>{customRecurringDate ? (() => {
+                        const [y, m, d] = customRecurringDate.split('-').map(Number);
+                        return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                      })() : 'Selecione uma data'}</span>
+                      <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                    </button>
+                    {showRecurringCustomDatePicker && (
+                      <DatePicker
+                        selectedDate={(() => {
+                          const [y, m, d] = customRecurringDate.split('-').map(Number);
+                          return new Date(y, m - 1, d);
+                        })()}
+                        onSelectDate={(date) => {
+                          if (date) {
+                            const formatted = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                            setCustomRecurringDate(formatted);
+                            setRecurringInvoiceDateMode('custom');
+                          }
+                          setShowRecurringCustomDatePicker(false);
+                        }}
+                        onClose={() => setShowRecurringCustomDatePicker(false)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
                 <div className="flex justify-between items-center mb-2">
@@ -859,24 +1096,15 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Vencimento</span>
                   <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                    {(() => {
-                      let previousDate: Date;
-                      if (paidInvoiceForRecurring.date instanceof Date) {
-                        previousDate = paidInvoiceForRecurring.date;
-                      } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
-                        const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
-                        previousDate = new Date(year, month - 1, day);
-                      } else if (paidInvoiceForRecurring.date?.toDate) {
-                        previousDate = paidInvoiceForRecurring.date.toDate();
-                      } else {
-                        previousDate = new Date();
-                      }
-                      const nextDate = new Date(previousDate);
-                      nextDate.setDate(nextDate.getDate() + 30);
-                      return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    })()}
+                    {recurringInvoiceDateMode === 'original'
+                      ? getRecurringDueDate(paidInvoiceForRecurring, 'original').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                      : (() => {
+                        const [y, m, d] = customRecurringDate.split('-').map(Number);
+                        return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                      })()
+                    }
                   </span>
                 </div>
               </div>
@@ -886,20 +1114,27 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                   onClick={() => {
                     setShowRecurringConfirm(false);
                     setPaidInvoiceForRecurring(null);
+                    setRecurringInvoiceDateMode('original');
+                    setCustomRecurringDate('');
+                    setShowRecurringCustomDatePicker(false);
                   }}
                   className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 >
-                  Não, obrigado
+                  Nao, obrigado
                 </button>
                 <button
                   onClick={async () => {
                     if (paidInvoiceForRecurring) {
-                      await createRecurringInvoice(paidInvoiceForRecurring);
+                      await createRecurringInvoice(paidInvoiceForRecurring, recurringInvoiceDateMode, customRecurringDate || undefined);
                     }
                     setShowRecurringConfirm(false);
                     setPaidInvoiceForRecurring(null);
+                    setRecurringInvoiceDateMode('original');
+                    setCustomRecurringDate('');
+                    setShowRecurringCustomDatePicker(false);
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  disabled={recurringInvoiceDateMode === 'custom' && !customRecurringDate}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-sm">add_circle</span>
                   Sim, criar fatura
@@ -977,5 +1212,124 @@ const FilterButton: React.FC<{ label: string; active: boolean; onClick: () => vo
         {count}
       </span>
     </button>
+  );
+};
+// DatePicker para modais de fatura - renderiza como modal fixo
+const DatePicker: React.FC<{ selectedDate: Date | null; onSelectDate: (date: Date | null) => void; onClose: () => void }> = ({ selectedDate, onSelectDate, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+  const today = new Date();
+
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+  const startingDayOfWeek = firstDayOfMonth.getDay();
+  const daysInMonth = lastDayOfMonth.getDate();
+
+  const days: (Date | null)[] = [];
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
+  }
+
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const isToday = (date: Date | null) => {
+    if (!date) return false;
+    return date.toDateString() === today.toDateString();
+  };
+
+  const isSelected = (date: Date | null) => {
+    if (!date || !selectedDate) return false;
+    return date.getFullYear() === selectedDate.getFullYear() &&
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getDate() === selectedDate.getDate();
+  };
+
+  const handleDateClick = (date: Date | null) => {
+    if (date) {
+      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      onSelectDate(localDate);
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[90]" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl z-[100] p-3 w-64">
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={prevMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_left</span>
+          </button>
+          <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+            {months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </h3>
+          <button
+            onClick={nextMonth}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base text-slate-600 dark:text-slate-400">chevron_right</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-0.5 mb-1">
+          {weekDays.map((day) => (
+            <div key={day} className="text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 py-0.5">
+              {day.substring(0, 1)}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-0.5">
+          {days.map((date, index) => (
+            <button
+              key={index}
+              onClick={() => handleDateClick(date)}
+              disabled={!date}
+              className={`
+                aspect-square flex items-center justify-center text-[10px] font-medium rounded transition-all
+                ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-primary/10'}
+                ${date && isToday(date) ? 'ring-1 ring-primary' : ''}
+                ${date && isSelected(date)
+                  ? 'bg-primary text-white hover:bg-primary/90'
+                  : date
+                    ? 'text-slate-700 dark:text-slate-300 hover:text-primary'
+                    : 'text-transparent'
+                }
+              `}
+            >
+              {date ? date.getDate() : ''}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <button
+            onClick={() => onSelectDate(null)}
+            className="text-[10px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            Limpar
+          </button>
+          <button
+            onClick={onClose}
+            className="text-[10px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </>
   );
 };

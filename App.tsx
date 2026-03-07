@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectInitialManagementTab, setProjectInitialManagementTab] = useState<'overview' | 'billing' | 'roadmap'>('overview');
   const [previousView, setPreviousView] = useState<ViewState>('Dashboard');
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -126,6 +127,11 @@ const App: React.FC = () => {
     }
   }, [currentView]);
 
+  const openProjectDetails = useCallback((project: Project, initialManagementTab: 'overview' | 'billing' | 'roadmap' = 'overview') => {
+    setProjectInitialManagementTab(initialManagementTab);
+    navigateToView('ProjectDetails', project);
+  }, [navigateToView]);
+
   const goBack = useCallback(() => {
     // Se estiver em uma view de projeto (Billing ou Roadmap), volta para ProjectDetails
     if (currentView === 'ProjectBilling' || currentView === 'ProjectRoadmap') {
@@ -133,6 +139,7 @@ const App: React.FC = () => {
     } else {
       setCurrentView(previousView);
       setSelectedProject(null);
+      setProjectInitialManagementTab('overview');
     }
     // Limpar filtros de busca
     setDashboardInitialFilter(undefined);
@@ -162,7 +169,7 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case 'Dashboard': return <Dashboard
-        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
+        onProjectClick={(project) => openProjectDetails(project)}
         currentWorkspace={currentWorkspace}
         initialFilter={dashboardInitialFilter}
         highlightedProjectId={dashboardHighlightedProjectId}
@@ -175,10 +182,10 @@ const App: React.FC = () => {
       case 'Financial': return <Financial
         currentWorkspace={currentWorkspace}
         onCreateInvoice={() => navigateToView('CreateInvoice')}
-        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
+        onProjectClick={(project) => openProjectDetails(project, 'billing')}
         canEdit={permissions?.canEdit('financial')}
       />;
-      case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
+      case 'Timeline': return <Timeline currentWorkspace={currentWorkspace} onProjectClick={(project) => openProjectDetails(project)} />;
       case 'Settings': return <Settings
         currentWorkspace={currentWorkspace}
         onWorkspaceUpdate={(updatedWorkspace) => {
@@ -192,32 +199,42 @@ const App: React.FC = () => {
       />;
       case 'Clients': return <ClientProfile
         currentWorkspace={currentWorkspace}
-        onProjectClick={(project) => navigateToView('ProjectDetails', project)}
+        onProjectClick={(project) => openProjectDetails(project)}
       />;
       case 'ProjectDetails': return selectedProject ? (
         <ProjectDetails
           project={selectedProject}
           onClose={goBack}
-          onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
+          onNavigate={(view) => {
+            setProjectInitialManagementTab(view === 'ProjectDetails' ? 'overview' : view === 'ProjectBilling' ? 'billing' : 'roadmap');
+            navigateToView(view as ViewState, selectedProject);
+          }}
+          initialManagementTab={projectInitialManagementTab}
           canEdit={permissions?.canEdit('pipeline')}
           canViewFinancial={permissions?.canView('financial')}
           currentWorkspace={currentWorkspace}
         />
-      ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
+      ) : <Dashboard onProjectClick={(project) => openProjectDetails(project)} />;
       case 'ProjectBilling': return selectedProject ? (
         <ProjectBilling
           project={selectedProject}
           onClose={goBack}
-          onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
+          onNavigate={(view) => {
+            setProjectInitialManagementTab(view === 'ProjectDetails' ? 'overview' : view === 'ProjectBilling' ? 'billing' : 'roadmap');
+            navigateToView(view as ViewState, selectedProject);
+          }}
         />
-      ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
+      ) : <Dashboard onProjectClick={(project) => openProjectDetails(project)} />;
       case 'ProjectRoadmap': return selectedProject ? (
         <ProjectRoadmap
           project={selectedProject}
           onClose={goBack}
-          onNavigate={(view) => navigateToView(view as ViewState, selectedProject)}
+          onNavigate={(view) => {
+            setProjectInitialManagementTab(view === 'ProjectDetails' ? 'overview' : view === 'ProjectBilling' ? 'billing' : 'roadmap');
+            navigateToView(view as ViewState, selectedProject);
+          }}
         />
-      ) : <Dashboard onProjectClick={(project) => navigateToView('ProjectDetails', project)} />;
+      ) : <Dashboard onProjectClick={(project) => openProjectDetails(project)} />;
       case 'CreateInvoice': return <CreateInvoice onClose={goBack} />;
       case 'CreateTask': return <CreateTask onClose={goBack} />;
       case 'ClientBilling': return <ClientBilling onNavigate={(view) => navigateToView(view as ViewState)} />;
@@ -329,6 +346,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-
-

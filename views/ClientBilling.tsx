@@ -56,10 +56,6 @@ export const ClientBilling: React.FC<ClientBillingProps> = ({ onNavigate }) => {
             <div className="p-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold">Faturas</h3>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors">Filtros</button>
-                  <button className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors">Exportar</button>
-                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -114,7 +110,7 @@ export const ClientBilling: React.FC<ClientBillingProps> = ({ onNavigate }) => {
 };
 
 const NavBtn: React.FC<{ icon: string; label: string; active?: boolean; onClick?: () => void }> = ({ icon, label, active, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 hover:bg-slate-100'}`}
   >
