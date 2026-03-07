@@ -840,7 +840,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                 className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-xl text-xs font-black hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20"
               >
                 <span className="material-symbols-outlined text-sm">delete_sweep</span>
-                LIMPAR ÓRFÃS ({orphanInvoices.length})
+                LIMPAR Órfãs ({orphanInvoices.length})
               </button>
             )}
           </div>

@@ -280,7 +280,7 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
               </p>
               <div className="py-2">
                 <p className="text-slate-500 text-xs mb-1">
-                  {isProjectRecurring() ? 'Valor da Implementação' : 'Valor do Projeto'}
+                  {isProjectRecurring() ? 'Desenvolvimento / Implementação' : 'Valor do Projeto'}
                 </p>
                 <div className="flex items-baseline gap-1.5">
                   <p className="text-lg font-bold text-slate-900 dark:text-white">
@@ -1094,7 +1094,7 @@ const AddInvoiceModal: React.FC<{
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">Nova Fatura</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Nova Fatura</h2>
             <button
               type="button"
               onClick={onClose}
@@ -1107,7 +1107,7 @@ const AddInvoiceModal: React.FC<{
           {/* Seletor de tipo de fatura para projetos recorrentes */}
           {isRecurring && (
             <div className="mb-4">
-              <label className="block text-sm font-semibold mb-2">Tipo de Fatura</label>
+              <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Tipo de Fatura</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1152,31 +1152,31 @@ const AddInvoiceModal: React.FC<{
           )}
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Número da Fatura</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Número da Fatura</label>
             <input
               type="text"
               value={formData.number}
               onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Descrição</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Descrição</label>
             <input
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Ex: Fatura principal do projeto"
-              className="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary"
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-1.5">Valor</label>
+              <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Valor</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none font-medium">R$</span>
                 <input
@@ -1185,14 +1185,14 @@ const AddInvoiceModal: React.FC<{
                   onChange={handleAmountChange}
                   onFocus={handleAmountFocus}
                   placeholder="0,00"
-                  className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  className="w-full pl-12 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-1.5">Data</label>
+              <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Data</label>
               <div className="relative date-picker-container overflow-visible" ref={datePickerRef}>
                 <button
                   type="button"
@@ -1233,11 +1233,11 @@ const AddInvoiceModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1.5">Status</label>
+            <label className="block text-sm font-semibold mb-1.5 text-slate-700 dark:text-slate-300">Status</label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Paid' | 'Pending' | 'Overdue' })}
-              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary"
             >
               <option value="Pending">Pendente</option>
               <option value="Paid">Pago</option>
@@ -1249,7 +1249,7 @@ const AddInvoiceModal: React.FC<{
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+              className="px-6 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
             >
               Cancelar
             </button>

@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, Stage, Workspace, Category, parseSafeDate, projectHasRecurringType, Client, Invoice, getInvoiceReferenceDate } from '../types';
 import { DefineStageTasksModal } from '../components/DefineStageTasksModal';
@@ -538,7 +538,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-      // Ignorar atualizaçÃµes do subscribe durante exclusão ou adição de etapas fixas
+      // Ignorar atualizações do subscribe durante exclusão ou adição de etapas fixas
       if (isDeletingStage.current || isAddingFixedStages.current) {
         console.log('â­ï¸ [Dashboard] Ignorando atualização de etapas (operação em andamento)');
         return;
@@ -605,7 +605,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-  // FunçÃµes utilitárias para limpar cache e etapas (podem ser chamadas via console)
+  // Funções utilitárias para limpar cache e etapas (podem ser chamadas via console)
   useEffect(() => {
     // Função para limpar cache do IndexedDB
     (window as any).clearFirestoreCache = async () => {
@@ -774,7 +774,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
     // Log para facilitar o uso
-    console.log('💡 FunçÃµes disponíveis no console:');
+    console.log('💡 Funções disponíveis no console:');
     console.log('   - window.clearFirestoreCache() - Limpa o cache do IndexedDB');
     console.log('   - window.clearAllStages() - Exclui todas as etapas não-fixas');
     console.log('   - window.resetStagesToFixed() - Reseta as etapas para as fixas padrão (com "Em Revisão")');
@@ -1056,7 +1056,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           {categories.map((category, index) => {
             const filterKey = category.name.toLowerCase().replace(/\s+/g, '-');
             const isActive = selectedFilter === filterKey;
-            // Contar projetos que têm este serviço (considerando mÃºltiplos tipos)
+            // Contar projetos que têm este serviço (considerando múltiplos tipos)
             const projectCount = projects.filter(p => {
               const types = p.types || (p.type ? [p.type] : []);
               return types.includes(category.name);
@@ -1494,7 +1494,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-          // Função para verificar se um stageId é de etapa fixa (considera variaçÃµes de ID)
+          // Função para verificar se um stageId é de etapa fixa (considera variações de ID)
           const hasFixedStageIdLocal = (projectStageId: string | undefined): boolean => {
             if (!projectStageId) return false;
             const projectIdBase = projectStageId.split('-')[0];
@@ -1527,7 +1527,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // - Se tem stageId de etapa fixa (foi movido para etapa normal), NUNCA remover
               // - Se tem stageId de outra origem, pode remover quando em serviço recorrente específico
               if (selectedFilter !== 'all' && isSelectedCategoryRecurring && p.stageId && !hasFixedStageIdLocal(p.stageId)) {
-                // Remover stageId apenas se NÃƒO for de etapa fixa
+                // Remover stageId apenas se NÃO for de etapa fixa
                 removeProjectStageId(p.id).catch(err => {
                   console.error("Error removing project stageId:", err);
                 });
@@ -1668,7 +1668,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-                  // Verificar se o projeto tem stageId de etapa fixa (considera variaçÃµes de ID)
+                  // Verificar se o projeto tem stageId de etapa fixa (considera variações de ID)
                   const hasFixedStageId = (projectStageId: string | undefined): boolean => {
                     if (!projectStageId) return false;
                     const projectIdBase = projectStageId.split('-')[0];
@@ -1691,7 +1691,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                       if (isRecurringStage) {
                         // Para etapas recorrentes (Manutenção/Finalizado): 
                         // Mostrar apenas projetos recorrentes que estão nesse status
-                        // E que NÃƒO foram movidos para etapas normais (não têm stageId de etapa fixa)
+                        // E que NÃO foram movidos para etapas normais (não têm stageId de etapa fixa)
                         return isProjectRecurring && p.status === stage.status && !hasFixedStageId((p as any).stageId);
                       } else {
                         // Para etapas normais:
@@ -1701,7 +1701,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                           if (hasFixedStageId((p as any).stageId)) {
                             return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                           }
-                          // 2. Se NÃƒO tem stageId (projeto recém-criado em Recorrência):
+                          // 2. Se NÃO tem stageId (projeto recém-criado em Recorrência):
                           //    Mostrar na etapa normal correspondente ao status
                           //    EXCETO se o status for Completed (vai para Manutenção) ou Finished (vai para Finalizado)
                           if (!(p as any).stageId && p.status !== 'Completed' && p.status !== 'Finished') {
@@ -1961,7 +1961,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 const recurringAmount = (projectData as any).recurringAmount || 0;
                 const recurringFirstDate = (projectData as any).recurringFirstDate || '';
                 const implementationBudget = projectData.budget || 0; // Valor da implementação
-                const parcelas = (projectData as any).parcelas || 1; // NÃºmero de parcelas da implementação
+                const parcelas = (projectData as any).parcelas || 1; // Número de parcelas da implementação
                 const year = new Date().getFullYear();
 
 
@@ -2092,7 +2092,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              // Fechar modal DEPOIS de todas as operaçÃµes assíncronas serem concluídas
+              // Fechar modal DEPOIS de todas as operações assíncronas serem concluídas
               handleCloseAddProject();
 
 
@@ -2189,7 +2189,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           onClose={() => setCategoryToDelete(null)}
           onConfirm={async () => {
             try {
-              // Atualizar projetos que usam esse serviço (considerando mÃºltiplos tipos)
+              // Atualizar projetos que usam esse serviço (considerando múltiplos tipos)
               const projectsToUpdate = projects.filter(p => {
                 const pTypes = p.types || (p.type ? [p.type] : []);
                 return pTypes.some(typeName =>
@@ -2274,7 +2274,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               // Se não houver etapas restantes, criar uma padrão
               let targetStage: Stage;
               if (sortedRemaining.length === 0) {
-                alert("Não é possível excluir a Ãºltima etapa. Crie uma nova etapa antes de excluir esta.");
+                alert("Não é possível excluir a última etapa. Crie uma nova etapa antes de excluir esta.");
                 isDeletingStage.current = false;
                 setStageToDelete(null);
                 setStageMenuOpen(null);
@@ -2366,7 +2366,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              // Liberar a flag para permitir atualizaçÃµes do subscribe novamente
+              // Liberar a flag para permitir atualizações do subscribe novamente
               isDeletingStage.current = false;
 
 
@@ -2989,7 +2989,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
 
 
 
-      {/* Verificar se é projeto recorrente (considerando mÃºltiplos tipos) */}
+      {/* Verificar se é projeto recorrente (considerando múltiplos tipos) */}
       {(() => {
         const pTypes = project.types || (project.type ? [project.type] : []);
         const isRecurring = pTypes.some(typeName =>
@@ -4122,7 +4122,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
 
     // Encontrar qual coluna corresponde ao final (deadline)
-    // Procurar a Ãºltima coluna cujo index seja <= endDay (a coluna que contém ou está antes da deadline)
+    // Procurar a última coluna cujo index seja <= endDay (a coluna que contém ou está antes da deadline)
     // Se não encontrar, usar a primeira coluna que seja >= endDay
     let endColumn = days.length - 1;
     let foundExact = false;
@@ -4298,7 +4298,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
                     : 'border-slate-100 dark:border-slate-800/50'
                     }`}
                 >
-                  {/* Bolinha Ãºnica no topo */}
+                  {/* Bolinha única no topo */}
                   {isDayToday && (
                     <div
                       className="absolute -bottom-1 size-2 rounded-full bg-primary z-30 shadow-sm"
@@ -4729,7 +4729,7 @@ const AddProjectModal: React.FC<{
     status: stages.length > 0 ? stages[0].status : 'Lead' as Project['status'],
     budget: 0,
     isPaid: false,
-    parcelas: 1, // NÃºmero de parcelas (1x a 12x)
+    parcelas: 1, // Número de parcelas (1x a 12x)
     // Campos para projeto recorrente
     recurringAmount: 0,
     recurringFirstDate: '',
@@ -4839,7 +4839,7 @@ const AddProjectModal: React.FC<{
     if (workspaceId) {
       getClients(workspaceId).then(clientsList => {
         setClients(clientsList);
-        // Também manter lista de nomes para compatibilidade com sugestÃµes
+        // Também manter lista de nomes para compatibilidade com sugestões
         const clientNames = clientsList.map(c => c.name);
         setFilteredClients(clientsList);
       });
@@ -4986,7 +4986,7 @@ const AddProjectModal: React.FC<{
 
 
 
-  // FunçÃµes de formatação
+  // Funções de formatação
   const formatCpfCnpj = (value: string): string => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 11) {
@@ -5100,13 +5100,13 @@ const AddProjectModal: React.FC<{
         clientManuallySelectedRef.current = false; // Resetar flag
         setShowClientSuggestions(false);
       } else {
-        // Se não foi selecionado manualmente e há resultados, mostrar sugestÃµes
+        // Se não foi selecionado manualmente e há resultados, mostrar sugestões
         if (filtered.length > 0) {
-          // Só mostrar se o input estiver focado ou se houver mÃºltiplos resultados
+          // Só mostrar se o input estiver focado ou se houver múltiplos resultados
           const exactMatch = clients.find(c =>
             c.name.toLowerCase() === formData.client.toLowerCase()
           );
-          // Se não for correspondência exata ou houver mÃºltiplos resultados, mostrar
+          // Se não for correspondência exata ou houver múltiplos resultados, mostrar
           if (!exactMatch || filtered.length > 1) {
             setShowClientSuggestions(true);
           } else {
@@ -5140,13 +5140,13 @@ const AddProjectModal: React.FC<{
         projectManuallySelectedRef.current = false; // Resetar flag
         setShowProjectSuggestions(false);
       } else {
-        // Se não foi selecionado manualmente e há resultados, mostrar sugestÃµes
+        // Se não foi selecionado manualmente e há resultados, mostrar sugestões
         if (filtered.length > 0) {
-          // Só mostrar se o input estiver focado ou se houver mÃºltiplos resultados
+          // Só mostrar se o input estiver focado ou se houver múltiplos resultados
           const exactMatch = availableProjectNames.find(n =>
             n.toLowerCase() === formData.name.toLowerCase()
           );
-          // Se não for correspondência exata ou houver mÃºltiplos resultados, mostrar
+          // Se não for correspondência exata ou houver múltiplos resultados, mostrar
           if (!exactMatch || filtered.length > 1) {
             setShowProjectSuggestions(true);
           } else {
@@ -5261,7 +5261,7 @@ const AddProjectModal: React.FC<{
 
 
 
-  // ValidaçÃµes
+  // Validações
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -5675,7 +5675,7 @@ const AddProjectModal: React.FC<{
 
 
 
-                {/* Dropdown de seleção mÃºltipla - Posição fixa para não ser cortado */}
+                {/* Dropdown de seleção múltipla - Posição fixa para não ser cortado */}
                 {showTypesDropdown && typesDropdownPosition && (
                   <div
                     data-types-dropdown
