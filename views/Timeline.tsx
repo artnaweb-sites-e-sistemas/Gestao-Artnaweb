@@ -444,12 +444,31 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     return 0;
   };
 
+  const projectHasFinancialPending = (project: Project): boolean => {
+    const projectTypes = project.types || (project.type ? [project.type] : []);
+    const isRecurringService = projectTypes.some(typeName =>
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
+    );
+
+    if (isRecurringService) {
+      const hasImplementationCharge = (project.budget || 0) > 0;
+      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
+      return (hasImplementationCharge && !project.isImplementationPaid) ||
+        (hasRecurringCharge && !project.isRecurringPaid);
+    }
+
+    return (project.budget || 0) > 0 && !project.isPaid;
+  };
+
   // Filtrar apenas projetos com deadline, não concluídos (exceto recorrentes em manutenção) e por categoria
   const projectsForTimeline = projects.filter(p => {
+    const projectTypes = p.types || (p.type ? [p.type] : []);
     // Verificar se é um serviço recorrente
-    const isRecurringService = categories.find(cat =>
-      cat.name === p.type && cat.isRecurring
+    const isRecurringService = projectTypes.some(typeName =>
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
+    const hasFinancialPending = projectHasFinancialPending(p);
+    const isCompletedWithPendingPayment = (p.status === 'Completed' || p.status === 'Finished') && hasFinancialPending;
 
     // Critérios para aparecer no cronograma:
     // 1. Tem deadline e não está em etapas de revisão/conclusão (exceto Ajustes)
@@ -458,10 +477,13 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       p.status !== 'Completed' &&
       p.status !== 'Finished';
 
+    // 1.1. Projeto concluído/finalizado com pendência financeira continua visível até a quitação
+    const hasDeadlineWithPendingPayment = p.deadline && isCompletedWithPendingPayment;
+
     // 2. É recorrente e tem data de manutenção ou relatório (mesmo se status for 'Completed')
     const isRecurringWithDates = isRecurringService && (p.maintenanceDate || p.reportDate);
 
-    if (!hasDeadlineAndActive && !isRecurringWithDates) return false;
+    if (!hasDeadlineAndActive && !hasDeadlineWithPendingPayment && !isRecurringWithDates) return false;
 
     // Filtro de categoria
     if (selectedCategoryFilter.length === 0) return true;
@@ -872,8 +894,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                     ? new Date(reportDateParsed.getFullYear(), reportDateParsed.getMonth(), reportDateParsed.getDate()) < todayForLate
                     : false;
                   const isRecurringOverdue = isRecurring && (isMaintenanceLate || isReportLate);
+                  const hasFinancialPending = projectHasFinancialPending(project);
+                  const showPendingFinancialNotice = hasFinancialPending && (project.status === 'Completed' || project.status === 'Finished');
 
-                  const showProjectBar = project.deadline && project.status !== 'Completed' && project.status !== 'Finished';
+                  const showProjectBar = !!project.deadline && (project.status !== 'Completed' && project.status !== 'Finished' || showPendingFinancialNotice);
 
                   // Obter classes CSS baseadas na cor da categoria
                   const getCategoryBadgeClasses = (color: string) => {
@@ -1019,13 +1043,19 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                               });
                             }
 
-                            // Prioridade: Revisão > Atraso > Outros estágios
+                            // Prioridade: Revisão > Pendência financeira > Atraso > Outros estágios
                             // Efeito glass (fundos semitransparentes + backdrop-blur na barra)
                             if (isReview) {
                               if (type === 'bg') return 'bg-amber-500/15 dark:bg-amber-500/25';
                               if (type === 'border') return 'border-l-4 border-l-amber-500 ring-2 ring-amber-500/30';
                               if (type === 'text') return 'text-amber-700 dark:text-amber-300 font-semibold';
                               return 'bg-amber-500/45 dark:bg-amber-500/55';
+                            }
+                            if (showPendingFinancialNotice) {
+                              if (type === 'bg') return 'bg-rose-500/15 dark:bg-rose-500/25';
+                              if (type === 'border') return 'border-l-4 border-l-rose-500 ring-2 ring-rose-500/20';
+                              if (type === 'text') return 'text-rose-700 dark:text-rose-300 font-semibold';
+                              return 'bg-rose-500/45 dark:bg-rose-500/55';
                             }
                             if (isLate && !isReview) {
                               if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
@@ -1075,7 +1105,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                                 title={`Progresso temporal: ${temporalProgress.toFixed(1)}%`}
                               />
                               <span className={`text-[11px] font-bold relative z-10 truncate flex-1 min-w-0 ${getStageColorClass('text')} drop-shadow-sm`}>
-                                {isLate && !isReview ? 'Atrasado' : getStatusLabel(project)}
+                                {showPendingFinancialNotice ? 'Pagamento pendente' : isLate && !isReview ? 'Atrasado' : getStatusLabel(project)}
                               </span>
                               {isAdjustmentsStage && (
                                 <span className={`material-symbols-outlined text-sm relative z-10 flex-shrink-0 drop-shadow-sm ${isLate && !isReview
@@ -1182,5 +1212,4 @@ const Badge: React.FC<{ color: string; dotColor: string; label: string }> = ({ c
     <span className={`size-1.5 rounded-full ${dotColor}`}></span> {label}
   </span>
 );
-
 

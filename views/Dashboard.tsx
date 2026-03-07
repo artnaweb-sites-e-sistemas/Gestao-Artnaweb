@@ -1147,8 +1147,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 });
           })();
 
+          const hasActiveSearch = searchQuery.trim() !== '';
+          const projectHasFinancialPendingLocal = (project: Project): boolean => {
+            const projectTypes = getProjectTypesLocal(project);
+            const isRecurring = projectTypes.some(typeName =>
+              categories.find(cat => cat.name === typeName && cat.isRecurring)
+            );
+
+            if (isRecurring) {
+              const hasImplementationCharge = (project.budget || 0) > 0;
+              const hasRecurringCharge = (project.recurringAmount || 0) > 0;
+              return (hasImplementationCharge && !project.isImplementationPaid) ||
+                (hasRecurringCharge && !project.isRecurringPaid);
+            }
+
+            return (project.budget || 0) > 0 && !project.isPaid;
+          };
+
           // Aplicar filtro de projetos concluídos/finalizados
-          const finalFilteredProjects = showCompletedProjects
+          // Quando há busca ativa, sempre exibir os resultados encontrados,
+          // inclusive concluídos/finalizados, mesmo com o toggle desativado.
+          const finalFilteredProjects = (showCompletedProjects || hasActiveSearch)
             ? filteredProjects
             : filteredProjects.filter(p => {
               // Verificar se está em etapa final
@@ -1158,11 +1177,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               const isRecurring = projectTypes.some(typeName =>
                 categories.find(cat => cat.name === typeName && cat.isRecurring)
               );
+              const hasFinancialPending = projectHasFinancialPendingLocal(p);
               // Manter projetos em Manutenção sempre visíveis
               // Se é recorrente e está Concluído, é considerado Manutenção (ativo)
               const isInMaintenance = isRecurring && isCompleted;
 
-              if (isInMaintenance) {
+              if (isInMaintenance || hasFinancialPending) {
                 return true;
               }
 
@@ -2177,6 +2197,17 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
     missingDateWarnings.push('entrega');
   }
 
+  const hasFinancialPendingCard = (() => {
+    if (isRecurringProject) {
+      const hasImplementationCharge = (project.budget || 0) > 0;
+      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
+      return (hasImplementationCharge && !project.isImplementationPaid) ||
+        (hasRecurringCharge && !project.isRecurringPaid);
+    }
+
+    return (project.budget || 0) > 0 && !project.isPaid;
+  })();
+
   // Helper para verificar se o projeto está em uma etapa final (não precisa de deadline)
   const isInFinalStage = () => {
     const isCompleted = project.status === 'Completed';
@@ -2334,6 +2365,16 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
           <p className="text-xs text-slate-500 font-bold mt-0.5">{project.client}</p>
         </div>
       </div>
+
+      {hasFinancialPendingCard && (project.status === 'Completed' || project.status === 'Finished') && (
+        <div className="mb-3 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-700/60 shadow-sm shadow-rose-500/10">
+          <span className="material-symbols-outlined text-[18px]">payments</span>
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.12em] leading-none">Pend�ncia financeira</div>
+            <div className="text-[11px] font-semibold leading-tight">Pagamento pendente</div>
+          </div>
+        </div>
+      )}
 
       {/* Verificar se é projeto recorrente (considerando múltiplos tipos) */}
       {(() => {
@@ -2585,6 +2626,27 @@ const ListView: React.FC<{
     return warnings;
   };
 
+  const hasFinancialPending = (project: Project): boolean => {
+    const isRecurringProject = projectHasRecurringType(project, categories);
+
+    if (isRecurringProject) {
+      const hasImplementationCharge = (project.budget || 0) > 0;
+      const hasRecurringCharge = (project.recurringAmount || 0) > 0;
+      return (hasImplementationCharge && !project.isImplementationPaid) ||
+        (hasRecurringCharge && !project.isRecurringPaid);
+    }
+
+    return (project.budget || 0) > 0 && !project.isPaid;
+  };
+
+  const isCompletedFinancialPriority = (project: Project): boolean => {
+    const isRecurringProject = projectHasRecurringType(project, categories);
+    const isManagementStage = isRecurringProject && project.status === 'Completed' &&
+      ((project.stageId || '').includes('maintenance') || (project.stageId || '') === 'management');
+
+    return project.status === 'Completed' && !isManagementStage && hasFinancialPending(project);
+  };
+
   // Obter label do status - usar título da etapa se disponível (definido antes do useMemo)
   const getStatusLabel = (project: Project) => {
     const stageId = project.stageId || '';
@@ -2630,9 +2692,16 @@ const ListView: React.FC<{
 
   // Ordenar projetos
   const sortedProjects = useMemo(() => {
-    if (!sortColumn) return projects;
-
     const sorted = [...projects].sort((a, b) => {
+      const aIsPriorityPending = isCompletedFinancialPriority(a);
+      const bIsPriorityPending = isCompletedFinancialPriority(b);
+
+      if (aIsPriorityPending !== bIsPriorityPending) {
+        return aIsPriorityPending ? -1 : 1;
+      }
+
+      if (!sortColumn) return 0;
+
       let aValue: any;
       let bValue: any;
 
@@ -2658,12 +2727,33 @@ const ListView: React.FC<{
           bValue = b.progress || 0;
           break;
         case 'prazo': {
+          const hasFinancialPendingInSort = (project: Project) => {
+            const pTypes = project.types || (project.type ? [project.type] : []);
+            const isRecurring = pTypes.some(typeName =>
+              categories.find(cat => cat.name === typeName && cat.isRecurring)
+            );
+
+            if (isRecurring) {
+              const hasImplementationCharge = (project.budget || 0) > 0;
+              const hasRecurringCharge = (project.recurringAmount || 0) > 0;
+              return (hasImplementationCharge && !project.isImplementationPaid) ||
+                (hasRecurringCharge && !project.isRecurringPaid);
+            }
+
+            return (project.budget || 0) > 0 && !project.isPaid;
+          };
+
           const getWeight = (project: Project) => {
             const stageId = (project as any).stageId || '';
             const pTypes = project.types || (project.type ? [project.type] : []);
             const isRec = pTypes.some(typeName =>
               categories.find(cat => cat.name === typeName && cat.isRecurring)
             );
+            const isCompletedWithPendingPayment =
+              isCompletedFinancialPriority(project) && hasFinancialPendingInSort(project);
+
+            // 0. Prioridade m�xima: somente "Conclu�do" com pend�ncia financeira
+            if (isCompletedWithPendingPayment) return -1;
 
             // 1. On-boarding (Weight 0)
             if (stageId.includes('onboarding') || project.status === 'Lead') return 0;
@@ -2934,6 +3024,13 @@ const ListView: React.FC<{
                             );
                           })()}
                         </>
+                      )}
+
+                      {hasFinancialPending(project) && (project.status === 'Completed' || project.status === 'Finished') && (
+                        <div className="flex items-center gap-1 min-w-0 text-rose-600 dark:text-rose-400" title="Pend�ncia financeira">
+                          <span className="material-symbols-outlined text-[14px] flex-shrink-0">payments</span>
+                          <span className="text-[10px] font-bold uppercase whitespace-nowrap">Pagamento pendente</span>
+                        </div>
                       )}
 
                       {/* Aviso de datas pendentes */}
@@ -4923,4 +5020,12 @@ const DeleteStageModal: React.FC<{
     </div>
   );
 };
+
+
+
+
+
+
+
+
 
