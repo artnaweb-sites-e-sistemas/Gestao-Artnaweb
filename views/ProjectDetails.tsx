@@ -24,6 +24,7 @@ import {
   subscribeToInvoices,
   addInvoice,
   updateInvoice,
+  deleteInvoice,
   updateClientAvatarInAllProjects,
   getCurrentUser,
   addProjectTask,
@@ -102,6 +103,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const datePickerButtonRef = useRef<HTMLButtonElement>(null);
   const maintenanceDatePickerButtonRef = useRef<HTMLButtonElement>(null);
   const reportDatePickerButtonRef = useRef<HTMLButtonElement>(null);
+  const recurringCustomDatePickerButtonRef = useRef<HTMLButtonElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingProjectImage, setUploadingProjectImage] = useState(false);
   const [linkedClientAvatar, setLinkedClientAvatar] = useState<string | null>(null);
@@ -132,6 +134,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   // Estado para modal de nova fatura recorrente
   const [showRecurringConfirm, setShowRecurringConfirm] = useState(false);
   const [paidInvoiceForRecurring, setPaidInvoiceForRecurring] = useState<Invoice | null>(null);
+  const [recurringInvoiceDateMode, setRecurringInvoiceDateMode] = useState<'original' | 'custom'>('custom');
+  const [customRecurringDate, setCustomRecurringDate] = useState<string>('');
+  const [showRecurringCustomDatePicker, setShowRecurringCustomDatePicker] = useState(false);
 
   // Estado para modal de confirmação de redefinir tarefas
   const [showResetTasksConfirm, setShowResetTasksConfirm] = useState(false);
@@ -480,26 +485,94 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     );
   };
 
-  // Criar nova fatura recorrente (+30 dias)
-  const createRecurringInvoice = async (previousInvoice: Invoice) => {
-    try {
-      // Calcular data da próxima fatura (+30 dias)
-      let previousDate: Date;
-      if (previousInvoice.date instanceof Date) {
-        previousDate = previousInvoice.date;
-      } else if (typeof previousInvoice.date === 'string' && previousInvoice.date.includes('-')) {
-        const [year, month, day] = previousInvoice.date.split('-').map(Number);
-        previousDate = new Date(year, month - 1, day);
-      } else if (previousInvoice.date?.toDate) {
-        previousDate = previousInvoice.date.toDate();
-      } else {
-        previousDate = new Date();
+  const getInvoiceReferenceDate = (invoice: Invoice): Date => {
+    if (invoice.date instanceof Date) {
+      return invoice.date;
+    }
+    if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
+      const [year, month, day] = invoice.date.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    if (invoice.date?.toDate) {
+      return invoice.date.toDate();
+    }
+    return new Date();
+  };
+
+  const getTodayPlusDaysISO = (days: number): string => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+  const getRecurringMonthlyInvoices = (invoiceList: Invoice[]) => {
+    return invoiceList.filter(inv => inv.number.startsWith('REC-'));
+  };
+
+  const getRecurringMonthlyPaidState = (invoiceList: Invoice[]) => {
+    const recurringInvoices = getRecurringMonthlyInvoices(invoiceList);
+    if (recurringInvoices.length === 0) {
+      return false;
+    }
+    return recurringInvoices.every(inv => inv.status === 'Paid');
+  };
+
+  const syncProjectFinancialFlags = async (invoiceList: Invoice[]) => {
+    if (isProjectRecurring()) {
+      const nextRecurringPaid = getRecurringMonthlyPaidState(invoiceList);
+      const implementationInvoices = invoiceList.filter(inv => inv.number.startsWith('IMP-'));
+      const nextImplementationPaid = implementationInvoices.length === 0
+        ? currentProject.isImplementationPaid
+        : implementationInvoices.every(inv => inv.status === 'Paid');
+
+      const updates: Partial<Project> = {};
+      if (nextRecurringPaid !== currentProject.isRecurringPaid) {
+        updates.isRecurringPaid = nextRecurringPaid;
+      }
+      if (nextImplementationPaid !== currentProject.isImplementationPaid) {
+        updates.isImplementationPaid = nextImplementationPaid;
       }
 
-      const nextDate = new Date(previousDate);
-      nextDate.setDate(nextDate.getDate() + 30);
+      if (Object.keys(updates).length > 0) {
+        await updateProject(currentProject.id, updates);
+      }
+      return;
+    }
 
-      // Gerar número sequencial
+    const nextIsPaid = invoiceList.length > 0 ? invoiceList.every(inv => inv.status === 'Paid') : false;
+    if (nextIsPaid !== currentProject.isPaid) {
+      await updateProject(currentProject.id, { isPaid: nextIsPaid });
+    }
+  };
+
+  const recurringMonthlyInvoices = getRecurringMonthlyInvoices(invoices);
+  const recurringMonthlyPaid = getRecurringMonthlyPaidState(invoices);
+
+  const getRecurringDueDate = (invoice: Invoice, mode: 'original' | 'custom', customDate?: string): Date => {
+    if (mode === 'custom' && customDate) {
+      const [year, month, day] = customDate.split('-').map(Number);
+      const custom = new Date(year, month - 1, day);
+      if (!Number.isNaN(custom.getTime())) {
+        return custom;
+      }
+    }
+
+    const baseDate = getInvoiceReferenceDate(invoice);
+    const normalizedBaseDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+    const nextDate = new Date(normalizedBaseDate);
+    nextDate.setDate(nextDate.getDate() + 30);
+    return nextDate;
+  };
+
+  // Criar nova fatura recorrente (+30 dias)
+  const createRecurringInvoice = async (
+    previousInvoice: Invoice,
+    mode: 'original' | 'custom' = 'custom',
+    customDate?: string
+  ) => {
+    try {
+      const nextDate = getRecurringDueDate(previousInvoice, mode, customDate);
+
+      // Gerar numero sequencial
       const year = nextDate.getFullYear();
       const count = invoices.length + 1;
 
@@ -507,17 +580,19 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
         projectId: currentProject.id,
         workspaceId: currentProject.workspaceId,
         number: `REC-${year}-${String(count).padStart(3, '0')}`,
-        description: 'Mensalidade - Recorrência',
+        description: 'Mensalidade - Recorrencia',
         amount: previousInvoice.amount,
         date: nextDate,
         status: 'Pending'
       });
 
-      setToast({ message: "Nova fatura recorrente criada com sucesso!", type: 'success' });
+      await updateProject(currentProject.id, { isRecurringPaid: false });
+
+      setToast({ message: 'Nova fatura recorrente criada com sucesso!', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (error) {
-      console.error("Error creating recurring invoice:", error);
-      setToast({ message: "Erro ao criar fatura recorrente", type: 'error' });
+      console.error('Error creating recurring invoice:', error);
+      setToast({ message: 'Erro ao criar fatura recorrente', type: 'error' });
       setTimeout(() => setToast(null), 3000);
     }
   };
@@ -1388,20 +1463,29 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={async () => {
-                          if (currentProject.isRecurringPaid || !canEdit) return;
+                          if (recurringMonthlyPaid || !canEdit) return;
                           try {
                             // Encontrar a fatura de mensalidade mais recente pendente (REC-*)
-                            const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-') && inv.status !== 'Paid');
-                            if (recurringInvoices.length > 0) {
-                              // Marcar a fatura mais recente como paga
-                              const latestRecurring = recurringInvoices[0];
-                              await updateInvoice(latestRecurring.id, { status: 'Paid' });
+                            const pendingRecurringInvoices = recurringMonthlyInvoices
+                              .filter(inv => inv.status !== 'Paid')
+                              .sort((a, b) => getInvoiceReferenceDate(a).getTime() - getInvoiceReferenceDate(b).getTime());
 
-                              // Mostrar modal para criar próxima fatura
-                              setPaidInvoiceForRecurring(latestRecurring);
+                            if (pendingRecurringInvoices.length > 0) {
+                              const nextRecurringInvoice = pendingRecurringInvoices[0];
+                              await updateInvoice(nextRecurringInvoice.id, { status: 'Paid' });
+
+                              const updatedInvoices = invoices.map(inv =>
+                                inv.id === nextRecurringInvoice.id ? { ...inv, status: 'Paid' } : inv
+                              );
+                              await syncProjectFinancialFlags(updatedInvoices);
+
+                              setPaidInvoiceForRecurring(nextRecurringInvoice);
+                              const defaultRecurringDate = getTodayPlusDaysISO(30);
+                              setRecurringInvoiceDateMode('custom');
+                              setCustomRecurringDate(defaultRecurringDate);
+                              setShowRecurringCustomDatePicker(false);
                               setShowRecurringConfirm(true);
                             }
-                            await updateProject(currentProject.id, { isRecurringPaid: true });
                             setToast({ message: "Mensalidade marcada como paga", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
@@ -1410,7 +1494,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${currentProject.isRecurringPaid
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${recurringMonthlyPaid
                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
@@ -1420,16 +1504,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       </button>
                       <button
                         onClick={async () => {
-                          if (!currentProject.isRecurringPaid) return;
+                          if (!recurringMonthlyPaid || !canEdit) return;
                           try {
                             // Atualizar apenas faturas de mensalidade (REC-*)
-                            const recurringInvoices = invoices.filter(inv => inv.number.startsWith('REC-'));
-                            for (const invoice of recurringInvoices) {
-                              if (invoice.status === 'Paid') {
-                                await updateInvoice(invoice.id, { status: 'Pending' });
-                              }
+                            const paidRecurringInvoices = recurringMonthlyInvoices.filter(inv => inv.status === 'Paid');
+                            for (const invoice of paidRecurringInvoices) {
+                              await updateInvoice(invoice.id, { status: 'Pending' });
                             }
-                            await updateProject(currentProject.id, { isRecurringPaid: false });
+
+                            const updatedInvoices = invoices.map(inv =>
+                              inv.number.startsWith('REC-') && inv.status === 'Paid'
+                                ? { ...inv, status: 'Pending' }
+                                : inv
+                            );
+                            await syncProjectFinancialFlags(updatedInvoices);
                             setToast({ message: "Mensalidade marcada como pendente", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           } catch (error) {
@@ -1438,7 +1526,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             setTimeout(() => setToast(null), 3000);
                           }
                         }}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!currentProject.isRecurringPaid
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer ${!recurringMonthlyPaid
                           ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
@@ -2998,27 +3086,16 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
                                           );
 
-                                          // Atualizar status específico baseado no tipo de fatura
-                                          if (isProjectRecurring()) {
-                                            if (invoice.number.startsWith('IMP-')) {
-                                              // Verificar se todas as faturas de implementação estão pagas
-                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                              }
-                                            } else {
-                                              // Para mensalidade (REC- ou INV- ou qualquer outra), marcar como paga e perguntar se quer criar nova fatura
-                                              await updateProject(currentProject.id, { isRecurringPaid: true });
-                                              setPaidInvoiceForRecurring(invoice);
-                                              setShowRecurringConfirm(true);
-                                            }
-                                          } else {
-                                            // Projeto normal: atualizar status geral
-                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                            if (allPaid !== currentProject.isPaid) {
-                                              await updateProject(currentProject.id, { isPaid: allPaid });
-                                            }
+                                          // Atualizar flags financeiras do projeto
+                                          await syncProjectFinancialFlags(updatedInvoices);
+
+                                          if (isProjectRecurring() && !invoice.number.startsWith('IMP-')) {
+                                            setPaidInvoiceForRecurring(invoice);
+                                            const defaultRecurringDate = getTodayPlusDaysISO(30);
+                                            setRecurringInvoiceDateMode('custom');
+                                            setCustomRecurringDate(defaultRecurringDate);
+                                            setShowRecurringCustomDatePicker(false);
+                                            setShowRecurringConfirm(true);
                                           }
                                         } catch (error) {
                                           console.error("Error updating invoice:", error);
@@ -3042,26 +3119,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
                                           );
 
-                                          // Atualizar status específico baseado no tipo de fatura
-                                          if (isProjectRecurring()) {
-                                            if (invoice.number.startsWith('IMP-')) {
-                                              // Verificar se alguma fatura de implementação está pendente
-                                              const implementationInvoices = updatedInvoices.filter(inv => inv.number.startsWith('IMP-'));
-                                              const allImplementationPaid = implementationInvoices.every(inv => inv.status === 'Paid');
-                                              if (allImplementationPaid !== currentProject.isImplementationPaid) {
-                                                await updateProject(currentProject.id, { isImplementationPaid: allImplementationPaid });
-                                              }
-                                            } else if (invoice.number.startsWith('REC-')) {
-                                              // Para mensalidade, marcar como pendente
-                                              await updateProject(currentProject.id, { isRecurringPaid: false });
-                                            }
-                                          } else {
-                                            // Projeto normal: atualizar status geral
-                                            const allPaid = updatedInvoices.every(inv => inv.status === 'Paid');
-                                            if (allPaid !== currentProject.isPaid) {
-                                              await updateProject(currentProject.id, { isPaid: allPaid });
-                                            }
-                                          }
+                                          // Atualizar flags financeiras do projeto
+                                          await syncProjectFinancialFlags(updatedInvoices);
                                         } catch (error) {
                                           console.error("Error updating invoice:", error);
                                         }
@@ -3708,12 +3767,30 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               onSave={async (updates) => {
                 try {
                   await updateInvoice(editingInvoice.id, updates);
+                  const updatedInvoices = invoices.map(invoice =>
+                    invoice.id === editingInvoice.id ? { ...invoice, ...updates } : invoice
+                  );
+                  await syncProjectFinancialFlags(updatedInvoices as Invoice[]);
                   setEditingInvoice(null);
                   setToast({ message: "Fatura atualizada com sucesso!", type: 'success' });
                   setTimeout(() => setToast(null), 3000);
                 } catch (error) {
                   console.error("Error updating invoice:", error);
                   setToast({ message: "Erro ao atualizar fatura. Tente novamente.", type: 'error' });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }}
+              onDelete={async () => {
+                try {
+                  const remainingInvoices = invoices.filter(invoice => invoice.id !== editingInvoice.id);
+                  await deleteInvoice(editingInvoice.id);
+                  await syncProjectFinancialFlags(remainingInvoices);
+                  setEditingInvoice(null);
+                  setToast({ message: "Fatura excluida com sucesso!", type: 'success' });
+                  setTimeout(() => setToast(null), 3000);
+                } catch (error) {
+                  console.error("Error deleting invoice:", error);
+                  setToast({ message: "Erro ao excluir fatura. Tente novamente.", type: 'error' });
                   setTimeout(() => setToast(null), 3000);
                 }
               }}
@@ -3727,19 +3804,103 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-md shadow-2xl">
                 <div className="p-6">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="size-12 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">autorenew</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
+                        <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-bold">Criar Nova Fatura?</h3>
-                      <p className="text-sm text-slate-500">Projeto recorrente detectado</p>
-                    </div>
+                    <button
+                      onClick={() => {
+                        setShowRecurringConfirm(false);
+                        setPaidInvoiceForRecurring(null);
+                        setRecurringInvoiceDateMode('custom');
+                        setCustomRecurringDate('');
+                        setShowRecurringCustomDatePicker(false);
+                      }}
+                      className="size-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                      aria-label="Fechar modal"
+                      title="Fechar"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">close</span>
+                    </button>
                   </div>
 
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                    Deseja criar uma nova fatura com vencimento para <strong>30 dias</strong> após a fatura atual?
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                    Escolha como definir a data da nova fatura.
                   </p>
+
+                  <div className="space-y-3 mb-6">
+                    <button
+                      type="button"
+                      onClick={() => setRecurringInvoiceDateMode('original')}
+                      className={`w-full rounded-xl border px-4 py-3 text-left transition-all ${
+                        recurringInvoiceDateMode === 'original'
+                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">Data original + 30 dias</span>
+                        <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                          {getRecurringDueDate(paidInvoiceForRecurring, 'original').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </button>
+
+
+                    <div
+                      className={`w-full rounded-xl border px-4 py-3 transition-all ${
+                        recurringInvoiceDateMode === 'custom'
+                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">Data personalizada</span>
+                        <button
+                          type="button"
+                          onClick={() => setRecurringInvoiceDateMode('custom')}
+                          className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+                        >
+                          Usar esta opcao
+                        </button>
+                      </div>
+                      <div className="relative date-picker-container">
+                        <button
+                          type="button"
+                          ref={recurringCustomDatePickerButtonRef}
+                          onClick={() => {
+                            setRecurringInvoiceDateMode('custom');
+                            setShowRecurringCustomDatePicker(prev => !prev);
+                          }}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white flex items-center justify-between"
+                        >
+                          <span>{customRecurringDate ? getRecurringDueDate(paidInvoiceForRecurring, 'custom', customRecurringDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Selecione uma data'}</span>
+                          <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+                        </button>
+                        {showRecurringCustomDatePicker && (
+                          <DatePicker
+                            selectedDate={customRecurringDate ? getRecurringDueDate(paidInvoiceForRecurring, 'custom', customRecurringDate) : null}
+                            onSelectDate={(date) => {
+                              if (date) {
+                                const formatted = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                                setCustomRecurringDate(formatted);
+                                setRecurringInvoiceDateMode('custom');
+                              }
+                              setShowRecurringCustomDatePicker(false);
+                            }}
+                            onClose={() => setShowRecurringCustomDatePicker(false)}
+                            buttonRef={recurringCustomDatePickerButtonRef}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 mb-6">
                     <div className="flex justify-between items-center mb-2">
@@ -3749,24 +3910,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Próximo Vencimento</span>
+                      <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Vencimento</span>
                       <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                        {(() => {
-                          let previousDate: Date;
-                          if (paidInvoiceForRecurring.date instanceof Date) {
-                            previousDate = paidInvoiceForRecurring.date;
-                          } else if (typeof paidInvoiceForRecurring.date === 'string' && paidInvoiceForRecurring.date.includes('-')) {
-                            const [year, month, day] = paidInvoiceForRecurring.date.split('-').map(Number);
-                            previousDate = new Date(year, month - 1, day);
-                          } else if (paidInvoiceForRecurring.date?.toDate) {
-                            previousDate = paidInvoiceForRecurring.date.toDate();
-                          } else {
-                            previousDate = new Date();
-                          }
-                          const nextDate = new Date(previousDate);
-                          nextDate.setDate(nextDate.getDate() + 30);
-                          return nextDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                        })()}
+                        {getRecurringDueDate(paidInvoiceForRecurring, recurringInvoiceDateMode, customRecurringDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </span>
                     </div>
                   </div>
@@ -3776,20 +3922,27 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                       onClick={() => {
                         setShowRecurringConfirm(false);
                         setPaidInvoiceForRecurring(null);
+                        setRecurringInvoiceDateMode('custom');
+                        setCustomRecurringDate('');
+                        setShowRecurringCustomDatePicker(false);
                       }}
                       className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                     >
-                      Não, obrigado
+                      Nao, obrigado
                     </button>
                     <button
                       onClick={async () => {
                         if (paidInvoiceForRecurring) {
-                          await createRecurringInvoice(paidInvoiceForRecurring);
+                          await createRecurringInvoice(paidInvoiceForRecurring, recurringInvoiceDateMode, customRecurringDate || undefined);
                         }
                         setShowRecurringConfirm(false);
                         setPaidInvoiceForRecurring(null);
+                        setRecurringInvoiceDateMode('custom');
+                        setCustomRecurringDate('');
+                        setShowRecurringCustomDatePicker(false);
                       }}
-                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                      disabled={recurringInvoiceDateMode === 'custom' && !customRecurringDate}
+                      className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                     >
                       <span className="material-symbols-outlined text-sm">add_circle</span>
                       Sim, criar fatura
@@ -5513,7 +5666,8 @@ const EditInvoiceModal: React.FC<{
   invoice: Invoice;
   onClose: () => void;
   onSave: (updates: Partial<Invoice>) => Promise<void>;
-}> = ({ invoice, onClose, onSave }) => {
+  onDelete?: () => Promise<void>;
+}> = ({ invoice, onClose, onSave, onDelete }) => {
   const formatCurrencyDisplay = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       minimumFractionDigits: 2,
@@ -5560,6 +5714,7 @@ const EditInvoiceModal: React.FC<{
   });
   const [amountDisplay, setAmountDisplay] = useState<string>(formatCurrencyDisplay(invoice.amount));
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
 
   // Fechar date picker ao clicar fora
@@ -5619,6 +5774,23 @@ const EditInvoiceModal: React.FC<{
       onClose();
     } catch (error) {
       console.error("Error saving invoice:", error);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete || isDeleting) return;
+
+    const confirmed = window.confirm('Deseja excluir esta fatura?');
+    if (!confirmed) return;
+
+    try {
+      setIsDeleting(true);
+      await onDelete();
+      onClose();
+    } catch (error) {
+      console.error("Error deleting invoice:", error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -5731,24 +5903,41 @@ const EditInvoiceModal: React.FC<{
             </select>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all"
-            >
-              Salvar Alterações
-            </button>
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <div>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 text-sm font-semibold text-rose-500 border border-rose-500/40 rounded-lg hover:bg-rose-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isDeleting ? 'Excluindo...' : 'Excluir fatura'}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-8 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-all"
+              >
+                Salvar Alteracoes
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
   );
 };
+
+
+
 
