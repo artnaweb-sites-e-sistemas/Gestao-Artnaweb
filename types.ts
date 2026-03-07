@@ -82,6 +82,21 @@ export const parseSafeDate = (dateStr: string | null | undefined | any): Date | 
   return new Date(year, month - 1, day);
 };
 
+// Helper para obter a data de referência de uma fatura de forma segura
+export const getInvoiceReferenceDate = (invoice: Invoice): Date => {
+  if (invoice.date instanceof Date) {
+    return invoice.date;
+  }
+  if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
+    const [year, month, day] = invoice.date.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  if (invoice.date?.toDate) {
+    return invoice.date.toDate();
+  }
+  return new Date();
+};
+
 export interface Transaction {
   id: string;
   client: string;

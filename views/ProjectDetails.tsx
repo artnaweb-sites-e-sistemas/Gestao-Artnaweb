@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate, Workspace } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate, Workspace, getInvoiceReferenceDate } from '../types';
 import {
   subscribeToProjectActivities,
   subscribeToProjectTeamMembers,
@@ -492,19 +492,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     );
   };
 
-  const getInvoiceReferenceDate = (invoice: Invoice): Date => {
-    if (invoice.date instanceof Date) {
-      return invoice.date;
-    }
-    if (typeof invoice.date === 'string' && invoice.date.includes('-')) {
-      const [year, month, day] = invoice.date.split('-').map(Number);
-      return new Date(year, month - 1, day);
-    }
-    if (invoice.date?.toDate) {
-      return invoice.date.toDate();
-    }
-    return new Date();
-  };
 
   const getTodayPlusDaysISO = (days: number): string => {
     const date = new Date();
@@ -565,6 +552,36 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
 
   const recurringMonthlyInvoices = getRecurringMonthlyInvoices(invoices);
   const recurringMonthlyPaid = getRecurringMonthlyPaidState(invoices);
+
+  // Alerta de pagamento faltante para o mês atual (Projetos Recorrentes)
+  const showPaymentAlert = useMemo(() => {
+    if (!isProjectRecurring()) return false;
+
+    // Encontrar a etapa atual para verificar se está em desenvolvimento, ajustes ou manutenção
+    let currentStage = stages.find(s => s.id === currentProject.stageId);
+    if (!currentStage) {
+      currentStage = stages.find(s => s.status === currentProject.status);
+    }
+
+    const stageTitle = currentStage?.title;
+    if (!stageTitle) return false;
+
+    const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+    if (!targetTitles.includes(stageTitle)) return false;
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Verificar se existe pelo menos uma fatura REC-* para o mês atual
+    const hasInvoiceThisMonth = invoices.some(inv => {
+      if (!inv.number.startsWith('REC-')) return false;
+      const invDate = getInvoiceReferenceDate(inv);
+      return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
+    });
+
+    return !hasInvoiceThisMonth;
+  }, [currentProject.stageId, currentProject.status, stages, invoices, categories]);
 
   const getRecurringDueDate = (invoice: Invoice, mode: 'original' | 'custom', customDate?: string): Date => {
     if (mode === 'custom' && customDate) {
@@ -966,6 +983,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
               </div>
             </div>
 
+            {showPaymentAlert && (
+              <div className="mt-6 bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800/50 rounded-xl p-4 flex gap-3 animate-pulse">
+                <span className="material-symbols-outlined text-rose-600 dark:text-rose-400">warning</span>
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-xs font-bold text-rose-900 dark:text-rose-100 uppercase tracking-wider">Atenção!</p>
+                  <p className="text-[11px] font-medium text-rose-700 dark:text-rose-300 leading-relaxed">
+                    Este projeto não possui fatura de mensalidade gerada para o mês atual.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className={`border-t border-slate-200 dark:border-slate-800 ${['review', 'review-recurring'].includes(currentProject.stageId || '') ? 'pt-5' : 'pt-8'}`}>
               <div className="flex flex-col gap-1">
                 <div className="py-2">
@@ -1315,7 +1344,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               }
                             }}
                             disabled={!canEdit}
-                            className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Completed'
+                            className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${(currentProject.status as string) === 'Completed'
                               ? 'bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-emerald-950 dark:hover:text-emerald-50 hover:border-emerald-500'
                               } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1324,7 +1353,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             <span className="material-symbols-outlined text-sm">check_circle</span>
                             <span className="hidden sm:inline">Concluir</span>
                           </button>
-                          {currentProject.status !== 'Completed' && (
+                          {(currentProject.status as string) !== 'Completed' && (
                             <button
                               onClick={async () => {
                                 if (!canEdit) return;
@@ -3120,7 +3149,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         try {
                                           await updateInvoice(invoice.id, { status: 'Paid' });
                                           const updatedInvoices = invoices.map(inv =>
-                                            inv.id === invoice.id ? { ...inv, status: 'Paid' } : inv
+                                            inv.id === invoice.id ? { ...inv, status: 'Paid' as const } : inv
                                           );
 
                                           // Atualizar flags financeiras do projeto
@@ -3153,7 +3182,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         try {
                                           await updateInvoice(invoice.id, { status: 'Pending' });
                                           const updatedInvoices = invoices.map(inv =>
-                                            inv.id === invoice.id ? { ...inv, status: 'Pending' } : inv
+                                            inv.id === invoice.id ? { ...inv, status: 'Pending' as const } : inv
                                           );
 
                                           // Atualizar flags financeiras do projeto

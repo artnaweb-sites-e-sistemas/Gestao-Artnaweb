@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Workspace, Category, Stage, parseSafeDate } from '../types';
-import { subscribeToProjects, subscribeToCategories, subscribeToStages } from '../firebase/services';
+import { Project, Workspace, Category, Stage, parseSafeDate, Invoice, getInvoiceReferenceDate, projectHasRecurringType } from '../types';
+import { subscribeToProjects, subscribeToCategories, subscribeToStages, subscribeToInvoices } from '../firebase/services';
 
 interface TimelineProps {
   currentWorkspace: Workspace | null;
@@ -12,6 +12,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string[]>([]);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
@@ -53,6 +54,17 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       const workspaceStages = fetchedStages.filter(s => (s as any).workspaceId === currentWorkspace.id);
       setStages(workspaceStages);
     }, currentWorkspace.id);
+
+    return () => unsubscribe();
+  }, [currentWorkspace?.id]);
+
+  // Carregar faturas do Firebase
+  useEffect(() => {
+    if (!currentWorkspace?.id) return;
+
+    const unsubscribe = subscribeToInvoices((fetchedInvoices) => {
+      setInvoices(fetchedInvoices);
+    }, undefined, null, currentWorkspace.id);
 
     return () => unsubscribe();
   }, [currentWorkspace?.id]);
@@ -333,37 +345,35 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
   // Obter label do status - usar título da etapa se disponível
   const getStatusLabel = (project: Project) => {
-    // Verificar etapa baseado no stageId
-    const isAdjustmentsStage = project.stageId?.includes('adjustments') || false;
+    const stageId = project.stageId || '';
+    const pTypes = project.types || (project.type ? [project.type] : []);
+    const isRecurring = pTypes.some(typeName =>
+      categories.find(cat => cat.name === typeName && cat.isRecurring)
+    );
 
-    // Se estiver na etapa Ajustes, mostrar "Ajustes"
-    if (isAdjustmentsStage) {
+    // 1. Caso especial: Gestão (Recorrência + Concluído + Estágio de manutenção)
+    if (isRecurring && project.status === 'Completed' && (stageId.includes('maintenance') || stageId === 'management')) {
+      return 'Gestão';
+    }
+
+    // 2. Caso especial: Ajustes
+    if (stageId.includes('adjustments')) {
       return 'Ajustes';
     }
 
-    // Buscar a etapa correspondente ao status do projeto
-    const currentStage = stages.find(stage => stage.status === project.status);
+    // 3. Prioridade: Se houver um stageId, tenta usar o título daquela etapa específica
+    const stage = stages.find(s => s.id === project.stageId);
+    if (stage) return stage.title;
 
-    if (currentStage) {
-      // Se for serviço recorrente e status Completed, mostrar "Manutenção"
-      const pTypes = project.types || (project.type ? [project.type] : []);
-      const isRecurringService = pTypes.some(typeName =>
-        categories.find(cat => cat.name === typeName && cat.isRecurring)
-      );
-      if (isRecurringService && project.status === 'Completed') {
-        return 'Manutenção';
-      }
-      // Retornar o título da etapa
-      return currentStage.title;
+    // 4. Fallback baseado no status
+    switch (project.status) {
+      case 'Lead': return 'On boarding';
+      case 'Active': return 'Em desenvolvimento';
+      case 'Review': return 'Em Revisão';
+      case 'Completed': return 'Concluído';
+      case 'Finished': return 'Finalizado';
+      default: return project.status;
     }
-
-    // Fallback para labels padrão se não encontrar etapa
-    const progress = project.progress || 0;
-    if (project.status === 'Active') return `Em Desenvolvimento (${progress}%)`;
-    if (project.status === 'Lead') return 'On-boarding';
-    if (project.status === 'Completed') return 'Concluído';
-    if (project.status === 'Finished') return 'Finalizado';
-    return `Em Revisão (${progress}%)`;
   };
 
   // Calcular progresso temporal (baseado na posição dentro da barra do projeto)
@@ -940,6 +950,31 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             </span>
                           )}
                         </div>
+                        {(() => {
+                          if (!isRecurring) return null;
+                          const stageLabel = getStatusLabel(project);
+                          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+                          if (!targetTitles.includes(stageLabel)) return null;
+
+                          const now = new Date();
+                          const currentMonth = now.getMonth();
+                          const currentYear = now.getFullYear();
+                          const projectInvoices = invoices.filter(inv => inv.projectId === project.id);
+                          const hasInvoiceThisMonth = projectInvoices.some(inv => {
+                            if (!inv.number.startsWith('REC-')) return false;
+                            const invDate = getInvoiceReferenceDate(inv);
+                            return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
+                          });
+
+                          if (hasInvoiceThisMonth) return null;
+
+                          return (
+                            <div className="flex items-center gap-1 mt-1 text-[9px] font-black text-rose-500 uppercase animate-pulse">
+                              <span className="material-symbols-outlined text-[12px]">warning</span>
+                              <span>Pagamento Ausente</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       {/* Colunas - mesma estrutura flex do header */}
                       <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20" style={timelineGridVerticalStyle}>

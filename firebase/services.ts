@@ -2012,13 +2012,13 @@ export const deleteWorkspace = async (workspaceId: string): Promise<void> => {
 };
 
 // Invoices
-export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId?: string, userId?: string | null) => {
+export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, projectId?: string, userId?: string | null, workspaceId?: string | null) => {
   if (!db) {
     console.warn("Firebase não está inicializado");
     return () => { };
   }
 
-  // Filtrar por projectId e userId
+  // Filtrar por projectId, userId e workspaceId
   const conditions: any[] = [];
 
   if (projectId) {
@@ -2027,6 +2027,10 @@ export const subscribeToInvoices = (callback: (invoices: Invoice[]) => void, pro
 
   if (userId) {
     conditions.push(where("userId", "==", userId));
+  }
+
+  if (workspaceId) {
+    conditions.push(where("workspaceId", "==", workspaceId));
   }
 
   const q = conditions.length > 0
