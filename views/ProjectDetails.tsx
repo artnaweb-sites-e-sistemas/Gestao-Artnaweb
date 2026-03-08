@@ -1344,7 +1344,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             }
                           }}
                           disabled={!canEdit}
-                          className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-amber-500 hover:bg-amber-600 text-amber-950 dark:text-amber-50"
+                          className="flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50"
                           style={{
                             animation: 'pulse-subtle 2s ease-in-out infinite'
                           }}
@@ -1437,10 +1437,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                               }
                             }}
                             disabled={!canEdit}
-                            className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${(currentProject.status as string) === 'Completed'
-                              ? 'bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-500 hover:text-emerald-950 dark:hover:text-emerald-50 hover:border-emerald-500'
-                              } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-emerald-500 hover:bg-emerald-600 text-emerald-950 dark:text-emerald-50 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Marcar como concluído"
                           >
                             <span className="material-symbols-outlined text-sm">check_circle</span>
@@ -1473,10 +1470,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 }
                               }}
                               disabled={!canEdit}
-                              className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${currentProject.status === 'Review'
-                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-amber-500 hover:text-white hover:border-amber-500'
-                                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              className={`flex-1 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors bg-amber-500 hover:bg-amber-600 text-amber-950 dark:text-amber-50 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                               title="Enviar para revisão"
                             >
                               <span className="material-symbols-outlined text-sm">rate_review</span>
@@ -1485,6 +1479,28 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           )}
                         </>
                       )}
+                    </div>
+                  )}
+
+                  {/* Alerta de data vencida — abaixo dos botões, Desenvolvimento ou Ajustes */}
+                  {currentProject.deadline &&
+                    (() => {
+                      const d = parseSafeDate(currentProject.deadline!);
+                      if (!d) return false;
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const dNorm = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                      return dNorm < today;
+                    })() &&
+                    ['development', 'development-recurring', 'adjustments', 'adjustments-recurring'].includes(currentProject.stageId || '') && (
+                    <div className="mt-3 flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/25 border border-red-200 dark:border-red-800/60">
+                      <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-lg flex-shrink-0 mt-0.5">schedule</span>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <p className="text-xs font-bold text-red-800 dark:text-red-200">Data vencida</p>
+                        <p className="text-[11px] font-medium text-red-700 dark:text-red-300">
+                          A data de entrega deste projeto já passou.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2225,7 +2241,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             }}
                             disabled={!canEdit}
                             className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all min-w-[80px] ${isCurrent
-                              ? 'bg-primary/10 border-2 border-primary'
+                              ? ['review', 'review-recurring'].includes(stage.id)
+                                ? 'bg-amber-500/10 dark:bg-amber-500/20 border-2 border-amber-500'
+                                : ['completed', 'finished-recurring'].includes(stage.id)
+                                  ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border-2 border-emerald-500'
+                                  : 'bg-primary/10 border-2 border-primary'
                               : isPast
                                 ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
                                 : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -2233,7 +2253,11 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             title={canEdit ? `Mover para: ${stage.title}` : `Etapa: ${stage.title}`}
                           >
                             <div className={`size-6 rounded-full flex items-center justify-center ${isCurrent
-                              ? 'bg-primary text-white'
+                              ? ['review', 'review-recurring'].includes(stage.id)
+                                ? 'bg-amber-500 text-white'
+                                : ['completed', 'finished-recurring'].includes(stage.id)
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-primary text-white'
                               : isPast
                                 ? 'bg-emerald-500 text-white'
                                 : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
@@ -2249,7 +2273,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                 <span className="text-[10px] font-bold">{index + 1}</span>
                               )}
                             </div>
-                            <span className={`text-[10px] font-semibold text-center leading-tight ${isCurrent ? 'text-primary' : isPast ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+                            <span className={`text-[10px] font-semibold text-center leading-tight ${isCurrent
+                              ? ['review', 'review-recurring'].includes(stage.id)
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : ['completed', 'finished-recurring'].includes(stage.id)
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-primary'
+                              : isPast ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
                               }`}>
                               {stage.title}
                             </span>
@@ -2392,16 +2422,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             const stageOrder = stage.order;
                             const isPreviousStage = stageOrder < currentStageOrder;
 
-                            const allTasksCompleted = stageProjectTasks.length > 0 && stageProjectTasks.every(t => t.completed);
                             const hasPendingTasks = stageProjectTasks.some(t => !t.completed);
-                            const isCompleted = allTasksCompleted && (isCurrentStage || isPreviousStage);
+                            // Etapa concluída: sem tarefas pendentes E (atual ou anterior) — etapas vazias anteriores também ficam verdes
+                            const isCompleted = !hasPendingTasks && (isCurrentStage || isPreviousStage);
 
                             // Estado para controlar expansão da etapa - sempre começa expandido se para etapa atual, caso contrário colapsado
                             const isExpanded = expandedStages[stage.id] !== undefined ? expandedStages[stage.id] : isCurrentStage;
 
                             return (
                               <div key={stage.id} className={`rounded-xl border transition-all ${isCurrentStage
-                                ? 'border-primary/30 bg-primary/5 dark:bg-primary/10'
+                                ? ['review', 'review-recurring'].includes(stage.id)
+                                  ? 'border-amber-300 dark:border-amber-600/60 bg-amber-50/50 dark:bg-amber-900/20'
+                                  : ['completed', 'finished-recurring'].includes(stage.id)
+                                    ? 'border-emerald-300 dark:border-emerald-600/60 bg-emerald-50/50 dark:bg-emerald-900/20'
+                                    : 'border-primary/30 bg-primary/5 dark:bg-primary/10'
                                 : isCompleted
                                   ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10'
                                   : 'border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/30'
@@ -2418,7 +2452,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   className={`w-full flex items-center gap-3 p-4 text-left transition-colors rounded-t-xl ${['review', 'review-recurring', 'completed', 'finished-recurring'].includes(stage.id) ? 'cursor-default' : 'hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                                 >
                                   {['review', 'review-recurring'].includes(stage.id) ? (
-                                    <span className="material-symbols-outlined text-lg text-amber-500 dark:text-amber-400" title="Em Revisão">
+                                    <span className={`material-symbols-outlined text-lg ${isCurrentStage ? 'text-amber-500 dark:text-amber-400' : isCompleted ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500 dark:text-amber-400'}`} title="Em Revisão">
                                       rate_review
                                     </span>
                                   ) : ['completed', 'finished-recurring'].includes(stage.id) ? (
@@ -2431,11 +2465,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       chevron_right
                                     </span>
                                   )}
-                                  <h4 className={`text-sm font-bold uppercase tracking-wider flex-1 ${isCompleted
-                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                  <h4 className={`text-sm font-bold uppercase tracking-wider flex-1 ${isCurrentStage && ['review', 'review-recurring'].includes(stage.id)
+                                    ? 'text-amber-600 dark:text-amber-400'
                                     : isCurrentStage
-                                      ? 'text-primary dark:text-primary'
-                                      : 'text-slate-600 dark:text-slate-400'
+                                      ? ['completed', 'finished-recurring'].includes(stage.id)
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : 'text-primary dark:text-primary'
+                                      : isCompleted
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : 'text-slate-600 dark:text-slate-400'
                                     }`}>
                                     {stage.title}
                                   </h4>
@@ -2446,18 +2484,22 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                       </span>
                                     )}
                                     {(isCurrentStage || isPreviousStage) && (
-                                      <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCompleted
-                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                        : isCurrentStage
-                                          ? 'bg-primary/10 text-primary'
+                                      <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${isCurrentStage
+                                        ? ['review', 'review-recurring'].includes(stage.id)
+                                          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                          : ['completed', 'finished-recurring'].includes(stage.id)
+                                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-primary/10 text-primary'
+                                        : isCompleted
+                                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                                           : hasPendingTasks && isPreviousStage
                                             ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                         }`}>
-                                        {isCompleted
-                                          ? 'CONCLUÍDA'
-                                          : isCurrentStage
-                                            ? 'ETAPA ATUAL'
+                                        {isCurrentStage
+                                          ? 'ETAPA ATUAL'
+                                          : isCompleted
+                                            ? 'CONCLUÍDA'
                                             : hasPendingTasks && isPreviousStage
                                               ? 'PENDENTE'
                                               : 'FINALIZADA'}
