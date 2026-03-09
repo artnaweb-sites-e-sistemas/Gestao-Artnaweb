@@ -1421,7 +1421,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                 if (recurringInvoices.length === 0) {
                   const stageTitle = stages.find(s => s.id === project.stageId)?.title ||
                     stages.find(s => s.status === project.status)?.title || '';
-                  const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+                  const targetTitles = ['Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão'];
                   if (targetTitles.includes(stageTitle)) return true;
                 }
 
@@ -2703,7 +2703,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
       if ((project.recurringAmount || 0) > 0) {
         if (recurringInvoices.length === 0) {
           const stageTitle = stages.find(s => s.id === project.stageId || s.status === project.status)?.title || '';
-          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão'];
           if (targetTitles.includes(stageTitle)) return true;
         }
 
@@ -2761,7 +2761,7 @@ const Card: React.FC<{ project: Project; onClick?: () => void; onDelete?: (proje
 
 
 
-    const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+    const targetTitles = ['Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão', 'Em Revisão'];
     if (!targetTitles.includes(stageTitle)) return false;
 
 
@@ -3321,7 +3321,7 @@ const ListView: React.FC<{
         // Se ainda não tem nenhuma fatura REC-, mas o projeto já está em etapas que exigem pagamento
         if (recurringInvoices.length === 0) {
           const stageTitle = getStatusLabel(project);
-          const targetTitles = ['Ajustes', 'Gestão', 'Manutenção'];
+          const targetTitles = ['Ajustes', 'Gestão Recorrente', 'Gestão', 'Manutenção'];
           if (targetTitles.includes(stageTitle)) return true;
         }
 
@@ -3372,9 +3372,9 @@ const ListView: React.FC<{
 
 
 
-    // 1. Caso especial: Gestão (Recorrência + Concluído + Estágio de manutenção)
+    // 1. Caso especial: Gestão Recorrente (Recorrência + Concluído + Estágio de manutenção)
     if (isRecurring && project.status === 'Completed' && (stageId.includes('maintenance') || stageId === 'management')) {
-      return 'Gestão';
+      return 'Gestão Recorrente';
     }
 
 
@@ -3685,7 +3685,7 @@ const ListView: React.FC<{
                       const isRec = projectHasRecurringType(project, categories);
                       if (!isRec) return null;
                       const stageTitle = getStatusLabel(project);
-                      const targetTitles = ['Ajustes', 'Gestão', 'Manutenção'];
+                      const targetTitles = ['Ajustes', 'Gestão Recorrente', 'Gestão', 'Manutenção', 'Em Revisão'];
                       if (!targetTitles.includes(stageTitle)) return null;
 
 
@@ -3716,7 +3716,7 @@ const ListView: React.FC<{
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
                     <div className="flex flex-col gap-1 items-start">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${getStatusLabel(project) === 'Gestão'
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold inline-block truncate max-w-full ${getStatusLabel(project) === 'Gestão Recorrente'
                         ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' :
                         getStatusLabel(project) === 'Ajustes' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                           getStatusLabel(project) === 'On boarding' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
@@ -3841,11 +3841,24 @@ const ListView: React.FC<{
                       {(() => {
                         const missingDateWarnings = getMissingDateWarnings(project);
                         const isMaintenanceProject = projectHasRecurringType(project, categories) && (project.stageId?.includes('maintenance') || project.status === 'Completed');
-                        const shouldShowWarning = isMaintenanceProject
+                        const isInReview = ['review', 'review-recurring'].includes(project.stageId || '');
+                        const shouldShowWarning = !isInReview && (isMaintenanceProject
                           ? missingDateWarnings.length > 0
-                          : missingDateWarnings.length > 0 && !isInFinalStage(project);
+                          : missingDateWarnings.length > 0 && !isInFinalStage(project));
 
+                        const hasAnyDate =
+                          !!project.deadline ||
+                          !!project.maintenanceDate ||
+                          !!project.reportDate;
 
+                        const isReviewStatus = getStatusLabel(project) === 'Em Revisão';
+
+                        const shouldShowHyphen =
+                          !shouldShowWarning &&
+                          (
+                            (!hasAnyDate && !hasFinancialPending(project)) ||
+                            isReviewStatus
+                          );
 
                         return shouldShowWarning ? (
                           <div className="flex items-center gap-1 text-rose-500 animate-pulse">
@@ -3856,9 +3869,9 @@ const ListView: React.FC<{
                                 : 'Definir data'}
                             </span>
                           </div>
-                        ) : (!project.deadline && !project.maintenanceDate && !project.reportDate ? (
+                        ) : shouldShowHyphen ? (
                           <span className="text-xs text-slate-400">-</span>
-                        ) : null);
+                        ) : null;
                       })()}
                     </div>
                   </td>
@@ -4231,9 +4244,9 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
 
 
-    // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
+    // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão Recorrente"
     if (isRecurringService && project.status === 'Completed' && isMaintenanceStage) {
-      return 'Gestão';
+      return 'Gestão Recorrente';
     }
 
 
@@ -4261,10 +4274,10 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
 
 
-  // Obter cor do status - retornar azul para "Gestão"
+  // Obter cor do status - retornar azul para "Gestão Recorrente"
   const getStatusColorForLabel = (project: Project) => {
     const label = getStatusLabel(project);
-    if (label === 'Gestão') return 'blue';
+    if (label === 'Gestão Recorrente') return 'blue';
     return getStatusColor(project.status, project.tagColor);
   };
 

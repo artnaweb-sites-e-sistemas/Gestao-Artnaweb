@@ -224,6 +224,8 @@ export interface Invoice {
   date: Date | any;
   status: 'Paid' | 'Pending' | 'Overdue' | 'Refunded';
   workspaceId?: string;
+  /** Quando true, indica que o pagamento foi feito no cartão de crédito. O valor entra no fluxo de caixa no mês seguinte. */
+  paidByCreditCard?: boolean;
   // Integração Asaas
   asaasPaymentId?: string; // ID da cobrança no Asaas
   asaasBillingType?: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED'; // Tipo de cobrança

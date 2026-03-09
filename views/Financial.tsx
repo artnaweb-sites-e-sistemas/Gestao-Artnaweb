@@ -232,30 +232,48 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     return new Date(0);
   }, []);
 
-  // Filtrar faturas por período selecionado
+  // Filtrar faturas por período selecionado (por data de vencimento)
   const filteredByPeriod = useMemo(() => {
     return invoices.filter(inv => {
       if (selectedMonth === 'all') {
-        // Filtrar apenas pelo ano
         const invDate = getInvoiceDate(inv.date);
         return invDate.getFullYear() === selectedYear;
       }
-      // Filtrar por mês e ano
       const invDate = getInvoiceDate(inv.date);
       return invDate.getMonth() === selectedMonth && invDate.getFullYear() === selectedYear;
     });
   }, [invoices, selectedMonth, selectedYear, getInvoiceDate]);
 
-  // Calcular métricas (usando faturas filtradas por período)
+  // Mês efetivo de recebimento: cartão de crédito cai no mês seguinte
+  const getEffectiveReceiveDate = useCallback((inv: Invoice): { month: number; year: number } => {
+    const invDate = getInvoiceDate(inv.date);
+    if (inv.status === 'Paid' && inv.paidByCreditCard) {
+      const next = new Date(invDate.getFullYear(), invDate.getMonth() + 1, 1);
+      return { month: next.getMonth(), year: next.getFullYear() };
+    }
+    return { month: invDate.getMonth(), year: invDate.getFullYear() };
+  }, [getInvoiceDate]);
+
+  // Faturas cujo valor entra no fluxo de caixa no período selecionado
+  const receivedInPeriod = useMemo(() => {
+    return invoices.filter(inv => {
+      if (inv.status !== 'Paid') return false;
+      const { month, year } = getEffectiveReceiveDate(inv);
+      if (selectedMonth === 'all') return year === selectedYear;
+      return month === selectedMonth && year === selectedYear;
+    });
+  }, [invoices, selectedMonth, selectedYear, getEffectiveReceiveDate]);
+
+  // Calcular métricas (totalReceived usa mês efetivo; totalPending e totais por tipo usam data de vencimento)
   const metrics = {
-    totalReceived: filteredByPeriod.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0),
+    totalReceived: receivedInPeriod.reduce((sum, inv) => sum + inv.amount, 0),
     totalPending: filteredByPeriod.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + inv.amount, 0),
     implementationTotal: filteredByPeriod.filter(inv => inv.number.startsWith('IMP-')).reduce((sum, inv) => sum + inv.amount, 0),
-    implementationPaid: filteredByPeriod.filter(inv => inv.number.startsWith('IMP-') && inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0),
+    implementationPaid: receivedInPeriod.filter(inv => inv.number.startsWith('IMP-')).reduce((sum, inv) => sum + inv.amount, 0),
     recurringTotal: filteredByPeriod.filter(inv => inv.number.startsWith('REC-')).reduce((sum, inv) => sum + inv.amount, 0),
-    recurringPaid: filteredByPeriod.filter(inv => inv.number.startsWith('REC-') && inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0),
+    recurringPaid: receivedInPeriod.filter(inv => inv.number.startsWith('REC-')).reduce((sum, inv) => sum + inv.amount, 0),
     normalTotal: filteredByPeriod.filter(inv => inv.number.startsWith('INV-')).reduce((sum, inv) => sum + inv.amount, 0),
-    normalPaid: filteredByPeriod.filter(inv => inv.number.startsWith('INV-') && inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0),
+    normalPaid: receivedInPeriod.filter(inv => inv.number.startsWith('INV-')).reduce((sum, inv) => sum + inv.amount, 0),
     paidCount: filteredByPeriod.filter(inv => inv.status === 'Paid').length,
     pendingCount: filteredByPeriod.filter(inv => inv.status === 'Pending').length,
   };
@@ -267,7 +285,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     { name: 'Avulso', value: metrics.normalTotal, color: '#8b5cf6' },
   ].filter(item => item.value > 0);
 
-  // Gerar dados de receita por mês
+  // Gerar dados de receita por mês (received usa mês efetivo para cartão de crédito)
   const generateMonthlyData = () => {
     const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
     const currentYear = new Date().getFullYear();
@@ -280,14 +298,19 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
       const year = date.getFullYear();
 
       const monthInvoices = invoices.filter(inv => {
-        const invDate = inv.date instanceof Date ? inv.date :
-          inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
+        const invDate = getInvoiceDate(inv.date);
         return invDate.getMonth() === month && invDate.getFullYear() === year;
       });
 
+      const receivedThisMonth = invoices.filter(inv => {
+        if (inv.status !== 'Paid') return false;
+        const { month: effMonth, year: effYear } = getEffectiveReceiveDate(inv);
+        return effMonth === month && effYear === year;
+      }).reduce((sum, inv) => sum + inv.amount, 0);
+
       monthlyData.push({
         name: monthNames[month],
-        received: monthInvoices.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0),
+        received: receivedThisMonth,
         pending: monthInvoices.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + inv.amount, 0),
       });
     }
@@ -901,21 +924,40 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                       </td>
                       <td className="px-6 py-4 text-sm font-bold">{formatCurrency(invoice.amount)}</td>
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => canEdit && toggleInvoiceStatus(invoice)}
-                          disabled={!canEdit}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''} ${invoice.status === 'Paid'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
-                            : isInvoiceOverdue
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
-                            }`}
-                        >
-                          <span className="material-symbols-outlined text-sm">
-                            {invoice.status === 'Paid' ? 'check_circle' : 'pending'}
-                          </span>
-                          {invoice.status === 'Paid' ? 'Pago' : 'Pendente'}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {invoice.status === 'Paid' && canEdit && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await updateInvoice(invoice.id, { paidByCreditCard: !invoice.paidByCreditCard });
+                                } catch (error) {
+                                  console.error("Error updating paidByCreditCard:", error);
+                                }
+                              }}
+                              title={invoice.paidByCreditCard ? "Pago no cartão – valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
+                              className={`flex items-center justify-center size-7 rounded-md text-[12px] transition-colors ${invoice.paidByCreditCard
+                                ? 'bg-primary/20 text-primary border border-primary/40'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border border-slate-200 dark:border-slate-700'}`}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">credit_card</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => canEdit && toggleInvoiceStatus(invoice)}
+                            disabled={!canEdit}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''} ${invoice.status === 'Paid'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
+                              : isInvoiceOverdue
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200'
+                              }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {invoice.status === 'Paid' ? 'check_circle' : 'pending'}
+                            </span>
+                            {invoice.status === 'Paid' ? 'Pago' : 'Pendente'}
+                          </button>
+                        </div>
                       </td>
                       {/* Coluna Asaas */}
                       {currentWorkspace?.asaasApiKey && (
@@ -964,7 +1006,7 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                               Cobrar
                             </button>
                           ) : (
-                            <span className="text-xs text-slate-400">—</span>
+                            <span className="text-xs text-slate-400">-</span>
                           )}
                         </td>
                       )}

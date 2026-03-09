@@ -528,19 +528,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     if (recurringInvoices.length === 0) {
       return false;
     }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return recurringInvoices.every(inv => {
-      if (inv.status === 'Paid') return true;
-
-      // Se a fatura ainda não venceu, consideramos como paga para fins de status visual
-      const date = getInvoiceReferenceDate(inv);
-      const invoiceDate = new Date(date);
-      invoiceDate.setHours(0, 0, 0, 0);
-      return invoiceDate >= today;
-    });
+    // Só considera "Pago" quando todas as faturas REC- estão com status Paid
+    return recurringInvoices.every(inv => inv.status === 'Paid');
   };
 
   const syncProjectFinancialFlags = async (invoiceList: Invoice[]) => {
@@ -587,7 +576,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
     const stageTitle = currentStage?.title;
     if (!stageTitle) return false;
 
-    const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+    const targetTitles = ['Em Revisão', 'Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão'];
     if (!targetTitles.includes(stageTitle)) return false;
 
     const now = new Date();
@@ -2138,7 +2127,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                           );
                           const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
 
-                          // Se for serviço recorrente na etapa Manutenção, usar azul para "Gestão"
+                          // Se for serviço recorrente na etapa Manutenção, usar azul para "Gestão Recorrente"
                           if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
                             return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
                           }
@@ -2161,9 +2150,9 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                             // Verificar se está na etapa Manutenção
                             const isMaintenanceStage = currentProject.stageId?.includes('maintenance') || false;
 
-                            // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão"
+                            // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão Recorrente"
                             if (isRecurringService && currentProject.status === 'Completed' && isMaintenanceStage) {
-                              return 'Gestão';
+                              return 'Gestão Recorrente';
                             }
 
                             // Se for serviço recorrente e status Lead, mostrar "On-boarding"
@@ -3368,7 +3357,24 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                   </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <div className="flex gap-1">
+                                  <div className="flex items-center gap-1">
+                                    {invoice.status === 'Paid' && canEdit && (
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            await updateInvoice(invoice.id, { paidByCreditCard: !invoice.paidByCreditCard });
+                                          } catch (error) {
+                                            console.error("Error updating paidByCreditCard:", error);
+                                          }
+                                        }}
+                                        title={invoice.paidByCreditCard ? "Pago no cartão – valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
+                                        className={`flex items-center justify-center size-7 rounded text-[12px] transition-colors ${invoice.paidByCreditCard
+                                          ? 'bg-primary/20 text-primary border border-primary/40'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border border-slate-200 dark:border-slate-700'}`}
+                                      >
+                                        <span className="material-symbols-outlined text-[18px]">credit_card</span>
+                                      </button>
+                                    )}
                                     <button
                                       onClick={async () => {
                                         if (invoice.status === 'Paid' || !canEdit) return;
@@ -3470,7 +3476,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         Cobrar
                                       </button>
                                     ) : (
-                                      <span className="text-xs text-slate-400">â€”</span>
+                                      <span className="text-xs text-slate-400">-</span>
                                     )}
                                   </td>
                                 )}
@@ -4037,6 +4043,13 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                     projectId: currentProject.id,
                     workspaceId: currentProject.workspaceId
                   });
+                  // Se for fatura REC- e o projeto não tem recurringAmount, atualizar o valor da mensalidade no sidebar
+                  if (invoiceData.number.startsWith('REC-') && !(currentProject.recurringAmount || 0)) {
+                    const amount = typeof invoiceData.amount === 'number' ? invoiceData.amount : parseFloat(String(invoiceData.amount));
+                    if (!Number.isNaN(amount)) {
+                      await updateProject(currentProject.id, { recurringAmount: amount });
+                    }
+                  }
                   setShowAddInvoice(false);
                   setToast({ message: "Fatura criada com sucesso!", type: 'success' });
                   setTimeout(() => setToast(null), 3000);
@@ -5676,7 +5689,7 @@ const AddInvoiceModal: React.FC<{
 
   // Atualizar descrição e valor quando o tipo de fatura muda
   useEffect(() => {
-    if (invoiceType === 'recurring' && recurringAmount > 0) {
+    if (invoiceType === 'recurring') {
       const year = new Date().getFullYear();
       setFormData(prev => ({
         ...prev,

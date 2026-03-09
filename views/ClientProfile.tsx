@@ -1111,9 +1111,9 @@ const StatusBadge: React.FC<{ project: Project; categories: Category[] }> = ({ p
   let displayLabel: string;
   let badgeStyle: string;
 
-  // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão" em marrom
+  // Se for serviço recorrente e estiver na etapa Manutenção, mostrar "Gestão Recorrente" em marrom
   if (status === 'Completed' && isMaintenanceStage && isRecurring) {
-    displayLabel = 'Gestão';
+    displayLabel = 'Gestão Recorrente';
     badgeStyle = 'bg-amber-800/20 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
   } else if (isAdjustmentsStage) {
     // Se estiver na etapa Ajustes - azul

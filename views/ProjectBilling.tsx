@@ -61,19 +61,8 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
     if (recurringInvoices.length === 0) {
       return false;
     }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return recurringInvoices.every(inv => {
-      if (inv.status === 'Paid') return true;
-
-      // Se a fatura ainda não venceu, consideramos como paga para fins de status visual
-      const date = getInvoiceReferenceDate(inv);
-      const invoiceDate = new Date(date);
-      invoiceDate.setHours(0, 0, 0, 0);
-      return invoiceDate >= today;
-    });
+    // Só considera "Pago" quando todas as faturas REC- estão com status Paid
+    return recurringInvoices.every(inv => inv.status === 'Paid');
   };
 
   const syncProjectFinancialFlags = async (invoiceList: Invoice[]) => {
@@ -636,7 +625,27 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex gap-1">
+                          <div className="flex items-center gap-1">
+                            {invoice.status === 'Paid' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await updateInvoice(invoice.id, { paidByCreditCard: !invoice.paidByCreditCard });
+                                    setInvoices(prev => prev.map(inv =>
+                                      inv.id === invoice.id ? { ...inv, paidByCreditCard: !invoice.paidByCreditCard } : inv
+                                    ));
+                                  } catch (error) {
+                                    console.error("Error updating paidByCreditCard:", error);
+                                  }
+                                }}
+                                title={invoice.paidByCreditCard ? "Pago no cartão – valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
+                                className={`flex items-center justify-center size-7 rounded text-[12px] transition-colors ${invoice.paidByCreditCard
+                                  ? 'bg-primary/20 text-primary border border-primary/40'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border border-slate-200 dark:border-slate-700'}`}
+                              >
+                                <span className="material-symbols-outlined text-[18px]">credit_card</span>
+                              </button>
+                            )}
                             <button
                               onClick={async () => {
                                 if (invoice.status === 'Paid') return;
@@ -768,6 +777,13 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                   projectId: project.id,
                   workspaceId: project.workspaceId
                 });
+                // Se for fatura REC- e o projeto não tem recurringAmount, atualizar o valor da mensalidade no sidebar
+                if (invoiceData.number.startsWith('REC-') && !(currentProject.recurringAmount || 0)) {
+                  const amount = typeof invoiceData.amount === 'number' ? invoiceData.amount : parseFloat(String(invoiceData.amount));
+                  if (!Number.isNaN(amount)) {
+                    await updateProjectInFirebase(currentProject.id, { recurringAmount: amount });
+                  }
+                }
                 setShowAddInvoice(false);
               } catch (error) {
                 console.error("Error adding invoice:", error);
@@ -983,7 +999,7 @@ const AddInvoiceModal: React.FC<{
 
   // Atualizar descrição e valor quando o tipo de fatura muda
   useEffect(() => {
-    if (invoiceType === 'recurring' && recurringAmount > 0) {
+    if (invoiceType === 'recurring') {
       const year = new Date().getFullYear();
       setFormData(prev => ({
         ...prev,

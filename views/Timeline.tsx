@@ -351,9 +351,9 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
       categories.find(cat => cat.name === typeName && cat.isRecurring)
     );
 
-    // 1. Caso especial: Gestão (Recorrência + Concluído + Estágio de manutenção)
+    // 1. Caso especial: Gestão Recorrente (Recorrência + Concluído + Estágio de manutenção)
     if (isRecurring && project.status === 'Completed' && (stageId.includes('maintenance') || stageId === 'management')) {
-      return 'Gestão';
+      return 'Gestão Recorrente';
     }
 
     // 2. Caso especial: Ajustes
@@ -479,7 +479,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         // Se ainda não tem nenhuma fatura REC-, mas o projeto já está em etapas que exigem pagamento
         if (recurringInvoices.length === 0) {
           const stageLabel = getStatusLabel(project);
-          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão'];
           if (targetTitles.includes(stageLabel)) return true;
         }
 
@@ -989,7 +989,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                         {(() => {
                           if (!isRecurring) return null;
                           const stageLabel = getStatusLabel(project);
-                          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão'];
+                          const targetTitles = ['Ajustes', 'Manutenção', 'Gestão Recorrente', 'Gestão'];
                           if (!targetTitles.includes(stageLabel)) return null;
 
                           const now = new Date();
