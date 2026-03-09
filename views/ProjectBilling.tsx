@@ -638,12 +638,12 @@ export const ProjectBilling: React.FC<ProjectBillingProps> = ({ project, onNavig
                                     console.error("Error updating paidByCreditCard:", error);
                                   }
                                 }}
-                                title={invoice.paidByCreditCard ? "Pago no cartão – valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
-                                className={`flex items-center justify-center size-7 rounded text-[12px] transition-colors ${invoice.paidByCreditCard
-                                  ? 'bg-primary/20 text-primary border border-primary/40'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border border-slate-200 dark:border-slate-700'}`}
+                                title={invoice.paidByCreditCard ? "Pago no cartão - valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
+                                className={`flex items-center justify-center p-1 rounded text-[10px] transition-colors border ${invoice.paidByCreditCard
+                                  ? 'bg-primary/20 text-primary border-primary/40'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border-slate-200 dark:border-slate-700'}`}
                               >
-                                <span className="material-symbols-outlined text-[18px]">credit_card</span>
+                                <span className="material-symbols-outlined text-xs">credit_card</span>
                               </button>
                             )}
                             <button

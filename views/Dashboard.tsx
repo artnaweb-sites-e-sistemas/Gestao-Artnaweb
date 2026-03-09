@@ -462,7 +462,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
   // Carregar dados do Firebase filtrados por workspace
   useEffect(() => {
     if (!currentWorkspace) {
-      console.log('âš ï¸ [Dashboard] Nenhum workspace selecionado, aguardando...');
+      console.log('â ï¸ [Dashboard] Nenhum workspace selecionado, aguardando...');
       setProjects([]);
       setCategories([]);
       setStages([]);
@@ -471,7 +471,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-    console.log('ðŸ“Š [Dashboard] Carregando dados para workspace:', currentWorkspace.id, currentWorkspace.name);
+    console.log('ð" [Dashboard] Carregando dados para workspace:', currentWorkspace.id, currentWorkspace.name);
 
 
 
@@ -490,7 +490,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
     // Subscribe to real-time updates filtrados por workspace
     const unsubscribeProjects = subscribeToProjects((firebaseProjects) => {
-      console.log('📦 [Dashboard] Projetos recebidos:', firebaseProjects.length);
+      console.log('[Dashboard] Projetos recebidos:', firebaseProjects.length);
 
 
 
@@ -506,7 +506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
         if (projectsToUpdate.length > 0) {
-          console.log(`🔄 [Dashboard] Atualizando ${projectsToUpdate.length} projeto(s) em On-boarding para progress: 10`);
+          console.log(`[Dashboard] Atualizando ${projectsToUpdate.length} projeto(s) em On-boarding para progress: 10`);
           hasUpdatedOnboardingProgress.current = true;
           projectsToUpdate.forEach(async (project) => {
             try {
@@ -527,20 +527,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
     const unsubscribeCategories = subscribeToCategories((firebaseCategories) => {
-      console.log('ðŸ“ [Dashboard] Categorias recebidas:', firebaseCategories.length);
+      console.log('ð" [Dashboard] Categorias recebidas:', firebaseCategories.length);
       setCategories(firebaseCategories);
     }, currentWorkspace.id, userId);
 
 
 
     const unsubscribeStages = subscribeToStages((firebaseStages) => {
-      console.log('ðŸ·ï¸ [Dashboard] Etapas recebidas:', firebaseStages.length, 'isAdding:', isAddingFixedStages.current, 'isDeleting:', isDeletingStage.current);
+      console.log('ð·ï¸ [Dashboard] Etapas recebidas:', firebaseStages.length, 'isAdding:', isAddingFixedStages.current, 'isDeleting:', isDeletingStage.current);
 
 
 
       // Ignorar atualizações do subscribe durante exclusão ou adição de etapas fixas
       if (isDeletingStage.current || isAddingFixedStages.current) {
-        console.log('â­ï¸ [Dashboard] Ignorando atualização de etapas (operação em andamento)');
+        console.log('âï¸ [Dashboard] Ignorando atualização de etapas (operação em andamento)');
         return;
       }
 
@@ -554,7 +554,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
         isInitialStagesLoad.current = false;
       } else if (isInitialStagesLoad.current) {
         // Só criar etapas fixas na primeira vez (quando o Firebase está vazio para este workspace)
-        console.log('🆕 [Dashboard] Criando etapas fixas para novo workspace');
+        console.log('[Dashboard] Criando etapas fixas para novo workspace');
         isInitialStagesLoad.current = false;
         isAddingFixedStages.current = true;
 
@@ -575,7 +575,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
         // Salvar etapas fixas no Firebase para este workspace
         saveStages(fixedStagesRecalculated as any, currentWorkspace.id, userId).then(() => {
-          console.log('✅ [Dashboard] Etapas fixas salvas com sucesso');
+          console.log('[Dashboard] Etapas fixas salvas com sucesso');
           setTimeout(() => {
             isAddingFixedStages.current = false;
           }, 1000);
@@ -589,7 +589,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
     const unsubscribeInvoices = subscribeToInvoices((firebaseInvoices) => {
-      console.log('💰 [Dashboard] Faturas recebidas:', firebaseInvoices.length);
+      console.log('[Dashboard] Faturas recebidas:', firebaseInvoices.length);
       setInvoices(firebaseInvoices);
     }, undefined, null, currentWorkspace.id);
 
@@ -624,29 +624,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
           try {
             const deleteReq = indexedDB.deleteDatabase(dbName);
             deleteReq.onsuccess = () => {
-              console.log(`✅ Cache ${dbName} limpo!`);
+              console.log(`Cache ${dbName} limpo!`);
               cleared = true;
             };
             deleteReq.onerror = () => {
-              console.log(`âš ï¸ Não foi possível limpar ${dbName}`);
+              console.log(`â ï¸ Não foi possível limpar ${dbName}`);
             };
           } catch (e) {
-            console.log(`âš ï¸ Erro ao tentar limpar ${dbName}:`, e);
+            console.log(`â ï¸ Erro ao tentar limpar ${dbName}:`, e);
           }
         }
 
 
 
         if (cleared) {
-          console.log('✅ Cache do Firestore limpo com sucesso!');
-          console.log('🔄 Recarregue a página para ver os dados atualizados.');
+          console.log('Cache do Firestore limpo com sucesso!');
+          console.log('Recarregue a página para ver os dados atualizados.');
           alert('Cache limpo! Recarregue a página.');
         } else {
-          console.log('âš ï¸ Nenhum cache encontrado para limpar.');
+          console.log('â ï¸ Nenhum cache encontrado para limpar.');
           alert('Nenhum cache encontrado ou já foi limpo.');
         }
       } catch (error) {
-        console.error('âŒ Erro ao limpar cache:', error);
+        console.error('â Erro ao limpar cache:', error);
         alert('Erro ao limpar cache. Verifique o console.');
       }
     };
@@ -667,7 +667,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
         if (nonFixedStages.length === 0) {
-          console.log('✅ Nenhuma etapa não-fixa encontrada.');
+          console.log('Nenhuma etapa não-fixa encontrada.');
           alert('✅ Nenhuma etapa não-fixa encontrada. Apenas as etapas fixas permanecem.');
           return;
         }
@@ -690,10 +690,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-        console.log(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
+        console.log(`${nonFixedStages.length} etapas foram excluídas com sucesso!`);
         alert(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
       } catch (error) {
-        console.error('âŒ Erro ao excluir etapas:', error);
+        console.error('â Erro ao excluir etapas:', error);
         alert('Erro ao excluir etapas. Verifique o console.');
       }
     };
@@ -718,7 +718,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-        console.log('🔄 Resetando etapas do workspace:', currentWorkspace.id);
+        console.log('Resetando etapas do workspace:', currentWorkspace.id);
 
 
 
@@ -742,7 +742,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-        console.log('✅ Etapas antigas excluídas');
+        console.log('Etapas antigas excluídas');
 
 
 
@@ -762,11 +762,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-        console.log('✅ Novas etapas criadas com sucesso!');
+        console.log('Novas etapas criadas com sucesso!');
         alert('✅ Etapas resetadas com sucesso! A página será recarregada.');
         window.location.reload();
       } catch (error) {
-        console.error('âŒ Erro ao resetar etapas:', error);
+        console.error('â Erro ao resetar etapas:', error);
         alert('Erro ao resetar etapas. Verifique o console.');
       }
     };
@@ -774,7 +774,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
     // Log para facilitar o uso
-    console.log('💡 Funções disponíveis no console:');
+    console.log('Funções disponíveis no console:');
     console.log('   - window.clearFirestoreCache() - Limpa o cache do IndexedDB');
     console.log('   - window.clearAllStages() - Exclui todas as etapas não-fixas');
     console.log('   - window.resetStagesToFixed() - Reseta as etapas para as fixas padrão (com "Em Revisão")');
@@ -795,7 +795,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
         if (nonFixedStages.length === 0) {
-          console.log('✅ Nenhuma etapa não-fixa encontrada.');
+          console.log('Nenhuma etapa não-fixa encontrada.');
           alert('✅ Nenhuma etapa não-fixa encontrada. Apenas as etapas fixas permanecem.');
           return;
         }
@@ -818,10 +818,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-        console.log(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
+        console.log(`${nonFixedStages.length} etapas foram excluídas com sucesso!`);
         alert(`✅ ${nonFixedStages.length} etapas foram excluídas com sucesso!`);
       } catch (error) {
-        console.error('âŒ Erro ao excluir etapas:', error);
+        console.error('â Erro ao excluir etapas:', error);
         alert('Erro ao excluir etapas. Verifique o console.');
       }
     };
@@ -1357,7 +1357,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-                    // Verificar se ALGUM dos tipos do projeto corresponde Ã  categoria selecionada
+                    // Verificar se ALGUM dos tipos do projeto corresponde Ã  categoria selecionada
                     const projectTypes = getProjectTypesLocal(p);
                     return projectTypes.some(typeName => {
                       const projectTypeNormalized = normalizeString(typeName);
@@ -1697,7 +1697,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                         // Para etapas normais:
                         if (isProjectRecurring) {
                           // Projeto recorrente:
-                          // 1. Se tem stageId de etapa fixa â†’ mostrar na etapa correspondente
+                          // 1. Se tem stageId de etapa fixa â†' mostrar na etapa correspondente
                           if (hasFixedStageId((p as any).stageId)) {
                             return matchesStageId((p as any).stageId, stage.id, (stage as any).originalId);
                           }
@@ -1873,7 +1873,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              console.log('ðŸ” [Dashboard] Buscando etapa:', {
+              console.log('ð" [Dashboard] Buscando etapa:', {
                 projectDataStageId: projectData.stageId,
                 projectDataStatus: projectData.status,
                 isProjectRecurring,
@@ -1887,7 +1887,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               if (projectData.stageId) {
                 selectedStage = stagesForProject.find(s => s.id === projectData.stageId);
                 if (!selectedStage) {
-                  console.warn('âš ï¸ [Dashboard] Etapa não encontrada pelo stageId, tentando pelo status');
+                  console.warn('â ï¸ [Dashboard] Etapa não encontrada pelo stageId, tentando pelo status');
                   selectedStage = stagesForProject.find(s => s.status === projectData.status);
                 }
               } else {
@@ -1896,7 +1896,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              console.log('✅ [Dashboard] Etapa selecionada:', {
+              console.log('[Dashboard] Etapa selecionada:', {
                 selectedStageId: selectedStage?.id,
                 selectedStageTitle: selectedStage?.title,
                 selectedStageStatus: selectedStage?.status
@@ -1921,7 +1921,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              console.log('ðŸ’¾ [Dashboard] Salvando projeto com:', {
+              console.log('ð'¾ [Dashboard] Salvando projeto com:', {
                 finalStageId,
                 finalStatus,
                 finalProgress,
@@ -1966,7 +1966,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-                console.log('🔄 [Dashboard] Criando faturas para projeto recorrente:', {
+                console.log('[Dashboard] Criando faturas para projeto recorrente:', {
                   projectId,
                   recurringAmount,
                   recurringFirstDate,
@@ -2012,7 +2012,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
                 // 2. Criar fatura de mensalidade (se valor e data definidos) - SEM numeração de parcelas
-                console.log('🔄 [Dashboard] Verificando condição para criar fatura de mensalidade:', {
+                console.log('[Dashboard] Verificando condição para criar fatura de mensalidade:', {
                   recurringAmount,
                   recurringFirstDate,
                   condicaoAtendida: recurringAmount > 0 && recurringFirstDate
@@ -2081,7 +2081,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
                     workspaceId: currentWorkspace?.id,
                     number: `INV-${year}-${String(i + 1).padStart(3, '0')}`,
                     description: parcelas === 1
-                      ? 'Pagamento Ã  vista'
+                      ? 'Pagamento Ã  vista'
                       : `Parcela ${i + 1} de ${parcelas}`,
                     amount: valorParcela,
                     date: invoiceDate,
@@ -2118,7 +2118,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
               if (categoryData.name && !categories.some(c => c.name === categoryData.name)) {
                 await addCategoryToFirebase(categoryData.name, currentWorkspace?.id, categoryData.isRecurring, userId);
               }
-              console.log('✅ [Dashboard] Categoria adicionada, fechando modal...');
+              console.log('[Dashboard] Categoria adicionada, fechando modal...');
               setShowAddCategory(false);
             } catch (error) {
               console.error("Error adding category:", error);
@@ -4152,7 +4152,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
 
 
-    // Se não encontrou nenhuma coluna antes ou igual Ã  deadline, usar a primeira que seja >=
+    // Se não encontrou nenhuma coluna antes ou igual Ã  deadline, usar a primeira que seja >=
     if (!foundExact) {
       for (let i = 0; i < days.length; i++) {
         if (days[i].index >= endDay) {
@@ -4371,7 +4371,7 @@ const TimelineView: React.FC<{ projects: Project[]; onProjectClick?: (project: P
 
 
 
-              // Se a deadline está no passado em relação Ã  data de início, ajustar
+              // Se a deadline está no passado em relação Ã  data de início, ajustar
               // Isso pode acontecer se o deadline foi atualizado para uma data anterior
               if (deadline < startDate) {
                 startDate = deadline;
@@ -5351,7 +5351,7 @@ const AddProjectModal: React.FC<{
                   cpfCnpj: clientData.cpfCnpj.replace(/\D/g, ''),
                   phone: clientData.phone,
                 });
-                console.log('✅ Cliente criado no Asaas automaticamente');
+                console.log('Cliente criado no Asaas automaticamente');
               } catch (error) {
                 console.error('Erro ao criar cliente no Asaas (não crítico):', error);
                 // Não bloquear criação do projeto se falhar criação no Asaas
@@ -5398,7 +5398,7 @@ const AddProjectModal: React.FC<{
                   cpfCnpj: clientData.cpfCnpj.replace(/\D/g, ''),
                   phone: clientData.phone,
                 });
-                console.log('✅ Cliente criado no Asaas automaticamente');
+                console.log('Cliente criado no Asaas automaticamente');
               } catch (error) {
                 console.error('Erro ao criar cliente no Asaas (não crítico):', error);
                 // Não bloquear criação do projeto se falhar criação no Asaas
@@ -5439,7 +5439,7 @@ const AddProjectModal: React.FC<{
         if (clientAvatar && clientAvatar.trim() !== '' && !clientAvatar.includes('picsum.photos')) {
           projectData.avatar = clientAvatar;
         }
-        console.log('ðŸ“ [AddProjectModal] Enviando dados do projeto:', {
+        console.log('ð" [AddProjectModal] Enviando dados do projeto:', {
           stageId: projectData.stageId,
           status: projectData.status,
           types: projectData.types,

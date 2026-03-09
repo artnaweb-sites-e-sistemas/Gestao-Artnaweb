@@ -896,7 +896,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
                     // Log para debug
                     if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
-                      console.log(`🔍 [Timeline] Projeto: ${project.name}`, {
+                      console.log(`[Timeline] Projeto: ${project.name}`, {
                         deadlineDate: deadlineDate,
                         deadline: deadline.toISOString(),
                         today: today.toISOString(),
@@ -911,7 +911,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   } else {
                     // Log quando não tem deadline ou está concluído
                     if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
-                      console.log(`🔍 [Timeline] Projeto: ${project.name} - Sem deadline ou concluído`, {
+                      console.log(`[Timeline] Projeto: ${project.name} - Sem deadline ou concluído`, {
                         hasDeadline: !!deadlineDate,
                         status: project.status,
                         deadlineDate: project.deadline
@@ -1102,7 +1102,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           const getStageColorClass = (type: 'bg' | 'border' | 'text' | 'overlay') => {
                             // Log para debug dos projetos específicos
                             if ((project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') && type === 'bg') {
-                              console.log(`🎨 [Timeline] Determinando cor para: ${project.name}`, {
+                              console.log(`[Timeline] Determinando cor para: ${project.name}`, {
                                 isReview,
                                 isLate,
                                 isAdjustmentsStage,
@@ -1130,7 +1130,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             }
                             if (isLate && !isReview) {
                               if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
-                                console.log(`🔴 [Timeline] Aplicando cor VERMELHA para: ${project.name}`, { type });
+                                console.log(`[Timeline] Aplicando cor VERMELHA para: ${project.name}`, { type });
                               }
                               if (type === 'bg') return 'bg-rose-500/15 dark:bg-rose-500/25';
                               if (type === 'border') return 'border-l-4 border-l-rose-500';

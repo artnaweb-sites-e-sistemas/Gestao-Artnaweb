@@ -934,18 +934,18 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                                   console.error("Error updating paidByCreditCard:", error);
                                 }
                               }}
-                              title={invoice.paidByCreditCard ? "Pago no cartão – valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
-                              className={`flex items-center justify-center size-7 rounded-md text-[12px] transition-colors ${invoice.paidByCreditCard
-                                ? 'bg-primary/20 text-primary border border-primary/40'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border border-slate-200 dark:border-slate-700'}`}
+                              title={invoice.paidByCreditCard ? "Pago no cartão - valor entra no mês seguinte" : "Marcar como pago no cartão de crédito"}
+                              className={`flex items-center justify-center size-7 rounded-md text-[10px] transition-colors border shrink-0 ${invoice.paidByCreditCard
+                                ? 'bg-primary/20 text-primary border-primary/40'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 border-slate-200 dark:border-slate-700'}`}
                             >
-                              <span className="material-symbols-outlined text-[18px]">credit_card</span>
+                              <span className="material-symbols-outlined text-sm">credit_card</span>
                             </button>
                           )}
                           <button
                             onClick={() => canEdit && toggleInvoiceStatus(invoice)}
                             disabled={!canEdit}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''} ${invoice.status === 'Paid'
+                            className={`flex items-center gap-1.5 ${invoice.status === 'Pending' ? 'px-4' : 'px-3'} py-1.5 rounded-lg text-xs font-bold transition-colors ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''} ${invoice.status === 'Paid'
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200'
                               : isInvoiceOverdue
                                 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
