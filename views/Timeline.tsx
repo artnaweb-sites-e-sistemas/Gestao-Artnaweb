@@ -1016,7 +1016,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                       <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20" style={timelineGridVerticalStyle}>
                         {/* Sinalização de vencido na área do calendário (recorrentes) - no canto superior esquerdo da linha para não sobrepor a barra */}
                         {isRecurringOverdue && (
-                          <div className="absolute left-2 top-1.5 z-0 flex items-center gap-1.5 flex-wrap">
+                          <div className="absolute left-2 top-1.5 z-10 flex items-center gap-1.5 flex-wrap">
                             {isMaintenanceLate && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white dark:bg-rose-600 dark:text-white shadow-sm border border-rose-400/50" title="Data de manutenção vencida">
                                 <span className="material-symbols-outlined text-xs">build</span> Manutenção vencida

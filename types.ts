@@ -237,6 +237,35 @@ export interface Invoice {
   updatedAt?: Date | any;
 }
 
+// Message Templates
+export interface MessageTemplateFile {
+  id: string;
+  name: string;
+  url: string;
+  type: 'image' | 'document' | 'video' | 'other';
+  size: number;
+  uploadedAt: Date | any;
+}
+
+export interface MessageTemplateStage {
+  id: string;
+  title: string;
+  content: string; // HTML from RichTextEditor
+  files: MessageTemplateFile[];
+  order: number;
+  createdAt: Date | any;
+}
+
+export interface MessageTemplate {
+  id: string;
+  workspaceId: string;
+  serviceId: string;   // Category ID
+  serviceName: string; // Category name (for display)
+  stages: MessageTemplateStage[];
+  createdAt: Date | any;
+  updatedAt?: Date | any;
+}
+
 // Interface Client para integração com Asaas
 export interface Client {
   id: string;

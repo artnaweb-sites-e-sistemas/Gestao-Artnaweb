@@ -30,7 +30,7 @@ import {
   User
 } from "firebase/auth";
 import { db, storage, auth } from "./config";
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, WorkspaceMember, Workspace, Client } from "../types";
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, WorkspaceMember, Workspace, Client, MessageTemplate, MessageTemplateStage, MessageTemplateFile } from "../types";
 
 // Habilitar persistência offline (opcional)
 try {
@@ -56,6 +56,8 @@ const PROJECT_FILES_COLLECTION = "projectFiles";
 const WORKSPACES_COLLECTION = "workspaces";
 const INVOICES_COLLECTION = "invoices";
 const CLIENTS_COLLECTION = "clients";
+const MESSAGE_TEMPLATES_COLLECTION = "messageTemplates";
+const MESSAGE_TEMPLATE_FILES_COLLECTION = "messageTemplateFiles";
 
 // Projects
 export const getProjects = async (): Promise<Project[]> => {
@@ -2827,5 +2829,122 @@ export const syncOldClientsFromProjects = async (workspaceId: string): Promise<{
   } catch (error) {
     console.error("Error syncing old clients from projects:", error);
     throw error;
+  }
+};
+
+// ─── Message Templates ────────────────────────────────────────────────────────
+
+export const subscribeToMessageTemplates = (
+  workspaceId: string,
+  callback: (templates: MessageTemplate[]) => void
+) => {
+  if (!db) return () => {};
+  const q = query(
+    collection(db, MESSAGE_TEMPLATES_COLLECTION),
+    where("workspaceId", "==", workspaceId)
+  );
+  return onSnapshot(q, (snapshot) => {
+    const templates = snapshot.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      createdAt: d.data().createdAt?.toDate?.() || d.data().createdAt,
+      updatedAt: d.data().updatedAt?.toDate?.() || d.data().updatedAt,
+    })) as MessageTemplate[];
+    callback(templates);
+  });
+};
+
+export const getOrCreateMessageTemplate = async (
+  workspaceId: string,
+  serviceId: string,
+  serviceName: string
+): Promise<MessageTemplate> => {
+  if (!db) throw new Error("Firebase não está inicializado");
+
+  const q = query(
+    collection(db, MESSAGE_TEMPLATES_COLLECTION),
+    where("workspaceId", "==", workspaceId),
+    where("serviceId", "==", serviceId)
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    const d = snapshot.docs[0];
+    return { id: d.id, ...d.data() } as MessageTemplate;
+  }
+
+  const now = new Date();
+  const docRef = await addDoc(collection(db, MESSAGE_TEMPLATES_COLLECTION), {
+    workspaceId,
+    serviceId,
+    serviceName,
+    stages: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    id: docRef.id,
+    workspaceId,
+    serviceId,
+    serviceName,
+    stages: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+export const updateMessageTemplateStages = async (
+  templateId: string,
+  stages: MessageTemplateStage[]
+): Promise<void> => {
+  if (!db) throw new Error("Firebase não está inicializado");
+  await updateDoc(doc(db, MESSAGE_TEMPLATES_COLLECTION, templateId), {
+    stages,
+    updatedAt: new Date(),
+  });
+};
+
+export const uploadMessageTemplateFile = async (
+  templateId: string,
+  stageId: string,
+  file: File
+): Promise<MessageTemplateFile> => {
+  if (!storage) throw new Error("Firebase Storage não está inicializado");
+  const ext = file.name.split(".").pop();
+  const path = `messageTemplates/${templateId}/${stageId}/${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+
+  const fileType = (() => {
+    const mime = file.type;
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (
+      mime === "application/pdf" ||
+      mime.includes("document") ||
+      mime.includes("spreadsheet") ||
+      mime.includes("text/")
+    )
+      return "document";
+    return "other";
+  })() as MessageTemplateFile["type"];
+
+  return {
+    id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: file.name,
+    url,
+    type: fileType,
+    size: file.size,
+    uploadedAt: new Date(),
+  };
+};
+
+export const deleteMessageTemplateFile = async (fileUrl: string): Promise<void> => {
+  if (!storage) return;
+  try {
+    const storageRef = ref(storage, fileUrl);
+    await deleteObject(storageRef);
+  } catch (error) {
+    console.warn("Could not delete file from storage:", error);
   }
 };

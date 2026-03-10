@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate, Workspace, getInvoiceReferenceDate } from '../types';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Project, Activity, TeamMember, StageTask, ProjectStageTask, ProjectFile, Category, Invoice, Stage, parseSafeDate, Workspace, getInvoiceReferenceDate, MessageTemplate, MessageTemplateStage, MessageTemplateFile } from '../types';
 import {
   subscribeToProjectActivities,
   subscribeToProjectTeamMembers,
@@ -36,6 +36,11 @@ import {
   updateProjectFile,
   migrateProjectMode,
   getClient,
+  subscribeToMessageTemplates,
+  getOrCreateMessageTemplate,
+  updateMessageTemplateStages,
+  uploadMessageTemplateFile,
+  deleteMessageTemplateFile,
 } from '../firebase/services';
 
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -191,9 +196,147 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkTitle, setNewLinkTitle] = useState('');
 
+  // ─── Message Templates ────────────────────────────────────────────────────
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplate[]>([]);
+  const [selectedTemplateServiceId, setSelectedTemplateServiceId] = useState<string | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<MessageTemplate | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateDragIndex, setTemplateDragIndex] = useState<number | null>(null);
+  const [templateDragOverIndex, setTemplateDragOverIndex] = useState<number | null>(null);
+  const [uploadingTemplateFile, setUploadingTemplateFile] = useState<string | null>(null); // stageId
+  const templateFileRefs = useRef<{ [stageId: string]: HTMLInputElement | null }>({});
+  const templateSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Estados para data da tarefa
   const [editingTaskDateId, setEditingTaskDateId] = useState<string | null>(null);
   const [taskDatePickerPosition, setTaskDatePickerPosition] = useState({ top: 0, left: 0 });
+
+  // ─── Message Template Handlers ───────────────────────────────────────────
+
+  const saveTemplateStages = useCallback(async (templateId: string, stages: MessageTemplateStage[]) => {
+    if (templateSaveTimeoutRef.current) clearTimeout(templateSaveTimeoutRef.current);
+    templateSaveTimeoutRef.current = setTimeout(async () => {
+      setTemplateSaving(true);
+      try {
+        await updateMessageTemplateStages(templateId, stages);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setTemplateSaving(false);
+      }
+    }, 800);
+  }, []);
+
+  const addTemplateStage = useCallback(async () => {
+    if (!activeTemplate || !currentProject.workspaceId) return;
+    const newStage: MessageTemplateStage = {
+      id: `stage_${Date.now()}`,
+      title: `Etapa ${(activeTemplate.stages?.length || 0) + 1}`,
+      content: '',
+      files: [],
+      order: (activeTemplate.stages?.length || 0),
+      createdAt: new Date(),
+    };
+    const updatedStages = [...(activeTemplate.stages || []), newStage];
+    const updated = { ...activeTemplate, stages: updatedStages };
+    setActiveTemplate(updated);
+    await saveTemplateStages(activeTemplate.id, updatedStages);
+  }, [activeTemplate, currentProject.workspaceId, saveTemplateStages]);
+
+  const updateTemplateStageTitle = useCallback((stageId: string, title: string) => {
+    if (!activeTemplate) return;
+    const updatedStages = activeTemplate.stages.map(s => s.id === stageId ? { ...s, title } : s);
+    const updated = { ...activeTemplate, stages: updatedStages };
+    setActiveTemplate(updated);
+    saveTemplateStages(activeTemplate.id, updatedStages);
+  }, [activeTemplate, saveTemplateStages]);
+
+  const updateTemplateStageContent = useCallback((stageId: string, content: string) => {
+    if (!activeTemplate) return;
+    const updatedStages = activeTemplate.stages.map(s => s.id === stageId ? { ...s, content } : s);
+    const updated = { ...activeTemplate, stages: updatedStages };
+    setActiveTemplate(updated);
+    saveTemplateStages(activeTemplate.id, updatedStages);
+  }, [activeTemplate, saveTemplateStages]);
+
+  const removeTemplateStage = useCallback(async (stageId: string) => {
+    if (!activeTemplate) return;
+    const stageToRemove = activeTemplate.stages.find(s => s.id === stageId);
+    // Delete all files in stage from storage
+    if (stageToRemove) {
+      for (const file of stageToRemove.files || []) {
+        deleteMessageTemplateFile(file.url).catch(console.error);
+      }
+    }
+    const updatedStages = activeTemplate.stages
+      .filter(s => s.id !== stageId)
+      .map((s, i) => ({ ...s, order: i }));
+    const updated = { ...activeTemplate, stages: updatedStages };
+    setActiveTemplate(updated);
+    await saveTemplateStages(activeTemplate.id, updatedStages);
+  }, [activeTemplate, saveTemplateStages]);
+
+  const handleTemplateFileUpload = useCallback(async (stageId: string, file: File) => {
+    if (!activeTemplate) return;
+    setUploadingTemplateFile(stageId);
+    try {
+      const uploaded = await uploadMessageTemplateFile(activeTemplate.id, stageId, file);
+      const updatedStages = activeTemplate.stages.map(s =>
+        s.id === stageId ? { ...s, files: [...(s.files || []), uploaded] } : s
+      );
+      const updated = { ...activeTemplate, stages: updatedStages };
+      setActiveTemplate(updated);
+      await updateMessageTemplateStages(activeTemplate.id, updatedStages);
+    } catch (e) {
+      console.error(e);
+      setToast({ message: "Erro ao enviar arquivo", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setUploadingTemplateFile(null);
+    }
+  }, [activeTemplate]);
+
+  const removeTemplateFile = useCallback(async (stageId: string, fileId: string) => {
+    if (!activeTemplate) return;
+    const stage = activeTemplate.stages.find(s => s.id === stageId);
+    const file = stage?.files?.find(f => f.id === fileId);
+    if (file) deleteMessageTemplateFile(file.url).catch(console.error);
+    const updatedStages = activeTemplate.stages.map(s =>
+      s.id === stageId ? { ...s, files: (s.files || []).filter(f => f.id !== fileId) } : s
+    );
+    const updated = { ...activeTemplate, stages: updatedStages };
+    setActiveTemplate(updated);
+    await updateMessageTemplateStages(activeTemplate.id, updatedStages);
+  }, [activeTemplate]);
+
+  const handleTemplateStageDragStart = useCallback((index: number) => {
+    setTemplateDragIndex(index);
+  }, []);
+
+  const handleTemplateStageDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setTemplateDragOverIndex(index);
+  }, []);
+
+  const handleTemplateStageDrop = useCallback(async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (templateDragIndex === null || !activeTemplate) return;
+    const stages = [...activeTemplate.stages];
+    const [moved] = stages.splice(templateDragIndex, 1);
+    stages.splice(dropIndex, 0, moved);
+    const reordered = stages.map((s, i) => ({ ...s, order: i }));
+    const updated = { ...activeTemplate, stages: reordered };
+    setActiveTemplate(updated);
+    setTemplateDragIndex(null);
+    setTemplateDragOverIndex(null);
+    await saveTemplateStages(activeTemplate.id, reordered);
+  }, [templateDragIndex, activeTemplate, saveTemplateStages]);
+
+  const handleTemplateStageDragEnd = useCallback(() => {
+    setTemplateDragIndex(null);
+    setTemplateDragOverIndex(null);
+  }, []);
 
   const handleNextDateConfirm = async (nextDate: Date) => {
     if (!nextDateType) return;
@@ -481,6 +624,23 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
       unsubscribeProjectFiles();
     };
   }, [currentProject.id, currentProject.workspaceId, currentProject.status]);
+
+  // Subscribe to message templates for this workspace
+  useEffect(() => {
+    if (!currentProject.workspaceId) return;
+    const unsub = subscribeToMessageTemplates(currentProject.workspaceId, (templates) => {
+      setMessageTemplates(templates);
+    });
+    return () => unsub();
+  }, [currentProject.workspaceId]);
+
+  // Keep activeTemplate in sync when the Firestore subscription updates an already-open template
+  useEffect(() => {
+    if (!activeTemplate) return;
+    const updated = messageTemplates.find(t => t.id === activeTemplate.id);
+    if (updated) setActiveTemplate(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageTemplates]);
 
   // Recalcular etapas quando categorias ou tipo do projeto mudarem
   useEffect(() => {
@@ -1852,8 +2012,8 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                 />
               )}
               <NavBtn
-                icon="rocket_launch"
-                label="Roteiro do Projeto"
+                icon="mark_chat_unread"
+                label="Modelos de Mensagens"
                 active={activeManagementTab === 'roadmap'}
                 onClick={() => setActiveManagementTab('roadmap')}
               />
@@ -3503,76 +3663,354 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
           }
 
           {
-            activeManagementTab === 'roadmap' && (
-              <div className="p-8">
-                <div className="max-w-5xl mx-auto">
-                  <div className="flex items-center gap-2 text-slate-500 mb-4">
-                    <button
-                      onClick={onClose}
-                      className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-sm">arrow_back</span>
-                      <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
-                    </button>
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">/</span>
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{currentProject.name}</span>
-                  </div>
-                  <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 dark:border-slate-800 pb-6 mb-6">
-                    <div className="flex flex-col gap-1">
-                      <h1 className="text-3xl font-black leading-tight tracking-tight">Roteiro do Projeto</h1>
-                      <p className="text-slate-500 text-sm">Acompanhe os marcos e entregas do projeto</p>
+            activeManagementTab === 'roadmap' && (() => {
+              // Get services associated with this project
+              const projectTypes = currentProject.types && currentProject.types.length > 0
+                ? currentProject.types
+                : currentProject.type ? [currentProject.type] : [];
+              const projectServices = categories.filter(cat => projectTypes.includes(cat.name));
+
+              return (
+                <div className="flex flex-col h-full min-h-0">
+                  {/* Header */}
+                  <div className="px-8 pt-8 pb-0">
+                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-500 mb-5">
+                      <button
+                        onClick={onClose}
+                        className="flex items-center gap-2 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">arrow_back</span>
+                        <span className="text-xs font-bold uppercase tracking-wider">Painel</span>
+                      </button>
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600">/</span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{currentProject.name}</span>
                     </div>
-                    <button className="flex items-center px-4 h-10 bg-primary text-white rounded-lg text-xs font-bold hover:bg-blue-700">
-                      <span className="material-symbols-outlined text-[18px] mr-2">add</span> Novo Marco
-                    </button>
+
+                    <div className="flex flex-wrap items-end justify-between gap-4 pb-6 border-b border-slate-200 dark:border-white/5">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                            <span className="material-symbols-outlined text-primary text-[18px]">mark_chat_unread</span>
+                          </div>
+                          <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Modelos de Mensagens</h1>
+                        </div>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm ml-11">Crie modelos de mensagens por serviço para enviar aos seus clientes</p>
+                      </div>
+                      {activeTemplate && (
+                        <div className="flex items-center gap-2">
+                          {templateSaving && (
+                            <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-500">
+                              <span className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></span>
+                              Salvando...
+                            </span>
+                          )}
+                          <button
+                            onClick={addTemplateStage}
+                            disabled={!canEdit}
+                            className="flex items-center gap-2 px-4 h-9 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-40 shadow-lg shadow-primary/20"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">add</span>
+                            Nova Etapa
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8">
-                    <div className="relative">
-                      {[
-                        { id: '1', title: 'Kickoff do Projeto', date: '15 Jan, 2024', status: 'completed', description: 'Reunião inicial com o cliente' },
-                        { id: '2', title: 'Briefing Aprovado', date: '20 Jan, 2024', status: 'completed', description: 'Documentação de requisitos finalizada' },
-                        { id: '3', title: 'Design Inicial', date: '25 Jan, 2024', status: 'current', description: 'Primeiros mockups e wireframes' },
-                        { id: '4', title: 'Desenvolvimento', date: '01 Fev, 2024', status: 'pending', description: 'Início da fase de codificação' },
-                        { id: '5', title: 'Testes e QA', date: '15 Fev, 2024', status: 'pending', description: 'Validação e correções' },
-                        { id: '6', title: 'Lançamento', date: '01 Mar, 2024', status: 'pending', description: 'Deploy em produção' },
-                      ].map((milestone, index) => (
-                        <div key={milestone.id} className="flex gap-6 pb-8 last:pb-0">
-                          <div className="flex flex-col items-center">
-                            <div className={`size-12 rounded-full flex items-center justify-center font-bold text-sm ${milestone.status === 'completed' ? 'bg-green-500 text-white' :
-                              milestone.status === 'current' ? 'bg-primary text-white ring-4 ring-primary/20' :
-                                'bg-slate-200 text-slate-400'
-                              }`}>
-                              {milestone.status === 'completed' ? (
-                                <span className="material-symbols-outlined">check</span>
-                              ) : (
-                                <span>{index + 1}</span>
-                              )}
-                            </div>
-                            {index < 5 && (
-                              <div className={`w-0.5 h-full mt-2 ${milestone.status === 'completed' ? 'bg-green-500' : 'bg-slate-200'
-                                }`} style={{ minHeight: '80px' }}></div>
-                            )}
+                  {/* Body: two-column layout */}
+                  <div className="flex flex-1 min-h-0 overflow-hidden">
+
+                    {/* Left: Service Selector */}
+                    <div className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-white/5 flex flex-col overflow-y-auto py-6 px-4 gap-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-2 mb-2">Serviços do Projeto</p>
+
+                      {projectServices.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 px-3 text-center">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mb-3">
+                            <span className="material-symbols-outlined text-slate-500 text-[20px]">category</span>
                           </div>
-                          <div className="flex-1 pb-8">
-                            <div className={`p-4 rounded-lg border-2 ${milestone.status === 'completed' ? 'border-green-200 bg-green-50/50 dark:bg-green-900/10' :
-                              milestone.status === 'current' ? 'border-primary bg-primary/5' :
-                                'border-slate-200 bg-slate-50 dark:bg-slate-800/50'
-                              }`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-lg font-bold">{milestone.title}</h3>
-                                <span className="text-sm text-slate-500">{milestone.date}</span>
+                          <p className="text-xs text-slate-500 leading-relaxed">Nenhum serviço associado a este projeto</p>
+                        </div>
+                      ) : (
+                        projectServices.map((service) => {
+                          const tmpl = messageTemplates.find(t => t.serviceId === service.id);
+                          const stageCount = tmpl?.stages?.length || 0;
+                          const isActive = selectedTemplateServiceId === service.id;
+                          return (
+                            <button
+                              key={service.id}
+                              onClick={async () => {
+                                if (selectedTemplateServiceId === service.id) return;
+                                setSelectedTemplateServiceId(service.id);
+                                setActiveTemplate(null);
+                                setTemplateLoading(true);
+                                try {
+                                  const existing = messageTemplates.find(t => t.serviceId === service.id);
+                                  if (existing) {
+                                    setActiveTemplate(existing);
+                                  } else {
+                                    const t = await getOrCreateMessageTemplate(
+                                      currentProject.workspaceId!,
+                                      service.id,
+                                      service.name
+                                    );
+                                    setActiveTemplate(t);
+                                  }
+                                } catch (e) {
+                                  console.error(e);
+                                  setToast({ message: 'Erro ao carregar modelo', type: 'error' });
+                                  setTimeout(() => setToast(null), 3000);
+                                } finally {
+                                  setTemplateLoading(false);
+                                }
+                              }}
+                              className={`w-full text-left rounded-xl px-3 py-3 transition-all group ${isActive
+                                ? 'bg-primary/15 border border-primary/30'
+                                : 'border border-transparent hover:bg-slate-100 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/8'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isActive ? 'bg-primary/20' : 'bg-slate-100 dark:bg-white/5 group-hover:bg-slate-200 dark:group-hover:bg-white/8'}`}>
+                                  <span className={`material-symbols-outlined text-[15px] ${isActive ? 'text-primary' : 'text-slate-500 dark:text-slate-400'}`}>
+                                    {service.isRecurring ? 'autorenew' : 'widgets'}
+                                  </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-xs font-semibold truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{service.name}</p>
+                                  <p className={`text-[10px] mt-0.5 ${isActive ? 'text-primary/70' : 'text-slate-500 dark:text-slate-600'}`}>
+                                    {stageCount === 0 ? 'Sem etapas' : `${stageCount} etapa${stageCount !== 1 ? 's' : ''}`}
+                                  </p>
+                                </div>
+                                {isActive && (
+                                  <span className="material-symbols-outlined text-primary text-[14px]">chevron_right</span>
+                                )}
                               </div>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">{milestone.description}</p>
-                            </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Right: Template Editor */}
+                    <div className="flex-1 min-w-0 overflow-y-auto py-6 px-8">
+                      {!selectedTemplateServiceId ? (
+                        <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/8 flex items-center justify-center mb-4">
+                            <span className="material-symbols-outlined text-slate-500 text-[32px]">forum</span>
+                          </div>
+                          <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300 mb-2">Selecione um serviço</h3>
+                          <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                            Escolha um serviço na lista à esquerda para visualizar e editar os modelos de mensagens das etapas
+                          </p>
+                        </div>
+                      ) : templateLoading ? (
+                        <div className="flex items-center justify-center h-full min-h-[400px]">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-sm text-slate-500 dark:text-slate-500">Carregando modelo...</p>
                           </div>
                         </div>
-                      ))}
+                      ) : activeTemplate ? (
+                        <div className="flex flex-col gap-4">
+                          {/* Template header */}
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center">
+                              <span className="material-symbols-outlined text-primary text-[18px]">mark_chat_unread</span>
+                            </div>
+                            <div>
+                              <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeTemplate.serviceName}</h2>
+                              <p className="text-xs text-slate-500 dark:text-slate-500">
+                                {(activeTemplate.stages?.length || 0) === 0
+                                  ? 'Nenhuma etapa criada ainda'
+                                  : `${activeTemplate.stages.length} etapa${activeTemplate.stages.length !== 1 ? 's' : ''} de mensagem`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Empty state */}
+                          {(!activeTemplate.stages || activeTemplate.stages.length === 0) && (
+                            <div className="flex flex-col items-center justify-center py-16 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/2">
+                              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                                <span className="material-symbols-outlined text-primary text-[24px]">add_comment</span>
+                              </div>
+                              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Nenhuma etapa criada</h3>
+                              <p className="text-xs text-slate-500 max-w-xs text-center mb-5 leading-relaxed">
+                                Crie etapas para este serviço e defina mensagens modelo para cada fase do projeto
+                              </p>
+                              {canEdit && (
+                                <button
+                                  onClick={addTemplateStage}
+                                  className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/20"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">add</span>
+                                  Criar primeira etapa
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Stages */}
+                          <div className="grid grid-cols-2 gap-4">
+                            {(activeTemplate.stages || [])
+                              .sort((a, b) => a.order - b.order)
+                              .map((stage, index) => (
+                              <div
+                                key={stage.id}
+                                draggable={canEdit}
+                                onDragStart={() => handleTemplateStageDragStart(index)}
+                                onDragOver={(e) => handleTemplateStageDragOver(e, index)}
+                                onDrop={(e) => handleTemplateStageDrop(e, index)}
+                                onDragEnd={handleTemplateStageDragEnd}
+                                className={`rounded-2xl border transition-all ${templateDragOverIndex === index && templateDragIndex !== index
+                                  ? 'border-primary/50 bg-primary/5 scale-[1.01] shadow-lg shadow-primary/10'
+                                  : templateDragIndex === index
+                                    ? 'border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/3 opacity-50'
+                                    : 'border-slate-200 dark:border-white/8 bg-slate-50 dark:bg-white/3 hover:border-slate-300 dark:hover:border-white/12'
+                                }`}
+                              >
+                                {/* Stage header */}
+                                <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200 dark:border-white/5">
+                                  {canEdit && (
+                                    <div className="cursor-grab active:cursor-grabbing text-slate-500 dark:text-slate-600 hover:text-slate-700 dark:hover:text-slate-400 transition-colors flex-shrink-0">
+                                      <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
+                                    </div>
+                                  )}
+                                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-[11px] font-bold text-primary">{index + 1}</span>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={stage.title}
+                                    readOnly={!canEdit}
+                                    onChange={(e) => updateTemplateStageTitle(stage.id, e.target.value)}
+                                    className="flex-1 bg-transparent text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 outline-none border-none focus:ring-0 min-w-0"
+                                    placeholder="Nome da etapa..."
+                                  />
+                                  {canEdit && (
+                                    <button
+                                      onClick={() => removeTemplateStage(stage.id)}
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-400/10 transition-all flex-shrink-0"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Stage content: rich text editor (altura redimensionável) */}
+                                <div className="px-5 py-4">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-600 mb-2">Mensagem Modelo</p>
+                                  <div className="resize-y min-h-[200px] h-[240px] max-h-[70vh] overflow-hidden rounded-xl border border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-slate-800/50 flex flex-col">
+                                    <RichTextEditor
+                                      key={`${activeTemplate.id}-${stage.id}`}
+                                      content={stage.content}
+                                      readOnly={!canEdit}
+                                      onChange={(content) => updateTemplateStageContent(stage.id, content)}
+                                      placeholder="Escreva aqui o modelo de mensagem para esta etapa..."
+                                      fillHeight
+                                    />
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 dark:text-slate-600 mt-1.5 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[12px]">unfold_more</span>
+                                    Arraste a borda para ajustar a altura
+                                  </p>
+                                </div>
+
+                                {/* Stage files */}
+                                <div className="px-5 pb-5">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-600">Arquivos Modelo</p>
+                                    {canEdit && (
+                                      <button
+                                        onClick={() => templateFileRefs.current[stage.id]?.click()}
+                                        disabled={uploadingTemplateFile === stage.id}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/8 border border-slate-200 dark:border-white/8 hover:border-slate-300 dark:hover:border-white/15 transition-all disabled:opacity-50"
+                                      >
+                                        {uploadingTemplateFile === stage.id ? (
+                                          <>
+                                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></span>
+                                            Enviando...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <span className="material-symbols-outlined text-[13px]">attach_file</span>
+                                            Anexar arquivo
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+                                    <input
+                                      type="file"
+                                      ref={(el) => { templateFileRefs.current[stage.id] = el; }}
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleTemplateFileUpload(stage.id, file);
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </div>
+
+                                  {(stage.files || []).length === 0 ? (
+                                    <div className="flex items-center gap-2 py-3 px-3 rounded-xl border border-dashed border-slate-200 dark:border-white/8 text-slate-500 dark:text-slate-600">
+                                      <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                                      <span className="text-xs">Nenhum arquivo anexado</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-2">
+                                      {(stage.files || []).map((file) => {
+                                        const fileIcon = file.type === 'image' ? 'image' : file.type === 'video' ? 'video_file' : file.type === 'document' ? 'description' : 'attach_file';
+                                        const fileColor = file.type === 'image' ? 'text-blue-500 dark:text-blue-400' : file.type === 'video' ? 'text-purple-500 dark:text-purple-400' : file.type === 'document' ? 'text-green-500 dark:text-green-400' : 'text-slate-500 dark:text-slate-400';
+                                        const sizeMB = file.size ? (file.size / 1024 / 1024).toFixed(1) : '?';
+                                        return (
+                                          <div key={file.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-white/4 border border-slate-200 dark:border-white/6 group">
+                                            <span className={`material-symbols-outlined text-[18px] flex-shrink-0 ${fileColor}`}>{fileIcon}</span>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{file.name}</p>
+                                              <p className="text-[10px] text-slate-500 dark:text-slate-600">{sizeMB} MB</p>
+                                            </div>
+                                            <a
+                                              href={file.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-500/10 dark:hover:bg-blue-400/10 transition-all opacity-0 group-hover:opacity-100"
+                                            >
+                                              <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+                                            </a>
+                                            {canEdit && (
+                                              <button
+                                                onClick={() => removeTemplateFile(stage.id, file.id)}
+                                                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-400/10 transition-all opacity-0 group-hover:opacity-100"
+                                              >
+                                                <span className="material-symbols-outlined text-[15px]">close</span>
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Add stage button (bottom) */}
+                          {canEdit && (activeTemplate.stages?.length || 0) > 0 && (
+                            <button
+                              onClick={addTemplateStage}
+                              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-600 hover:text-slate-900 dark:hover:text-white hover:border-primary/40 hover:bg-primary/5 transition-all text-xs font-semibold group"
+                            >
+                              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">add_circle</span>
+                              Adicionar etapa
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-              </div>
-            )
+              );
+            })()
           }
         </main >
 

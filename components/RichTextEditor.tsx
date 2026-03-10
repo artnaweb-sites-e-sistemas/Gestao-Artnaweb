@@ -10,13 +10,16 @@ interface RichTextEditorProps {
     onChange: (content: string) => void;
     placeholder?: string;
     readOnly?: boolean;
+    /** Quando true, o editor preenche toda a altura do container (útil em áreas redimensionáveis) */
+    fillHeight?: boolean;
 }
 
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     content,
     onChange,
     placeholder = 'Adicione uma descrição para o projeto...',
-    readOnly = false
+    readOnly = false,
+    fillHeight = false
 }) => {
     // Só sincronizar content → editor quando for mudança externa (ex.: troca de projeto), não ao digitar
     const lastContentFromEditorRef = useRef<string>(content);
@@ -43,7 +46,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         content,
         editorProps: {
             attributes: {
-                class: `prose prose-sm max-w-none focus:outline-none min-h-[150px] p-4 ${readOnly ? 'cursor-default' : ''}`,
+                class: `prose prose-sm max-w-none focus:outline-none p-4 ${fillHeight ? 'min-h-full' : 'min-h-[150px]'} ${readOnly ? 'cursor-default' : ''}`,
             },
         },
         onUpdate: ({ editor }) => {
@@ -73,7 +76,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
 
     return (
-        <div className={`border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800/50 ${readOnly ? 'opacity-80' : ''}`}>
+        <div className={`rounded-lg overflow-hidden bg-white dark:bg-slate-800/50 ${fillHeight ? 'flex flex-col h-full min-h-full' : 'border border-slate-200 dark:border-slate-700'} ${readOnly ? 'opacity-80' : ''}`}>
             {/* Barra de Ferramentas - Apenas se não for readOnly */}
             {!readOnly && (
                 <div className="flex flex-wrap items-center gap-1 p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
@@ -192,8 +195,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             )}
 
             {/* Editor de Conteúdo */}
-            <div className="bg-white dark:bg-slate-800/30">
-                <EditorContent editor={editor} />
+            <div className={`bg-white dark:bg-slate-800/30 ${fillHeight ? 'flex-1 min-h-0 flex flex-col overflow-auto' : ''}`}>
+                <div className={fillHeight ? 'min-h-full flex-1' : ''}>
+                    <EditorContent editor={editor} />
+                </div>
             </div>
         </div>
     );
