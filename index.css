@@ -20,6 +20,7 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-light);
 }
 
 h1,
@@ -167,8 +168,9 @@ h6 {
 }
 
 .ProseMirror p {
-  margin-bottom: 1rem;
-  line-height: 1.7;
+  margin-top: 0;
+  margin-bottom: 0.4em;
+  line-height: 1.5;
   color: #475569;
 }
 

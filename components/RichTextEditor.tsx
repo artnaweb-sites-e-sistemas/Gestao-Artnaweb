@@ -1,9 +1,94 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
+import { DOMSerializer } from '@tiptap/pm/model';
+
+/**
+ * Converte HTML do editor para texto compatível com WhatsApp.
+ * Reproduz o espaçamento visual do editor: apenas \n entre blocos adjacentes.
+ */
+function htmlToWhatsAppText(html: string): string {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+
+    function processInline(node: Node): string {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const el = node as HTMLElement;
+        const tag = el.tagName?.toLowerCase();
+
+        if (tag === 'br') return '\n';
+
+        const inner = Array.from(el.childNodes).map(processInline).join('');
+        if (!inner.trim()) return inner;
+
+        if (tag === 'strong' || tag === 'b') return `*${inner.trim()}*`;
+        if (tag === 'em' || tag === 'i') return `_${inner.trim()}_`;
+        if (tag === 's' || tag === 'strike' || tag === 'del') return `~${inner.trim()}~`;
+        if (tag === 'a') {
+            const href = el.getAttribute('href') || '';
+            return href && inner.trim() !== href ? `${inner.trim()} (${href})` : href || inner;
+        }
+        return inner;
+    }
+
+    const lines: string[] = [];
+
+    function processChildren(container: Node): void {
+        Array.from(container.childNodes).forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent?.trim();
+                if (text) lines.push(text);
+                return;
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+            const el = node as HTMLElement;
+            const tag = el.tagName?.toLowerCase();
+
+            if (tag === 'p' || tag === 'div' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'blockquote') {
+                const text = processInline(el).trim();
+                if (text) {
+                    lines.push(text);
+                } else {
+                    lines.push('');
+                }
+                return;
+            }
+
+            if (tag === 'ul') {
+                Array.from(el.querySelectorAll(':scope > li')).forEach(li => {
+                    const text = processInline(li).trim();
+                    if (text) lines.push('• ' + text);
+                });
+                return;
+            }
+
+            if (tag === 'ol') {
+                Array.from(el.querySelectorAll(':scope > li')).forEach((li, i) => {
+                    const text = processInline(li).trim();
+                    if (text) lines.push(`${i + 1}. ${text}`);
+                });
+                return;
+            }
+
+            if (tag === 'hr') {
+                lines.push('---');
+                return;
+            }
+
+            processChildren(el);
+        });
+    }
+
+    processChildren(div);
+
+    return lines.join('\n');
+}
 
 interface RichTextEditorProps {
     content: string;
@@ -56,6 +141,33 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         },
     });
 
+    const handleCopy = useCallback((event: ClipboardEvent) => {
+        if (!editor) return;
+        const { from, to } = editor.state.selection;
+        if (from === to) return;
+
+        const slice = editor.state.doc.slice(from, to);
+        const serializer = DOMSerializer.fromSchema(editor.schema);
+        const fragment = serializer.serializeFragment(slice.content);
+        const wrapper = document.createElement('div');
+        wrapper.appendChild(fragment);
+        const html = wrapper.innerHTML;
+
+        if (html.trim()) {
+            const whatsappText = htmlToWhatsAppText(html);
+            event.preventDefault();
+            event.clipboardData?.setData('text/plain', whatsappText);
+            event.clipboardData?.setData('text/html', html);
+        }
+    }, [editor]);
+
+    useEffect(() => {
+        const dom = editor?.view?.dom;
+        if (!dom) return;
+        dom.addEventListener('copy', handleCopy as EventListener);
+        return () => dom.removeEventListener('copy', handleCopy as EventListener);
+    }, [editor, handleCopy]);
+
     // Atualizar o modo de edição quando o prop readOnly mudar
     useEffect(() => {
         if (editor) {
@@ -76,10 +188,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
 
     return (
-        <div className={`rounded-lg overflow-hidden bg-white dark:bg-slate-800/50 ${fillHeight ? 'flex flex-col h-full min-h-full' : 'border border-slate-200 dark:border-slate-700'} ${readOnly ? 'opacity-80' : ''}`}>
+        <div className={`rounded-lg overflow-hidden bg-white dark:bg-slate-800 ${fillHeight ? 'flex flex-col h-full min-h-full' : 'border border-slate-200 dark:border-slate-700'} ${readOnly ? 'opacity-80' : ''}`}>
             {/* Barra de Ferramentas - Apenas se não for readOnly */}
             {!readOnly && (
-                <div className="flex flex-wrap items-center gap-1 p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+                <div className="flex flex-wrap items-center gap-1 p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
                     {/* Títulos */}
                     <select
                         onChange={(e) => {
@@ -100,7 +212,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
                                         ? '3'
                                         : 'p'
                         }
-                        className="px-2 py-1 text-xs font-medium border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600"
+                        className="px-2 py-1 text-xs font-medium border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 focus:outline-none"
                     >
                         <option value="p">Parágrafo</option>
                         <option value="1">Título 1</option>

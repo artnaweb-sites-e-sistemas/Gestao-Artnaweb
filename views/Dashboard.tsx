@@ -1523,18 +1523,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
             if (isProjectRecurring) {
-              // Para projetos recorrentes:
-              // - Se tem stageId de etapa fixa (foi movido para etapa normal), NUNCA remover
-              // - Se tem stageId de outra origem, pode remover quando em serviço recorrente específico
-              if (selectedFilter !== 'all' && isSelectedCategoryRecurring && p.stageId && !hasFixedStageIdLocal(p.stageId)) {
-                // Remover stageId apenas se NÃO for de etapa fixa
-                removeProjectStageId(p.id).catch(err => {
-                  console.error("Error removing project stageId:", err);
-                });
-                const { stageId, ...projectWithoutStageId } = p;
-                return projectWithoutStageId;
-              }
-              // Manter o projeto como está (com ou sem stageId de etapa fixa)
+              // Para projetos recorrentes: manter stageId sempre. NÃO remover ao trocar de aba,
+              // pois isso faria projetos em Manutenção aparecerem como "Concluído" em vez de "Gestão Recorrente".
             } else {
               // Serviços normais: adicionar stageId se não existir
               if (!p.stageId) {
@@ -1921,7 +1911,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onProjectClick, currentWor
 
 
 
-              console.log('ð'¾ [Dashboard] Salvando projeto com:', {
+              console.log('[Dashboard] Salvando projeto com:', {
                 finalStageId,
                 finalStatus,
                 finalProgress,
