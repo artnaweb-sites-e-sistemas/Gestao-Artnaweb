@@ -55,6 +55,7 @@ def fix_encoding(file_path):
         'â ­ï¸ ': '⭐',
         'âœ–': '✖️',
         'Â ': ' ', # Non-breaking space often corrupted
+        'Âª': 'ª', # Indicador ordinal feminino (ex: 1ª Fatura)
     }
 
     original_text = text

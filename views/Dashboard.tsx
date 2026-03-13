@@ -5865,7 +5865,7 @@ const AddProjectModal: React.FC<{
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 block">Data da 1Âª Fatura</label>
+                  <label className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2 block">Data da 1ª Fatura</label>
                   <div className="relative" ref={recurringDatePickerRef}>
                     <button
                       type="button"

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Workspace, Category, Stage, parseSafeDate, Invoice, getInvoiceReferenceDate, projectHasRecurringType } from '../types';
-import { subscribeToProjects, subscribeToCategories, subscribeToStages, subscribeToInvoices } from '../firebase/services';
+import { subscribeToProjects, subscribeToCategories, subscribeToStages, subscribeToInvoices, updateProject } from '../firebase/services';
 
 interface TimelineProps {
   currentWorkspace: Workspace | null;
@@ -16,11 +16,113 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string[]>([]);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0 });
+  const [showNextDateModal, setShowNextDateModal] = useState(false);
+  const [nextDateType, setNextDateType] = useState<'maintenance' | 'report' | null>(null);
+  const [nextDateProject, setNextDateProject] = useState<Project | null>(null);
+  const [selectedDays, setSelectedDays] = useState<number | null>(null);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [customDate, setCustomDate] = useState<string>('');
+  const [isSavingNextDate, setIsSavingNextDate] = useState(false);
+  const [nextDateError, setNextDateError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasMovedRef = useRef(false); // Rastrear se houve movimento significativo
   const clickPreventedRef = useRef(false); // Prevenir clique se houve arrasto
   const TIMELINE_NAME_COLUMN_WIDTH = 256;
   const TIMELINE_DAY_WIDTH = 100;
+
+  const openNextDateModal = (project: Project, type: 'maintenance' | 'report') => {
+    if (isPanning || hasMovedRef.current || clickPreventedRef.current) return;
+    setNextDateProject(project);
+    setNextDateType(type);
+    setShowNextDateModal(true);
+    setSelectedDays(null);
+    setShowCustomDatePicker(false);
+    setCustomDate('');
+    setNextDateError(null);
+  };
+
+  const closeNextDateModal = () => {
+    setShowNextDateModal(false);
+    setNextDateType(null);
+    setNextDateProject(null);
+    setSelectedDays(null);
+    setShowCustomDatePicker(false);
+    setCustomDate('');
+    setIsSavingNextDate(false);
+    setNextDateError(null);
+  };
+
+  const formatDateForApi = (date: Date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
+  const handleConfirmNextDate = async (mode: 'with-next-date' | 'only-complete') => {
+    if (!nextDateProject || !nextDateType) return;
+
+    try {
+      setIsSavingNextDate(true);
+      setNextDateError(null);
+
+      let updates: Partial<Project> = {};
+
+      if (mode === 'only-complete') {
+        // Concluir sem definir próxima data: limpar campo correspondente
+        if (nextDateType === 'maintenance') {
+          updates = { maintenanceDate: null as any };
+        } else {
+          updates = { reportDate: null as any };
+        }
+      } else {
+        let baseDate: Date | null = null;
+        const sourceDate =
+          nextDateType === 'maintenance'
+            ? nextDateProject.maintenanceDate
+            : nextDateProject.reportDate;
+
+        if (selectedDays !== null) {
+          baseDate = sourceDate ? parseSafeDate(sourceDate) : new Date();
+          if (baseDate) {
+            baseDate = new Date(
+              baseDate.getFullYear(),
+              baseDate.getMonth(),
+              baseDate.getDate()
+            );
+            baseDate.setDate(baseDate.getDate() + selectedDays);
+          }
+        } else if (showCustomDatePicker && customDate) {
+          baseDate = new Date(customDate + 'T00:00:00');
+        }
+
+        if (!baseDate) {
+          setNextDateError('Selecione em quantos dias ou escolha uma data.');
+          setIsSavingNextDate(false);
+          return;
+        }
+
+        const formatted = formatDateForApi(baseDate);
+        if (nextDateType === 'maintenance') {
+          updates = { maintenanceDate: formatted };
+        } else {
+          updates = { reportDate: formatted };
+        }
+      }
+
+      await updateProject(nextDateProject.id, updates);
+
+      // Otimizar experiência atualizando lista local imediatamente
+      setProjects(prev =>
+        prev.map(p =>
+          p.id === nextDateProject.id ? { ...p, ...updates } : p
+        )
+      );
+
+      closeNextDateModal();
+    } catch (error) {
+      console.error('Erro ao atualizar próxima data na timeline:', error);
+      setNextDateError('Não foi possível salvar. Tente novamente.');
+      setIsSavingNextDate(false);
+    }
+  };
   // Carregar projetos do Firebase
   useEffect(() => {
     if (!currentWorkspace?.id) return;
@@ -794,7 +896,10 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             <p className="text-sm text-slate-500">Projetos ativos com prazos ou serviços recorrentes em manutenção aparecerão aqui.</p>
           </div>
         ) : (
-          <div className="min-w-full min-h-full">
+          <div
+            className="min-h-full"
+            style={{ minWidth: `max(100%, ${TIMELINE_NAME_COLUMN_WIDTH + days.length * TIMELINE_DAY_WIDTH}px)` }}
+          >
             <div className="sticky top-0 z-10 flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
               <div className="w-64 flex-shrink-0 sticky left-0 z-20 p-4 border-r border-slate-200 dark:border-slate-600 font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-[4px_0_16px_-2px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_16px_-2px_rgba(0,0,0,0.5)]">Projetos / Clientes</div>
               <div className="flex-1 flex bg-white/70 dark:bg-slate-900/70 backdrop-blur-md" style={timelineGridVerticalStyle}>
@@ -853,7 +958,7 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
             {/* Container dos projetos com linha vertical contínua */}
             <div className="relative min-h-full">
               <div
-                className="absolute inset-y-0 right-0 pointer-events-none"
+                className="absolute inset-y-0 right-0 pointer-events-none z-0"
                 style={{
                   left: `${TIMELINE_NAME_COLUMN_WIDTH}px`,
                   ...timelineGridVerticalStyle
@@ -885,38 +990,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const pTypes = project.types || (project.type ? [project.type] : []);
                   const categoryColor = getCategoryColor(pTypes[0] || '');
                   const deadlineDate = parseSafeDate(project.deadline);
-                  // Verificar se está atrasado (comparando apenas a data, sem horas)
+                  // Verificar se está atrasado (data de entrega vencida) - inclusive quando já em Manutenção/Concluído
                   let isLate = false;
-                  if (deadlineDate && project.status !== 'Completed' && project.status !== 'Finished') {
+                  if (deadlineDate) {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     const deadline = new Date(deadlineDate);
                     deadline.setHours(0, 0, 0, 0);
                     isLate = deadline < today;
-
-                    // Log para debug
-                    if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
-                      console.log(`[Timeline] Projeto: ${project.name}`, {
-                        deadlineDate: deadlineDate,
-                        deadline: deadline.toISOString(),
-                        today: today.toISOString(),
-                        isLate: isLate,
-                        status: project.status,
-                        stageId: project.stageId,
-                        deadlineTimestamp: deadline.getTime(),
-                        todayTimestamp: today.getTime(),
-                        comparison: deadline < today
-                      });
-                    }
-                  } else {
-                    // Log quando não tem deadline ou está concluído
-                    if (project.name === 'Renascençaa retrovisores' || project.name === 'Editora N-1') {
-                      console.log(`[Timeline] Projeto: ${project.name} - Sem deadline ou concluído`, {
-                        hasDeadline: !!deadlineDate,
-                        status: project.status,
-                        deadlineDate: project.deadline
-                      });
-                    }
                   }
                   // Verificar se está na etapa "Em Revisão" APENAS pelo stageId
                   // Não usar status porque tanto "Em Revisão" quanto "Ajustes" têm status 'Review'
@@ -932,18 +1013,34 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                   const todayForLate = new Date();
                   todayForLate.setHours(0, 0, 0, 0);
                   const maintenanceDateParsed = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
-                  const isMaintenanceLate = maintenanceDateParsed
-                    ? new Date(maintenanceDateParsed.getFullYear(), maintenanceDateParsed.getMonth(), maintenanceDateParsed.getDate()) < todayForLate
-                    : false;
+                  const maintenanceDateOnly = maintenanceDateParsed
+                    ? new Date(maintenanceDateParsed.getFullYear(), maintenanceDateParsed.getMonth(), maintenanceDateParsed.getDate())
+                    : null;
+                  const isMaintenanceLate = maintenanceDateOnly ? maintenanceDateOnly < todayForLate : false;
+                  const maintenanceDaysOverdue = maintenanceDateOnly && isMaintenanceLate
+                    ? Math.floor((todayForLate.getTime() - maintenanceDateOnly.getTime()) / (24 * 60 * 60 * 1000))
+                    : 0;
                   const reportDateParsed = project.reportDate ? parseSafeDate(project.reportDate) : null;
-                  const isReportLate = reportDateParsed
-                    ? new Date(reportDateParsed.getFullYear(), reportDateParsed.getMonth(), reportDateParsed.getDate()) < todayForLate
-                    : false;
+                  const reportDateOnly = reportDateParsed
+                    ? new Date(reportDateParsed.getFullYear(), reportDateParsed.getMonth(), reportDateParsed.getDate())
+                    : null;
+                  const isReportLate = reportDateOnly ? reportDateOnly < todayForLate : false;
+                  const reportDaysOverdue = reportDateOnly && isReportLate
+                    ? Math.floor((todayForLate.getTime() - reportDateOnly.getTime()) / (24 * 60 * 60 * 1000))
+                    : 0;
                   const isRecurringOverdue = isRecurring && (isMaintenanceLate || isReportLate);
+                  // Badge só aparece quando vencido há mais de 7 dias (dentro de 7 dias o círculo na data já informa)
+                  const showMaintenanceBadge = isRecurring && isMaintenanceLate && maintenanceDaysOverdue > 7;
+                  const showReportBadge = isRecurring && isReportLate && reportDaysOverdue > 7;
                   const hasFinancialPending = projectHasFinancialPending(project);
                   const showPendingFinancialNotice = hasFinancialPending && (project.status === 'Completed' || project.status === 'Finished');
 
-                  const showProjectBar = !!project.deadline && (project.status !== 'Completed' && project.status !== 'Finished' || showPendingFinancialNotice);
+                  // Mostrar barra: projeto ativo OU pendência financeira OU data de entrega vencida (mesmo em Manutenção)
+                  const showProjectBar = !!project.deadline && (
+                    (project.status !== 'Completed' && project.status !== 'Finished') ||
+                    showPendingFinancialNotice ||
+                    isLate
+                  );
 
                   // Obter classes CSS baseadas na cor da categoria
                   const getCategoryBadgeClasses = (color: string) => {
@@ -1012,19 +1109,39 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           );
                         })()}
                       </div>
-                      {/* Colunas - mesma estrutura flex do header */}
-                      <div className="flex-1 flex relative bg-white dark:bg-slate-900 h-20" style={timelineGridVerticalStyle}>
-                        {/* Sinalização de vencido na área do calendário (recorrentes) - no canto superior esquerdo da linha para não sobrepor a barra */}
-                        {isRecurringOverdue && (
-                          <div className="absolute left-2 top-1.5 z-10 flex items-center gap-1.5 flex-wrap">
-                            {isMaintenanceLate && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white dark:bg-rose-600 dark:text-white shadow-sm border border-rose-400/50" title="Data de manutenção vencida">
-                                <span className="material-symbols-outlined text-xs">build</span> Manutenção vencida
+                      {/* Colunas - mesma estrutura flex do header - min-h-20 para acompanhar altura da sidebar */}
+                      <div
+                        className="flex-1 flex relative bg-white dark:bg-slate-900 min-h-20 min-w-0"
+                        style={{
+                          ...timelineGridVerticalStyle,
+                          minWidth: `${days.length * TIMELINE_DAY_WIDTH}px`
+                        }}
+                      >
+                        {/* Badges vencido >7 dias - na grade, abaixo da sidebar (z-[5]) e acima das linhas (z-0) */}
+                        {(showMaintenanceBadge || showReportBadge) && (
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 z-[5] flex items-center gap-2">
+                            <span
+                              className="flex items-center justify-center size-7 rounded-md bg-rose-500/15 dark:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/30 text-rose-500 dark:text-rose-400"
+                              title="Vencido há mais de 7 dias"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">event_busy</span>
+                            </span>
+                            {showMaintenanceBadge && (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-500/30"
+                                title={`Manutenção vencida há ${maintenanceDaysOverdue} dias`}
+                              >
+                                <span className="material-symbols-outlined text-[12px]">build</span>
+                                Manutenção vencida
                               </span>
                             )}
-                            {isReportLate && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white dark:bg-rose-600 dark:text-white shadow-sm border border-rose-400/50" title="Data de relatório vencida">
-                                <span className="material-symbols-outlined text-xs">description</span> Relatório vencido
+                            {showReportBadge && (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-500/30"
+                                title={`Relatório vencido há ${reportDaysOverdue} dias`}
+                              >
+                                <span className="material-symbols-outlined text-[12px]">description</span>
+                                Relatório vencido
                               </span>
                             )}
                           </div>
@@ -1036,16 +1153,16 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           return (
                             <div
                               key={i}
-                              className={`w-[100px] h-20 border-r flex-shrink-0 relative ${today
+                              className={`w-[100px] min-h-20 h-full border-r border-b border-b-slate-100/60 dark:border-b-slate-800/60 flex-shrink-0 relative ${today
                                 ? 'bg-primary/[0.01] dark:bg-primary/[0.02] border-r-slate-100 dark:border-r-slate-800/50'
-                                : 'border-slate-100 dark:border-slate-800/50'
+                                : 'border-r-slate-100 dark:border-r-slate-800/50'
                                 }`}
                             >
                             </div>
                           );
                         })}
                         {/* Preenchimento para ocupar o resto do espaço */}
-                        <div className="flex-1 h-20" />
+                        <div className="flex-1 min-h-20 h-full border-b border-b-slate-100/60 dark:border-b-slate-800/60" />
 
                         {/* Barra do projeto (se aplicável) */}
                         {showProjectBar && (() => {
@@ -1192,52 +1309,85 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                           );
                         })()}
 
-                        {/* Marcadores de Manutenção e Relatório (para Recorrência) */}
+                        {/* Marcadores de Manutenção e Relatório (para Recorrência) - z-[5] abaixo da sidebar */}
                         {(() => {
-                          // Verificar se ambos estão no mesmo dia
                           const sameDay = maintenanceCol !== -1 && reportCol !== -1 && maintenanceCol === reportCol;
-                          // Offset harmonioso quando estão no mesmo dia (12px para um espaçamento mais natural)
                           const offset = sameDay ? 12 : 0;
+                          const leftMaintenance = `${maintenanceCol * 100 + 50 - (sameDay ? offset : 0)}px`;
+                          const leftReport = `${reportCol * 100 + 50 + (sameDay ? offset : 0)}px`;
+
+                          // Quando há barra de tarefa: verificar se o círculo sobrepõe a barra
+                          const barStart = startColumn;
+                          const barEnd = startColumn + duration;
+                          const maintenanceOverlapsBar = showProjectBar && maintenanceCol >= barStart && maintenanceCol < barEnd;
+                          const reportOverlapsBar = showProjectBar && reportCol >= barStart && reportCol < barEnd;
+
+                          const MarkerCircle = ({
+                            overlapsBar,
+                            isLate,
+                            type
+                          }: { overlapsBar: boolean; isLate: boolean; type: 'maintenance' | 'report' }) => {
+                            const size = overlapsBar ? 'size-8' : 'size-10';
+                            const iconSize = overlapsBar ? 'text-lg' : 'text-xl';
+                            const baseClasses = type === 'maintenance'
+                              ? (isLate ? 'bg-rose-50 dark:bg-rose-900/40 border-rose-300 dark:border-rose-600/70 text-rose-600 dark:text-rose-400' : 'bg-blue-50 dark:bg-blue-900/40 border-blue-300 dark:border-blue-600/70 text-blue-600 dark:text-blue-400')
+                              : (isLate ? 'bg-rose-50 dark:bg-rose-900/40 border-rose-300 dark:border-rose-600/70 text-rose-600 dark:text-rose-400' : 'bg-amber-50 dark:bg-amber-900/40 border-amber-300 dark:border-amber-600/70 text-amber-600 dark:text-amber-400');
+                            const ringClasses = overlapsBar
+                              ? 'ring-2 ring-white dark:ring-slate-800 shadow-lg shadow-slate-900/20'
+                              : 'ring-2 ring-white/50 dark:ring-slate-900/50 shadow-md';
+
+                            return (
+                              <div
+                                className={`${size} rounded-full border-2 flex items-center justify-center backdrop-blur-sm transition-all group-hover/marker:scale-110 ${baseClasses} ${ringClasses}`}
+                              >
+                                <span className={`material-symbols-outlined ${iconSize}`}>
+                                  {type === 'maintenance' ? 'build' : 'description'}
+                                </span>
+                              </div>
+                            );
+                          };
 
                           return (
                             <>
                               {maintenanceCol !== -1 && (
                                 <div
-                                  className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                                  className="absolute top-1/2 z-[5] flex items-center justify-center cursor-pointer"
                                   style={{
-                                    left: `${maintenanceCol * 100 + 50 - (sameDay ? offset : 0)}px`,
+                                    left: leftMaintenance,
                                     transform: 'translate(-50%, -50%)'
                                   }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openNextDateModal(project, 'maintenance');
+                                  }}
                                 >
-                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${isMaintenanceLate
-                                    ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400'
-                                    }`}>
-                                    <span className="material-symbols-outlined text-xl">build</span>
+                                  <div className="relative flex flex-col items-center group/marker">
+                                    <MarkerCircle overlapsBar={maintenanceOverlapsBar} isLate={isMaintenanceLate} type="maintenance" />
+                                    <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-slate-800/95 text-white text-[8px] px-1.5 py-0.5 rounded-md shadow-sm opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                      Manutenção: {new Date(project.maintenanceDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                    </span>
                                   </div>
-                                  <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
-                                    Manutenção: {new Date(project.maintenanceDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                                  </span>
                                 </div>
                               )}
 
                               {reportCol !== -1 && (
                                 <div
-                                  className={`absolute top-1/2 z-20 flex flex-col items-center gap-1 group/marker transition-all`}
+                                  className="absolute top-1/2 z-[5] flex items-center justify-center cursor-pointer"
                                   style={{
-                                    left: `${reportCol * 100 + 50 + (sameDay ? offset : 0)}px`,
+                                    left: leftReport,
                                     transform: 'translate(-50%, -50%)'
                                   }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openNextDateModal(project, 'report');
+                                  }}
                                 >
-                                  <div className={`size-10 rounded-full border-2 flex items-center justify-center shadow-sm transition-transform group-hover/marker:scale-110 ${isReportLate
-                                    ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400'
-                                    : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-600 dark:text-amber-400'
-                                    }`}>
-                                    <span className="material-symbols-outlined text-xl">description</span>
+                                  <div className="relative flex flex-col items-center group/marker">
+                                    <MarkerCircle overlapsBar={reportOverlapsBar} isLate={isReportLate} type="report" />
+                                    <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-slate-800/95 text-white text-[8px] px-1.5 py-0.5 rounded-md shadow-sm opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                      Relatório: {new Date(project.reportDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                    </span>
                                   </div>
-                                  <span className="bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap">
-                                    Relatório: {new Date(project.reportDate!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                                  </span>
                                 </div>
                               )}
                             </>
@@ -1274,6 +1424,145 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
         </div>
         <div>Exibindo {projectsForTimeline.length} de {projects.length} projetos</div>
       </footer>
+
+      {showNextDateModal && nextDateType && nextDateProject && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+          onClick={closeNextDateModal}
+        >
+          <div
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-5">
+                <div className={`size-12 rounded-full flex items-center justify-center ${nextDateType === 'maintenance'
+                  ? 'bg-blue-100 dark:bg-blue-900/20'
+                  : 'bg-amber-100 dark:bg-amber-900/20'
+                  }`}>
+                  <span className={`material-symbols-outlined ${nextDateType === 'maintenance'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                    }`}>
+                    {nextDateType === 'maintenance' ? 'build' : 'description'}
+                  </span>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                        Marcar {nextDateType === 'maintenance' ? 'Manutenção' : 'Relatório'} como concluído
+                      </h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {nextDateProject.name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeNextDateModal}
+                      className="ml-2 inline-flex size-8 items-center justify-center rounded-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-base">close</span>
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Você pode apenas concluir agora ou já agendar a próxima data.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 mb-5">
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">
+                    Agendar próxima data (opcional)
+                  </p>
+                  {!showCustomDatePicker && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[3, 7, 15, 30].map((days) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setSelectedDays(days)}
+                            className={`px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${selectedDays === days
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                              }`}
+                          >
+                            +{days} dias
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCustomDatePicker(true);
+                          setSelectedDays(null);
+                        }}
+                        className="mt-3 w-full px-4 py-2.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-sm">calendar_today</span>
+                        Escolher data específica
+                      </button>
+                    </>
+                  )}
+
+                  {showCustomDatePicker && (
+                    <div className="space-y-3">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                        Data da próxima {nextDateType === 'maintenance' ? 'manutenção' : 'relatório'}
+                      </label>
+                      <input
+                        type="date"
+                        value={customDate}
+                        onChange={(e) => setCustomDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCustomDatePicker(false);
+                          setCustomDate('');
+                        }}
+                        className="text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline decoration-dotted"
+                      >
+                        Voltar para opções rápidas
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {nextDateError && (
+                  <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-lg px-3 py-2">
+                    {nextDateError}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmNextDate('only-complete')}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={isSavingNextDate}
+                >
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  Só concluir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmNextDate('with-next-date')}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed bg-primary hover:bg-primary/90"
+                  disabled={isSavingNextDate}
+                >
+                  <span className="material-symbols-outlined text-sm">event_available</span>
+                  Concluir e agendar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

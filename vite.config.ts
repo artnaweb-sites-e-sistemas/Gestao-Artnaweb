@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Se a porta 3000 estiver em uso, o Vite tenta 3001, 3002, etc.
+        strictPort: false,
       },
       plugins: [react()],
       define: {
