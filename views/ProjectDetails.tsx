@@ -2685,23 +2685,17 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                         const taskAttachmentCount = taskFiles.length;
                                         const isTaskUploadingAttachment = uploadingTaskId === task.id;
 
+                                        const isDragging = draggedTask?.id === task.id;
+
                                         return (
                                           <div
                                             key={task.id}
-                                            className={`relative flex items-start gap-3 group p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${draggedTask?.id === task.id ? 'opacity-40' : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
-                                            draggable={canEdit}
-                                            onDragStart={(e) => {
-                                              e.stopPropagation();
-                                              setDraggedTask(task);
-                                              e.dataTransfer.effectAllowed = 'move';
-                                              e.currentTarget.style.opacity = '0.4';
-                                            }}
-                                            onDragEnd={(e) => {
-                                              e.stopPropagation();
-                                              setDraggedTask(null);
-                                              setDropTargetId(null);
-                                              setDropPosition(null);
-                                              e.currentTarget.style.opacity = '1';
+                                            className={`relative flex items-start gap-3 group p-2 rounded-lg transition-all duration-200 ease-out ${isDragging
+                                              ? 'opacity-50 scale-[0.98] bg-slate-100/80 dark:bg-slate-800/50 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600'
+                                              : 'hover:bg-white dark:hover:bg-slate-800/50'}`}
+                                            onDragEnter={(e) => {
+                                              e.preventDefault();
+                                              e.dataTransfer.dropEffect = 'move';
                                             }}
                                             onDragOver={(e) => {
                                               e.preventDefault();
@@ -2722,13 +2716,18 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                             onDragLeave={(e) => {
                                               e.preventDefault();
                                               e.stopPropagation();
+                                              // Não limpar se ainda estamos dentro da linha (evita bug ao passar por filhos)
+                                              if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return;
+                                              if (draggedTask?.id !== task.id) {
+                                                setDropTargetId(null);
+                                                setDropPosition(null);
+                                              }
                                             }}
                                             onDrop={async (e) => {
                                               e.preventDefault();
                                               e.stopPropagation();
                                               setDropTargetId(null);
                                               setDropPosition(null);
-                                              e.currentTarget.style.opacity = '1';
 
                                               if (!draggedTask || draggedTask.id === task.id || draggedTask.stageId !== task.stageId) {
                                                 return;
@@ -2782,6 +2781,46 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ project, onClose
                                               }
                                             }}
                                           >
+                                            {/* Handle de arraste: só arrasta por aqui, liberando seleção de texto no título */}
+                                            {canEdit && (
+                                              <div
+                                                draggable
+                                                onDragStart={(e) => {
+                                                  e.stopPropagation();
+                                                  setDraggedTask(task);
+                                                  e.dataTransfer.effectAllowed = 'move';
+                                                  e.dataTransfer.setData('text/plain', task.id);
+                                                  e.dataTransfer.setData('application/json', JSON.stringify({ taskId: task.id, stageId: task.stageId }));
+
+                                                  // Ghost flutuante: card que segue o cursor (mais orgânico)
+                                                  const ghost = document.createElement('div');
+                                                  ghost.setAttribute('data-drag-ghost', 'true');
+                                                  ghost.className = 'px-3 py-2 rounded-lg shadow-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-medium whitespace-nowrap max-w-[240px] truncate pointer-events-none';
+                                                  ghost.textContent = task.title || 'Tarefa';
+                                                  ghost.style.position = 'fixed';
+                                                  ghost.style.left = '-9999px';
+                                                  ghost.style.top = '0';
+                                                  ghost.style.zIndex = '9999';
+                                                  ghost.style.opacity = '0.95';
+                                                  ghost.style.transform = 'scale(1.02)';
+                                                  ghost.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)';
+                                                  document.body.appendChild(ghost);
+                                                  const rect = ghost.getBoundingClientRect();
+                                                  e.dataTransfer.setDragImage(ghost, Math.min(rect.width / 2, 80), rect.height / 2);
+                                                  setTimeout(() => ghost.remove(), 0);
+                                                }}
+                                                onDragEnd={(e) => {
+                                                  e.stopPropagation();
+                                                  setDraggedTask(null);
+                                                  setDropTargetId(null);
+                                                  setDropPosition(null);
+                                                }}
+                                                className="flex-shrink-0 flex items-center justify-center self-center w-8 h-8 rounded cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 touch-none select-none"
+                                                title="Arraste para reordenar"
+                                              >
+                                                <span className="material-symbols-outlined text-[20px]">drag_indicator</span>
+                                              </div>
+                                            )}
                                             {/* Indicadores Visuais de Drop */}
                                             {dropTargetId === task.id && dropPosition === 'above' && (
                                               <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] transform -translate-y-[2px]"></div>

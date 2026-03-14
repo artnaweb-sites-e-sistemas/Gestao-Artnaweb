@@ -30,8 +30,13 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
   const TIMELINE_NAME_COLUMN_WIDTH = 256;
   const TIMELINE_DAY_WIDTH = 100;
 
-  const openNextDateModal = (project: Project, type: 'maintenance' | 'report') => {
-    if (isPanning || hasMovedRef.current || clickPreventedRef.current) return;
+  const openNextDateModal = (project: Project, type: 'maintenance' | 'report', fromMarkerClick = false) => {
+    if (isPanning) return;
+    if (!fromMarkerClick && (hasMovedRef.current || clickPreventedRef.current)) return;
+    if (fromMarkerClick) {
+      hasMovedRef.current = false;
+      clickPreventedRef.current = false;
+    }
     setNextDateProject(project);
     setNextDateType(type);
     setShowNextDateModal(true);
@@ -637,47 +642,27 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
     if (selectedCategoryFilter.length === 0) return true;
     return selectedCategoryFilter.some(filter => p.type === filter);
   }).sort((a, b) => {
-    // Ordenar por data de vencimento (mais próximos primeiro)
-    // Para projetos recorrentes, usar a data mais próxima entre manutenção e relatório
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTime = today.getTime();
-
+    // Ordenar por data de vencimento: a que vence primeiro aparece primeiro (manutenção e relatório)
     const getSortDate = (project: Project): number => {
-      // Prioridade: deadline > (manutenção ou relatório - a mais próxima)
       if (project.deadline) {
         return parseSafeDate(project.deadline)?.getTime() || Number.MAX_SAFE_INTEGER;
       }
 
-      // Se tem tanto maintenanceDate quanto reportDate, usar a mais próxima de hoje
       const maintenanceDate = project.maintenanceDate ? parseSafeDate(project.maintenanceDate) : null;
       const reportDate = project.reportDate ? parseSafeDate(project.reportDate) : null;
 
       if (maintenanceDate && reportDate) {
-        // Calcular a diferença em dias de cada data em relação a hoje
-        const maintenanceDiff = Math.abs(maintenanceDate.getTime() - todayTime);
-        const reportDiff = Math.abs(reportDate.getTime() - todayTime);
-
-        // Usar a data mais próxima (menor diferença)
-        return maintenanceDiff < reportDiff ? maintenanceDate.getTime() : reportDate.getTime();
+        // Usar a data que vence primeiro (a mais antiga)
+        return Math.min(maintenanceDate.getTime(), reportDate.getTime());
       }
+      if (maintenanceDate) return maintenanceDate.getTime();
+      if (reportDate) return reportDate.getTime();
 
-      // Se tem apenas uma das duas, usar ela
-      if (maintenanceDate) {
-        return maintenanceDate.getTime();
-      }
-      if (reportDate) {
-        return reportDate.getTime();
-      }
-
-      // Se não tiver nenhuma data, colocar no final
       return Number.MAX_SAFE_INTEGER;
     };
 
     const dateA = getSortDate(a);
     const dateB = getSortDate(b);
-
-    // Ordenar do menor para o maior (mais próximo primeiro)
     return dateA - dateB;
   });
 
@@ -831,13 +816,14 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
           const target = e.target as HTMLElement;
 
-          // Não ativa apenas em elementos realmente interativos (inputs, buttons, etc)
-          // Mas permite em qualquer outro lugar, incluindo projetos
+          // Não ativa em elementos interativos nem nos círculos de manutenção/relatório
+          // (senão preventDefault bloqueia o click e o modal não abre)
           if (
             target.closest('input') ||
             target.closest('select') ||
             target.closest('textarea') ||
-            target.closest('a[href]')
+            target.closest('a[href]') ||
+            target.closest('[data-timeline-marker]')
           ) {
             return;
           }
@@ -1351,14 +1337,24 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
                             <>
                               {maintenanceCol !== -1 && (
                                 <div
-                                  className="absolute top-1/2 z-[5] flex items-center justify-center cursor-pointer"
+                                  data-timeline-marker="maintenance"
+                                  role="button"
+                                  tabIndex={0}
+                                  className="absolute top-1/2 z-10 flex items-center justify-center cursor-pointer min-w-[44px] min-h-[44px] rounded-full"
                                   style={{
                                     left: leftMaintenance,
                                     transform: 'translate(-50%, -50%)'
                                   }}
                                   onClick={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
-                                    openNextDateModal(project, 'maintenance');
+                                    openNextDateModal(project, 'maintenance', true);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      openNextDateModal(project, 'maintenance', true);
+                                    }
                                   }}
                                 >
                                   <div className="relative flex flex-col items-center group/marker">
@@ -1372,14 +1368,24 @@ export const Timeline: React.FC<TimelineProps> = ({ currentWorkspace, onProjectC
 
                               {reportCol !== -1 && (
                                 <div
-                                  className="absolute top-1/2 z-[5] flex items-center justify-center cursor-pointer"
+                                  data-timeline-marker="report"
+                                  role="button"
+                                  tabIndex={0}
+                                  className="absolute top-1/2 z-10 flex items-center justify-center cursor-pointer min-w-[44px] min-h-[44px] rounded-full"
                                   style={{
                                     left: leftReport,
                                     transform: 'translate(-50%, -50%)'
                                   }}
                                   onClick={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
-                                    openNextDateModal(project, 'report');
+                                    openNextDateModal(project, 'report', true);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      openNextDateModal(project, 'report', true);
+                                    }
                                   }}
                                 >
                                   <div className="relative flex flex-col items-center group/marker">

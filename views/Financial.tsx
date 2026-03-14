@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { createPortal } from 'react-dom';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { Invoice, Project, Workspace, Category } from '../types';
 import { subscribeToInvoices, subscribeToProjects, updateInvoice, deleteInvoice, getProjects, subscribeToCategories, addInvoice, updateProject } from '../firebase/services';
 import { AsaasChargeModal, AsaasChargeResultModal } from '../components/AsaasChargeModal';
@@ -21,20 +22,19 @@ const PeriodSelect: React.FC<{
 }> = ({ value, onChange, options, icon, label, minWidth = 'min-w-[180px]' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+      const target = event.target as HTMLElement;
+      if (containerRef.current?.contains(target) || target.closest('[data-period-dropdown]')) return;
+      setIsOpen(false);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
+      if (event.key === 'Escape') setIsOpen(false);
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -46,68 +46,89 @@ const PeriodSelect: React.FC<{
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownRect({
+        top: rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+      });
+    } else {
+      setDropdownRect(null);
+    }
+  }, [isOpen]);
+
   const selectedOption = options.find(option => option.value === value) ?? options[0];
 
-  return (
-    <div ref={containerRef} className={`relative ${minWidth}`}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(prev => !prev)}
-        className={`group flex w-full items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-all outline-none ${isOpen
-          ? 'border-primary bg-white dark:bg-slate-800 shadow-lg shadow-primary/10 ring-4 ring-primary/10'
-          : 'border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:border-primary/40 hover:bg-white dark:hover:bg-slate-800'
-          }`}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <span className="material-symbols-outlined text-[18px]">{icon}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            {label}
-          </span>
-          <span className="block truncate text-sm font-bold text-slate-700 dark:text-slate-200">
-            {selectedOption.label}
-          </span>
-        </div>
-        <span className={`material-symbols-outlined text-lg text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-primary' : 'group-hover:text-primary'}`}>
-          expand_more
-        </span>
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl shadow-slate-900/10 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
-          <div className="max-h-72 overflow-y-auto p-2">
-            {options.map(option => {
-              const isSelected = option.value === value;
-
-              return (
-                <button
-                  key={String(option.value)}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value);
-                    setIsOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${isSelected
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                    }`}
-                  role="option"
-                  aria-selected={isSelected}
-                >
-                  <span>{option.label}</span>
-                  {isSelected && (
-                    <span className="material-symbols-outlined text-base">check</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+  const dropdownContent = isOpen && dropdownRect && (
+    <div
+      data-period-dropdown
+      className="fixed z-[200] overflow-hidden rounded-xl border border-slate-200/60 dark:border-slate-600/50 bg-white/95 dark:bg-slate-800/95 shadow-lg backdrop-blur-md"
+      style={{
+        top: dropdownRect.top,
+        left: dropdownRect.left,
+        width: dropdownRect.width,
+      }}
+    >
+      <div className="max-h-72 overflow-y-auto p-1.5">
+        {options.map(option => {
+          const isSelected = option.value === value;
+          return (
+            <button
+              key={String(option.value)}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${isSelected
+                ? 'bg-primary/10 text-primary dark:bg-primary/15 dark:text-primary font-medium'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 font-normal'
+                }`}
+              role="option"
+              aria-selected={isSelected}
+            >
+              <span>{option.label}</span>
+              {isSelected && <span className="material-symbols-outlined text-sm text-primary">check</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      <div ref={containerRef} className={`relative ${minWidth}`}>
+        <button
+          type="button"
+          onClick={() => setIsOpen(prev => !prev)}
+          className={`group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition-all outline-none ${isOpen
+            ? 'border-primary/40 dark:border-primary/40 bg-slate-50 dark:bg-slate-800/60 ring-2 ring-primary/20'
+            : 'border-slate-200/60 dark:border-slate-600/60 bg-slate-50/80 dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-100/80 dark:hover:bg-slate-800/70'
+            }`}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+        >
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/5 dark:bg-primary/10 text-primary">
+            <span className="material-symbols-outlined text-[16px]">{icon}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {label}
+            </span>
+            <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+              {selectedOption.label}
+            </span>
+          </div>
+          <span className={`material-symbols-outlined text-base text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : 'group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}>
+            expand_more
+          </span>
+        </button>
+      </div>
+      {dropdownContent && createPortal(dropdownContent, document.body)}
+    </>
   );
 };
 
@@ -278,25 +299,19 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
     pendingCount: filteredByPeriod.filter(inv => inv.status === 'Pending').length,
   };
 
-  // Dados para o gráfico de pizza
+  // Receita por Tipo: Avulso = Implementação + Avulso (INV-); Mensalidade separada
   const pieData = [
-    { name: 'Implementação', value: metrics.implementationTotal, color: '#3b82f6' },
-    { name: 'Mensalidade', value: metrics.recurringTotal, color: '#f59e0b' },
-    { name: 'Avulso', value: metrics.normalTotal, color: '#8b5cf6' },
+    { name: 'Avulso', value: metrics.implementationTotal + metrics.normalTotal, color: '#f59e0b' },
+    { name: 'Mensalidade', value: metrics.recurringTotal, color: '#10b981' },
   ].filter(item => item.value > 0);
 
-  // Gerar dados de receita por mês (received usa mês efetivo para cartão de crédito)
-  const generateMonthlyData = () => {
-    const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    const currentYear = new Date().getFullYear();
-    const monthlyData: { name: string; received: number; pending: number }[] = [];
+  // Gerar dados de receita por mês — Avulso = Implementação + Avulso (INV-) recebidos; Mensalidade; Pendente
+  const generateMonthlyRevenueData = useMemo(() => {
+    const shortMonthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const year = selectedYear;
+    const data: { name: string; avulso: number; mensalidade: number; pendente: number }[] = [];
 
-    for (let i = 0; i < 6; i++) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - (5 - i));
-      const month = date.getMonth();
-      const year = date.getFullYear();
-
+    for (let month = 0; month < 12; month++) {
       const monthInvoices = invoices.filter(inv => {
         const invDate = getInvoiceDate(inv.date);
         return invDate.getMonth() === month && invDate.getFullYear() === year;
@@ -306,19 +321,28 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         if (inv.status !== 'Paid') return false;
         const { month: effMonth, year: effYear } = getEffectiveReceiveDate(inv);
         return effMonth === month && effYear === year;
-      }).reduce((sum, inv) => sum + inv.amount, 0);
+      });
 
-      monthlyData.push({
-        name: monthNames[month],
-        received: receivedThisMonth,
-        pending: monthInvoices.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + inv.amount, 0),
+      const avulso = receivedThisMonth
+        .filter(inv => inv.number.startsWith('IMP-') || inv.number.startsWith('INV-'))
+        .reduce((sum, inv) => sum + inv.amount, 0);
+      const mensalidade = receivedThisMonth
+        .filter(inv => inv.number.startsWith('REC-'))
+        .reduce((sum, inv) => sum + inv.amount, 0);
+      const pendente = monthInvoices
+        .filter(inv => inv.status === 'Pending')
+        .reduce((sum, inv) => sum + inv.amount, 0);
+
+      data.push({
+        name: shortMonthNames[month],
+        avulso,
+        mensalidade,
+        pendente,
       });
     }
 
-    return monthlyData;
-  };
-
-  const monthlyData = generateMonthlyData();
+    return data;
+  }, [invoices, selectedYear, getInvoiceDate, getEffectiveReceiveDate]);
 
   // Filtrar faturas (usando faturas já filtradas por período)
   const filteredInvoices = useMemo(() => {
@@ -403,10 +427,10 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   };
 
   // Obter tipo da fatura
+  // Implementação e Avulso (INV-) tratados como "Avulso"; Mensalidade separada
   const getInvoiceType = (number: string) => {
-    if (number.startsWith('IMP-')) return { label: 'Implementação', color: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' };
-    if (number.startsWith('REC-')) return { label: 'Mensalidade', color: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' };
-    return { label: 'Avulso', color: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' };
+    if (number.startsWith('REC-')) return { label: 'Mensalidade', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' };
+    return { label: 'Avulso', color: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' };
   };
 
   // Helper para calcular a data da próxima mensalidade (mesmo dia do próximo mês)
@@ -635,179 +659,210 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
         </div>
       </div>
 
-      {/* Filtro de Período - Design UI/UX Melhorado */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative z-[20] mb-8">
-        <div className="flex flex-col lg:flex-row lg:items-center">
-          {/* Lado Esquerdo: Título e Ícone */}
-          <div className="bg-slate-50/50 dark:bg-slate-800/30 px-6 py-4 lg:py-0 lg:h-16 flex items-center gap-3 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none">
-            <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-xl">calendar_today</span>
-            </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block leading-none mb-1">Filtro de</span>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200 block leading-none">Período</span>
-            </div>
-          </div>
-
-          {/* Lado Direito: Controles e Atalhos */}
-          <div className="flex-1 px-6 py-4 flex flex-wrap items-center justify-between gap-6">
-            <div className="flex flex-wrap items-center gap-4">
-              {/* Seletor de Mês */}
-              <PeriodSelect
-                value={selectedMonth}
-                onChange={(value) => setSelectedMonth(value === 'all' ? 'all' : Number(value))}
-                options={monthOptions}
-                icon="event_note"
-                label="Mês"
-                minWidth="min-w-[220px]"
-              />
-
-              {/* Seletor de Ano */}
-              <PeriodSelect
-                value={selectedYear}
-                onChange={(value) => setSelectedYear(Number(value))}
-                options={yearOptions}
-                icon="schedule"
-                label="Ano"
-                minWidth="min-w-[140px]"
-              />
-
-              {/* Divisor Visual */}
-              <div className="hidden sm:block w-px h-8 bg-slate-200 dark:bg-slate-800 mx-2"></div>
-
-              {/* Atalhos Rápidos com Design de Pílula */}
-              <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-                <button
-                  onClick={() => {
-                    setSelectedMonth(currentDate.getMonth());
-                    setSelectedYear(currentDate.getFullYear());
-                  }}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === currentDate.getMonth() && selectedYear === currentDate.getFullYear()
-                    ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                    }`}
-                >
-                  Este mês
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedMonth('all');
-                    setSelectedYear(currentDate.getFullYear());
-                  }}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${selectedMonth === 'all' && selectedYear === currentDate.getFullYear()
-                    ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                    }`}
-                >
-                  Este ano
-                </button>
+      {/* Filtro de Período — estilo leve e harmonioso */}
+      <div className="relative rounded-xl border border-slate-200/60 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 p-5 border-l-[3px] border-l-primary/60 shadow-sm mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="size-9 rounded-lg bg-primary/5 dark:bg-primary/10 flex items-center justify-center text-primary">
+                <span className="material-symbols-outlined text-xl">calendar_today</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 block">Filtro de</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200 block">Período</span>
               </div>
             </div>
 
-            {/* Info do Período */}
-            <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-primary/5 border border-primary/10">
-              <div className="size-2 rounded-full bg-primary animate-pulse"></div>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                {filteredByPeriod.length} faturas em {' '}
-                <span className="text-primary">
-                  {selectedMonth === 'all' ? `${selectedYear}` : `${monthNames[selectedMonth as number]} ${selectedYear}`}
-                </span>
-              </span>
+            <div className="hidden sm:block w-px h-8 bg-slate-200/80 dark:bg-slate-600/60"></div>
+
+            <PeriodSelect
+              value={selectedMonth}
+              onChange={(value) => setSelectedMonth(value === 'all' ? 'all' : Number(value))}
+              options={monthOptions}
+              icon="event_note"
+              label="Mês"
+              minWidth="min-w-[180px]"
+            />
+
+            <PeriodSelect
+              value={selectedYear}
+              onChange={(value) => setSelectedYear(Number(value))}
+              options={yearOptions}
+              icon="schedule"
+              label="Ano"
+              minWidth="min-w-[100px]"
+            />
+
+            <div className="flex items-center p-0.5 bg-slate-200/50 dark:bg-slate-700/40 rounded-lg">
+              <button
+                onClick={() => {
+                  setSelectedMonth(currentDate.getMonth());
+                  setSelectedYear(currentDate.getFullYear());
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${selectedMonth === currentDate.getMonth() && selectedYear === currentDate.getFullYear()
+                  ? 'bg-white dark:bg-slate-600/60 text-primary shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+              >
+                Este mês
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedMonth('all');
+                  setSelectedYear(currentDate.getFullYear());
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${selectedMonth === 'all' && selectedYear === currentDate.getFullYear()
+                  ? 'bg-white dark:bg-slate-600/60 text-primary shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+              >
+                Este ano
+              </button>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/10">
+            <div className="size-1.5 rounded-full bg-primary/80"></div>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              {filteredByPeriod.length} fatura{filteredByPeriod.length !== 1 ? 's' : ''} em{' '}
+              <span className="text-primary font-medium">
+                {selectedMonth === 'all' ? selectedYear : `${monthNames[selectedMonth as number]} ${selectedYear}`}
+              </span>
+            </span>
           </div>
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
         <KPICard
           title="Total Recebido"
           value={formatCurrency(metrics.totalReceived)}
-          trend={`${metrics.paidCount} faturas pagas`}
-          trendType="up"
+          subtitle={`${metrics.paidCount} faturas pagas`}
+          variant="success"
           icon="account_balance"
-          iconBg="bg-emerald-100 dark:bg-emerald-900/30"
-          iconColor="text-emerald-600"
         />
         <KPICard
-          title="Total Pendente"
+          title="Fatura pendente"
           value={formatCurrency(metrics.totalPending)}
-          trend={`${metrics.pendingCount} faturas pendentes`}
-          trendType="neutral"
+          subtitle=""
+          variant="warning"
           icon="pending_actions"
-          iconBg="bg-amber-100 dark:bg-amber-900/30"
-          iconColor="text-amber-600"
         />
         <KPICard
-          title="Implementação"
-          value={formatCurrency(metrics.implementationPaid)}
-          trend={`de ${formatCurrency(metrics.implementationTotal)} total`}
-          trendType="up"
-          icon="construction"
-          iconBg="bg-blue-100 dark:bg-blue-900/30"
-          iconColor="text-blue-600"
+          title="Avulso"
+          value={formatCurrency(metrics.implementationPaid + metrics.normalPaid)}
+          subtitle={`de ${formatCurrency(metrics.implementationTotal + metrics.normalTotal)} total`}
+          variant="avulso"
+          icon="receipt"
         />
         <KPICard
           title="Mensalidades"
           value={formatCurrency(metrics.recurringPaid)}
-          trend={`de ${formatCurrency(metrics.recurringTotal)} total`}
-          trendType="up"
+          subtitle={`de ${formatCurrency(metrics.recurringTotal)} total`}
+          variant="accent"
           icon="autorenew"
-          iconBg="bg-purple-100 dark:bg-purple-900/30"
-          iconColor="text-purple-600"
         />
       </div>
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
-          <div className="flex justify-between items-center mb-6">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+          <div className="flex justify-between items-start mb-6">
             <div>
-              <h3 className="text-base font-bold">Receita por Mês</h3>
-              <p className="text-sm text-slate-500">Últimos 6 meses</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Receita por Mês <span className="text-primary font-bold">{selectedYear}</span>
+              </h3>
             </div>
-            <div className="flex items-center gap-4 text-xs">
-              <div className="flex items-center gap-1.5">
-                <div className="size-3 rounded-full bg-emerald-500"></div>
-                <span className="text-slate-500">Recebido</span>
+            <div className="flex items-center gap-5 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="size-3 rounded-sm bg-amber-500"></div>
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Avulso</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="size-3 rounded-full bg-amber-500"></div>
-                <span className="text-slate-500">Pendente</span>
+              <div className="flex items-center gap-2">
+                <div className="size-3 rounded-sm bg-emerald-500"></div>
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Mensalidade</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="size-3 rounded-sm bg-red-500"></div>
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Pendente</span>
               </div>
             </div>
           </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyData}>
-                <defs>
-                  <linearGradient id="colorReceived" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorPending" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`} />
-                <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
-                  contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                />
-                <Area type="monotone" dataKey="received" name="Recebido" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorReceived)" />
-                <Area type="monotone" dataKey="pending" name="Pendente" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorPending)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="h-72 w-full">
+            {generateMonthlyRevenueData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={generateMonthlyRevenueData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="barAvulso" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#d97706" stopOpacity={0.9} />
+                    </linearGradient>
+                    <linearGradient id="barMensalidade" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#059669" stopOpacity={0.9} />
+                    </linearGradient>
+                    <linearGradient id="barPendente" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ef4444" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#dc2626" stopOpacity={0.9} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(226 232 240)" className="dark:stroke-slate-700" />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fontWeight: 600, fill: 'rgb(100 116 139)' }}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: 'rgb(100 116 139)' }}
+                    tickFormatter={(v) => (v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`)}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      const colorByKey: Record<string, string> = {
+                        avulso: '#f59e0b',
+                        mensalidade: '#10b981',
+                        pendente: '#ef4444',
+                      };
+                      return (
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl px-4 py-3 min-w-[160px]">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Mês: {label}</p>
+                          {payload.map((entry) => (
+                            <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-sm">
+                              <span className="font-medium" style={{ color: colorByKey[String(entry.dataKey)] ?? 'inherit' }}>{entry.name}</span>
+                              <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(Number(entry.value))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }}
+                    contentStyle={{ backgroundColor: 'transparent', border: 'none', boxShadow: 'none', padding: 0 }}
+                    wrapperStyle={{ outline: 'none' }}
+                    cursor={{ fill: 'rgba(99, 102, 241, 0.1)', stroke: 'rgba(99, 102, 241, 0.35)', strokeWidth: 1.5 }}
+                  />
+                  <Bar dataKey="avulso" name="Avulso" fill="url(#barAvulso)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="mensalidade" name="Mensalidade" fill="url(#barMensalidade)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="pendente" name="Pendente" fill="url(#barPendente)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                <span className="material-symbols-outlined text-5xl mb-3">bar_chart</span>
+                <p className="text-sm font-medium">Nenhum dado para exibir</p>
+                <p className="text-xs">Selecione um período com faturas</p>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-6 shadow-sm">
           <div className="mb-6">
-            <h3 className="text-base font-bold">Receita por Tipo</h3>
-            <p className="text-sm text-slate-500">Distribuição de faturas</p>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Receita por Tipo</h3>
+            <p className="text-sm text-slate-500 mt-0.5">Distribuição de faturas</p>
           </div>
           {pieData.length > 0 ? (
             <>
@@ -818,35 +873,45 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
                       data={pieData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={70}
-                      paddingAngle={5}
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={4}
                       dataKey="value"
+                      stroke="transparent"
                     >
                       {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                        <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        borderRadius: '12px',
+                        border: '1px solid rgb(226 232 240)',
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        padding: '12px 16px',
+                        backgroundColor: 'white',
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex flex-col gap-2 mt-4">
+              <div className="flex flex-col gap-2.5 mt-5">
                 {pieData.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="size-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span className="text-slate-600 dark:text-slate-400">{item.name}</span>
+                  <div key={index} className="flex items-center justify-between text-sm py-1">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-3 rounded-sm shrink-0" style={{ backgroundColor: item.color }}></div>
+                      <span className="text-slate-600 dark:text-slate-400 font-medium">{item.name}</span>
                     </div>
-                    <span className="font-bold">{formatCurrency(item.value)}</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(item.value)}</span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-              <span className="material-symbols-outlined text-4xl mb-2">pie_chart</span>
-              <p className="text-sm">Nenhuma fatura ainda</p>
+              <span className="material-symbols-outlined text-5xl mb-3">pie_chart</span>
+              <p className="text-sm font-medium">Nenhuma fatura ainda</p>
             </div>
           )}
         </div>
@@ -1212,24 +1277,66 @@ export const Financial: React.FC<FinancialProps> = ({ currentWorkspace, onCreate
   );
 };
 
-const KPICard: React.FC<{ title: string; value: string; trend: string; trendType: 'up' | 'down' | 'neutral'; icon: string; iconBg: string; iconColor: string }> = ({ title, value, trend, trendType, icon, iconBg, iconColor }) => (
-  <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg rounded-3xl p-8 border border-white/20 dark:border-slate-800/50 shadow-xl hover:scale-[1.02] transition-all group overflow-hidden relative">
-    <div className={`absolute top-0 right-0 size-32 opacity-10 blur-3xl rounded-full ${iconBg} group-hover:opacity-20 transition-opacity`} />
-    <div className="flex justify-between items-start mb-6">
-      <div className={`size-14 ${iconBg} rounded-2xl flex items-center justify-center ${iconColor} shadow-lg shadow-black/5`}>
-        <span className="material-symbols-outlined text-2xl">{icon}</span>
+const variantStyles = {
+  success: {
+    iconBg: 'bg-emerald-500/15 dark:bg-emerald-500/20',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    accent: 'border-l-emerald-500',
+    glow: 'group-hover:shadow-emerald-500/10',
+  },
+  warning: {
+    iconBg: 'bg-amber-500/15 dark:bg-amber-500/20',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    accent: 'border-l-amber-500',
+    glow: 'group-hover:shadow-amber-500/10',
+  },
+  info: {
+    iconBg: 'bg-blue-500/15 dark:bg-blue-500/20',
+    iconColor: 'text-blue-600 dark:text-blue-400',
+    accent: 'border-l-blue-500',
+    glow: 'group-hover:shadow-blue-500/10',
+  },
+  accent: {
+    iconBg: 'bg-violet-500/15 dark:bg-violet-500/20',
+    iconColor: 'text-violet-600 dark:text-violet-400',
+    accent: 'border-l-violet-500',
+    glow: 'group-hover:shadow-violet-500/10',
+  },
+  avulso: {
+    iconBg: 'bg-amber-500/15 dark:bg-amber-500/20',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    accent: 'border-l-amber-500',
+    glow: 'group-hover:shadow-amber-500/10',
+  },
+};
+
+const KPICard: React.FC<{
+  title: string;
+  value: string;
+  subtitle?: string;
+  variant: keyof typeof variantStyles;
+  icon: string;
+}> = ({ title, value, subtitle = '', variant, icon }) => {
+  const styles = variantStyles[variant];
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 p-6 border-l-4 ${styles.accent} shadow-sm hover:shadow-lg ${styles.glow} transition-all duration-300`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className={`size-12 rounded-xl flex items-center justify-center ${styles.iconBg} ${styles.iconColor} shrink-0`}>
+          <span className="material-symbols-outlined text-2xl">{icon}</span>
+        </div>
+        {subtitle ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate max-w-[140px] text-right">
+            {subtitle}
+          </span>
+        ) : null}
       </div>
-      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${trendType === 'up' ? 'text-emerald-700 bg-emerald-500/10' :
-        trendType === 'down' ? 'text-rose-700 bg-rose-500/10' :
-          'text-amber-700 bg-amber-500/10'
-        }`}>
-        {trend}
-      </div>
+      <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mt-4 mb-1">{title}</p>
+      <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{value}</p>
     </div>
-    <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1.5">{title}</p>
-    <p className="text-3xl font-black tracking-tighter font-display text-slate-900 dark:text-white">{value}</p>
-  </div>
-);
+  );
+};
 
 const FilterButton: React.FC<{ label: string; active: boolean; onClick: () => void; count: number; color?: string }> = ({ label, active, onClick, count, color = 'primary' }) => {
   const colorClasses: { [key: string]: string } = {
